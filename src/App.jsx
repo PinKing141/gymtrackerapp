@@ -64,6 +64,9 @@ export function App() {
         onOpenRecovery={actions.openRecoveryFromHome}
         onOpenReview={actions.openReviewFromHome}
         onStartWorkout={actions.startWorkout}
+        notificationPermission={notificationPermission}
+        notificationSupported={notificationSupported}
+        onRequestReminderPermission={actions.requestReminderPermission}
         onUseWeekFreeze={actions.useCurrentWeekFreeze}
         streakSummary={streakSummary}
       />
