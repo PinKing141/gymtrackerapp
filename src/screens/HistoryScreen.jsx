@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Icon } from "../components/icons.jsx";
 import { BB, C, fd, ft, fdu } from "../storage.js";
 import { getExercisesForWorkout, getWorkoutForSession } from "../workouts.js";
 import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
@@ -76,7 +77,14 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
   }
 
   if (!app.sessions.length) {
-    return <div style={{ padding: "80px 20px", textAlign: "center" }}><p style={{ fontSize: 36 }}>📋</p><p style={{ fontSize: 14, color: "#555" }}>No sessions logged yet.</p></div>;
+    return (
+      <div style={{ padding: "80px 20px", textAlign: "center" }}>
+        <div style={{ width: 52, height: 52, borderRadius: 14, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          <Icon name="clipboard" size={24} color="#777" />
+        </div>
+        <p style={{ fontSize: 14, color: "#555" }}>No sessions logged yet.</p>
+      </div>
+    );
   }
 
   return (

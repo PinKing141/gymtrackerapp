@@ -1,4 +1,5 @@
 import { Spark } from "../components/WorkoutComponents.jsx";
+import { Icon, WaterGlassIcon } from "../components/icons.jsx";
 import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
 import { PHASES, WQ } from "../data.js";
 import { DD, IS, fd, today } from "../storage.js";
@@ -45,9 +46,15 @@ export function MoreScreen({
   recoveryForm,
   reviewForm,
   sectionView,
+  devicePrefs,
+  notificationPermission,
+  notificationSupported,
+  onRequestReminderPermission,
+  onSendTestReminder,
   setApp,
   setBodyStatsForm,
   setCloud,
+  setDevicePrefs,
   setRecoveryForm,
   setReviewForm,
 }) {
@@ -67,10 +74,22 @@ export function MoreScreen({
 
         <SurfaceCard>
           <p style={{ fontSize: 12, color: "#999", margin: "0 0 8px" }}>Water (litres)</p>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {[1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5].map((value) => (
-              <button key={value} onClick={() => setRecoveryForm((current) => ({ ...current, water: value }))} style={{ flex: "1 1 22%", padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, background: recoveryForm.water === value ? "rgba(45,125,210,0.2)" : "rgba(255,255,255,0.04)", color: recoveryForm.water === value ? "#2D7DD2" : "#555" }}>{value}</button>
-            ))}
+          <p style={{ fontSize: 12, margin: "0 0 10px", color: "#8BA6C9", fontWeight: 700 }}>{recoveryForm.water.toFixed(1)} / 4.0L</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+            {Array.from({ length: 8 }, (_, index) => {
+              const value = (index + 1) * 0.5;
+              const active = value <= recoveryForm.water;
+              return (
+                <button
+                  key={value}
+                  onClick={() => setRecoveryForm((current) => ({ ...current, water: value }))}
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+                >
+                  <WaterGlassIcon size={32} level={active ? 1 : 0} color="#2D7DD2" />
+                  <span style={{ fontSize: 10, color: active ? "#2D7DD2" : "#666" }}>{value.toFixed(1)}L</span>
+                </button>
+              );
+            })}
           </div>
         </SurfaceCard>
 
@@ -173,7 +192,7 @@ export function MoreScreen({
               {index < phase && <span style={{ fontSize: 16, color: "#45B649" }}>✓</span>}
               {index === phase && <span style={{ fontSize: 10, color: phaseEntry.color, fontWeight: 700, background: `${phaseEntry.color}22`, padding: "3px 8px", borderRadius: 6 }}>ACTIVE</span>}
             </div>
-            {index === phase && deload && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,166,35,0.08)", borderRadius: 8, border: "1px solid rgba(245,166,35,0.15)" }}><p style={{ fontSize: 11, color: "#F5A623", margin: 0, fontWeight: 600 }}>⚡ Deload Active</p><p style={{ fontSize: 10, color: "#888", margin: "3px 0 0" }}>Weights -40% · Conditioning -50% · Keep prehab · Sleep 9hrs</p></div>}
+            {index === phase && deload && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,166,35,0.08)", borderRadius: 8, border: "1px solid rgba(245,166,35,0.15)" }}><p style={{ fontSize: 11, color: "#F5A623", margin: 0, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Icon name="spark" size={13} color="#F5A623" />Deload Active</p><p style={{ fontSize: 10, color: "#888", margin: "3px 0 0" }}>Weights -40% · Conditioning -50% · Keep prehab · Sleep 9hrs</p></div>}
           </SurfaceCard>
         ))}
 
@@ -188,13 +207,15 @@ export function MoreScreen({
       <ScreenHeader title="More" />
 
       {[
-        { key: "recovery", icon: "😴", title: "Recovery Log", description: "Sleep, hydration, mobility" },
-        { key: "bodystats", icon: "⚖️", title: "Body Stats", description: "Bodyweight check-in" },
-        { key: "review", icon: "📋", title: "Weekly Review", description: "Sunday accountability" },
-        { key: "phase", icon: "📈", title: "Phase Tracker", description: "12-week progression" },
+        { key: "recovery", icon: "pulse", title: "Recovery Log", description: "Sleep, hydration, mobility" },
+        { key: "bodystats", icon: "scale", title: "Body Stats", description: "Bodyweight check-in" },
+        { key: "review", icon: "clipboard", title: "Weekly Review", description: "Sunday accountability" },
+        { key: "phase", icon: "barChart", title: "Phase Tracker", description: "12-week progression" },
       ].map((item) => (
         <SurfaceButton key={item.key} onClick={() => onOpenSection(item.key)} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: 24 }}>{item.icon}</span>
+          <div style={{ width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <Icon name={item.icon} size={18} color="#9AA4B3" />
+          </div>
           <div style={{ flex: 1 }}>
             <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: "#fff" }}>{item.title}</p>
             <p style={{ fontSize: 11, color: "#555", margin: "2px 0 0" }}>{item.description}</p>
@@ -202,6 +223,31 @@ export function MoreScreen({
           <span style={{ color: "#555", fontSize: 18 }}>›</span>
         </SurfaceButton>
       ))}
+
+      <SurfaceCard style={{ marginTop: 16 }}>
+        <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Notifications</p>
+        <p style={{ fontSize: 12, color: "#bbb", margin: "0 0 8px" }}>Get reminders when you have missed the gym for 2 days.</p>
+        {!notificationSupported ? (
+          <p style={{ fontSize: 11, color: "#666", margin: 0 }}>This browser does not support notifications.</p>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Status: {notificationPermission}</p>
+              <ActionButton onClick={onRequestReminderPermission} tone="tinted" color="#2D7DD2" compact fullWidth={false}>
+                {notificationPermission === "granted" ? "Enabled" : "Enable"}
+              </ActionButton>
+            </div>
+            <div style={{ marginTop: 10 }}>
+              <p style={{ margin: "0 0 6px", fontSize: 10, color: "#666" }}>Reminder trigger (days since last session)</p>
+              <input type="range" min="2" max="5" value={devicePrefs.reminderThresholdDays} onChange={(event) => setDevicePrefs((current) => ({ ...current, reminderThresholdDays: Number(event.target.value), lastReminderKey: null }))} style={{ width: "100%", accentColor: "#2D7DD2" }} />
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#8BA6C9", fontWeight: 600 }}>{devicePrefs.reminderThresholdDays} day threshold</p>
+            </div>
+            <ActionButton onClick={onSendTestReminder} tone="secondary" compact style={{ marginTop: 10 }}>
+              Send Test Reminder
+            </ActionButton>
+          </>
+        )}
+      </SurfaceCard>
 
       <SurfaceCard style={{ marginTop: 16 }}>
         <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Cloud Sync</p>
