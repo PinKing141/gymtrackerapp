@@ -68,9 +68,9 @@ function getCloudMessage(text, tone = "neutral") {
 function buildReminderBody(daysSinceLastSession, streakSummary) {
   const sessionsRemaining = Math.max(0, (streakSummary?.weeklyTarget || 0) - (streakSummary?.currentWeekCount || 0));
   if (sessionsRemaining === 0) {
-    return `It has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last session. Recovery is fine, but do not let the streak drift.`;
+    return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. You're on track this week—keep your momentum going.`;
   }
-  return `It has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last session. ${sessionsRemaining} more session${sessionsRemaining === 1 ? "" : "s"} hits this week's target.`;
+  return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. Complete ${sessionsRemaining} more session${sessionsRemaining === 1 ? "" : "s"} to hit this week's goal.`;
 }
 
 export function useAppState() {
@@ -121,6 +121,7 @@ export function useAppState() {
   const coreOpenRef = useRef(coreOpen);
   const cloudClient = getCloudClient();
   const notificationSupported = typeof window !== "undefined" && "Notification" in window;
+  const serviceWorkerSupported = typeof navigator !== "undefined" && "serviceWorker" in navigator;
   const notificationPermission = notificationSupported ? Notification.permission : "unsupported";
   const streakSummary = getStreakSummary(app);
 
@@ -327,20 +328,23 @@ export function useAppState() {
     streakSummary,
   ]);
 
-  const syncCloudNow = useCallback(async (userOverride) => {
+  const syncCloudNow = useCallback(async (userOverride, options = {}) => {
+    const { silent = false } = options;
     const user = userOverride || cloud.user;
     if (!cloudClient || !user) {
       return null;
     }
 
     try {
-      setCloud((current) => ({ ...current, syncing: true, message: current.message?.tone === "error" ? null : current.message }));
+      if (!silent) {
+        setCloud((current) => ({ ...current, syncing: true, message: current.message?.tone === "error" ? null : current.message }));
+      }
       const saved = await saveRemoteApp(user.id, appRef.current);
       setCloud((current) => ({
         ...current,
         syncing: false,
         lastSyncedAt: saved?.updatedAt || new Date().toISOString(),
-        message: getCloudMessage("Cloud sync complete.", "success"),
+        message: silent ? current.message : getCloudMessage("Cloud sync complete.", "success"),
       }));
       return saved;
     } catch (error) {
@@ -473,7 +477,7 @@ export function useAppState() {
 
     clearTimeout(cloudSaveTimeoutRef.current);
     cloudSaveTimeoutRef.current = setTimeout(() => {
-      syncCloudNow();
+      syncCloudNow(undefined, { silent: true });
     }, CLOUD_SYNC_DELAY_MS);
 
     return () => clearTimeout(cloudSaveTimeoutRef.current);
@@ -851,7 +855,7 @@ export function useAppState() {
       return false;
     }
 
-    showLocalNotification("Gym reminder", "Browser reminders are active on this device.");
+    showLocalNotification("Orion Gym Reminder", "Notifications are active. We'll remind you if training is overdue.");
     return true;
   }, [notificationPermission, notificationSupported, showLocalNotification]);
 
@@ -873,6 +877,7 @@ export function useAppState() {
     navigate,
     notificationPermission,
     notificationSupported,
+    serviceWorkerSupported,
     openMoreSection,
     prehabOpen,
     recoveryForm,

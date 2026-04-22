@@ -16,6 +16,7 @@ export const ICONS = {
   chevronLeft: ["M15 18l-6-6 6-6"],
   chevronRight: ["M9 18l6-6-6-6"],
   clipboard: ["M9 4h6", "M9 4a2 2 0 00-2 2v1h10V6a2 2 0 00-2-2", "M7 7H6a2 2 0 00-2 2v9a3 3 0 003 3h10a3 3 0 003-3V9a2 2 0 00-2-2h-1", "M9 12h6", "M9 16h4"],
+  crown: ["M3 9l4.7 3.7L12 5l4.3 7.7L21 9l-2 10H5L3 9z", "M7 15h10"],
   dumbbell: ["M3 10v4", "M6 8v8", "M18 8v8", "M21 10v4", "M6 12h12"],
   pulse: ["M3 12h4l2-4 3 8 3-6 2 2h4"],
   save: ["M5 5a2 2 0 012-2h8l4 4v12a2 2 0 01-2 2H7a2 2 0 01-2-2V5z", "M9 3v5h6", "M9 21v-6h6v6"],
