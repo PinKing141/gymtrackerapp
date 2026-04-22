@@ -1,60 +1,92 @@
 # Orion Gym Tracker
 
-Single-page gym tracking web app built with React (CDN) in [index.html](index.html).
+Single-page gym tracking app built with React, Vite, and a mobile-first layout for GitHub Pages.
 
 ## Local setup
 
 1. Open a terminal in this folder.
-2. Start a local web server:
+2. Install dependencies with `npm install`.
+3. Copy `.env.example` to `.env.local` if you want cloud sync.
+4. Start the dev server with `npm run dev`.
 
-```bash
-python3 -m http.server 8080
-```
+## iPhone / GitHub Pages
 
-3. Open http://localhost:8080 in your browser.
-
-## Access on iPhone
-
-### Option 1: GitHub Pages (best)
-
-This repo now includes a Pages deployment workflow at [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml).
-
-1. Push your latest code to the main branch.
-2. In GitHub, open Settings -> Pages.
-3. Under Build and deployment, set Source to GitHub Actions.
-4. Wait for the Actions run named Deploy Orion Gym Tracker to Pages to finish.
-5. Open your live site on iPhone:
-	- https://pinking141.github.io/gymtrackerapp/
+1. Push your latest code to `main`.
+2. In GitHub, open `Settings -> Pages`.
+3. Set `Source` to `GitHub Actions`.
+4. Wait for the `Deploy Orion Gym Tracker to Pages` workflow to finish.
+5. Open the live site on your phone:
+   `https://pinking141.github.io/gymtrackerapp/`
 
 To install it like an app on iPhone:
+
 1. Open the site in Safari.
-2. Tap Share.
-3. Tap Add to Home Screen.
+2. Tap `Share`.
+3. Tap `Add to Home Screen`.
 
-### Option 2: Same Wi-Fi network (quick test)
+## What changed
 
-1. Start the server from this folder:
+1. Safe-area aware headers and timer so top controls stay tappable on notched iPhones.
+2. Workout snapshots stored inside every logged session so future program edits do not rewrite old history.
+3. App state moved out of `App.jsx` into a controller hook.
+4. Optional Supabase login + cloud sync for cross-device data.
+5. Versioned data migrations for older saved app data.
 
-```bash
-python3 -m http.server 8080 --bind 0.0.0.0
+## Cloud sync setup
+
+The app still works fully offline with local storage. Cloud sync is optional and uses Supabase so it can still run as a static GitHub Pages app.
+
+### 1. Create a Supabase project
+
+Create a project at `https://supabase.com/`.
+
+### 2. Create the data table
+
+Open the Supabase SQL editor and run the SQL in [supabase/schema.sql](supabase/schema.sql).
+
+### 3. Enable email auth
+
+In Supabase Auth, keep Email enabled. This app uses email + password sign-in.
+
+Note:
+
+1. Hosted Supabase projects usually require email confirmation by default.
+2. For real production email delivery, Supabase recommends configuring custom SMTP.
+
+### 4. Add env vars locally
+
+Create `.env.local`:
+
+```env
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-2. Find your computer IP (example: 192.168.1.22).
-3. On iPhone (same Wi-Fi), open:
-	- http://YOUR_IP:8080
+### 5. Add env vars for GitHub Pages builds
 
-## Production notes
+In GitHub, open `Settings -> Secrets and variables -> Actions -> Variables` and add:
 
-1. Deploy all files at the project root together:
-	- [index.html](index.html)
-	- [manifest.webmanifest](manifest.webmanifest)
-	- [sw.js](sw.js)
-2. Serve over HTTPS (required for service workers and install prompts).
-3. Keep same-origin hosting for app files so offline caching works reliably.
+1. `VITE_SUPABASE_URL`
+2. `VITE_SUPABASE_ANON_KEY`
 
-## What is set up
+The workflow already forwards those values into the Vite build.
 
-1. Mobile-first viewport and Apple web-app meta tags.
-2. Web app manifest for installability.
-3. Service worker registration and basic offline shell caching.
-4. LocalStorage persistence for workouts and progress data.
+### 6. Use the app
+
+Open the `More` tab.
+
+1. Create an account or sign in.
+2. Your local data will sync automatically.
+3. Use `Sync Now` anytime if you want a manual push.
+
+## Backup and recovery
+
+Even with cloud sync enabled, the app still keeps local backups on the device.
+
+1. `Export Backup` downloads a JSON file.
+2. `Import Backup` restores from a downloaded JSON file.
+3. `Restore Local Backup` reloads the last local backup copy.
+
+## Build
+
+Run `npm run build` to create the production bundle in `dist/`.

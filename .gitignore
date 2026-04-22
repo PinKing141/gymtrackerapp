@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+
+# local Python env used for lightweight static checks in this workspace
+.venv/

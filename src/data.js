@@ -1,0 +1,86 @@
+export const PREHAB = [
+  { name: "Knee-to-Wall Ankle Rocks", type: "Mobility", sets: 3, reps: "12/side" },
+  { name: "Single Leg Balance — Left", type: "Stability", sets: 2, reps: "30 sec" },
+  { name: "Banded Ankle Circles — Left", type: "Mobility", sets: 2, reps: "10 each" },
+  { name: "Band Pull-Aparts", type: "Activation", sets: 3, reps: "15" },
+  { name: "Wall Slides", type: "Mobility", sets: 2, reps: "10" },
+  { name: "Side Lying Ext. Rotation — L", type: "Activation", sets: 2, reps: "12" },
+  { name: "90/90 Hip Switches", type: "Mobility", sets: 3, reps: "8 slow" },
+  { name: "Glute Medius Banded Walk", type: "Activation", sets: 2, reps: "15 steps" },
+  { name: "Deep Squat Hold", type: "Mobility", sets: 2, reps: "30 sec" },
+  { name: "Split Squat Iso Hold", type: "Stability", sets: 2, reps: "30 sec" },
+];
+
+export const WORKOUTS = {
+  W1: { id: "W1", title: "Upper Strength + Power", shortTitle: "Upper Power", day: "Tuesday", goal: "Explosive Force · Structural Armour", color: "#E84545",
+    performance: [
+      { name: "Push Press", type: "Barbell", sets: 4, reps: "4", rest: 120, restLabel: "2 min", tracked: true },
+      { name: "Bench Press", type: "Barbell", sets: 4, reps: "5–6", rest: 150, restLabel: "2–3 min", tracked: true },
+      { name: "Assisted Pull-Up Machine", type: "Machine", sets: 4, reps: "6–8", rest: 120, restLabel: "2 min", tracked: true },
+      { name: "Barbell Rows", type: "Barbell", sets: 3, reps: "8", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Landmine Rotational Press", type: "Barbell", sets: 3, reps: "6/side", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Face Pulls", type: "Cable", sets: 3, reps: "15", rest: 45, restLabel: "45 sec", tracked: true },
+      { name: "Farmer Carries", type: "Dumbbells", sets: 3, reps: "35m", rest: 90, restLabel: "90 sec", tracked: true },
+    ],
+    finisher: [
+      { name: "EZ Bar Bicep Curl", type: "Barbell", sets: 3, reps: "10", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Tricep Pushdown", type: "Cable", sets: 3, reps: "12", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Lateral Raise", type: "Dumbbells", sets: 3, reps: "15", rest: 45, restLabel: "45 sec", tracked: true },
+      { name: "Dumbbell Shrug", type: "Dumbbells", sets: 3, reps: "15", rest: 45, restLabel: "45 sec", tracked: true },
+      { name: "Dumbbell Pullover", type: "Dumbbells", sets: 2, reps: "12", rest: 60, restLabel: "60 sec", tracked: true },
+    ],
+    core: { title: "Block C — Posterior Core", exercises: [{ name: "Back Extension", sets: 3, reps: "12" },{ name: "Bird Dog", sets: 3, reps: "8/side" },{ name: "Glute Ham Raise — Assisted", sets: 3, reps: "6" },{ name: "Superman Hold", sets: 2, reps: "20 sec" }] },
+  },
+  W2: { id: "W2", title: "Lower Force + Braking", shortTitle: "Lower Force", day: "Friday", goal: "Maximal Strength · Deceleration Control", color: "#2D7DD2",
+    performance: [
+      { name: "Box Jump — Step Down", type: "Bodyweight", sets: 4, reps: "4", rest: 120, restLabel: "2 min", tracked: false },
+      { name: "Back Squat", type: "Barbell", sets: 4, reps: "5", rest: 180, restLabel: "3 min", tracked: true },
+      { name: "Romanian Deadlift", type: "Barbell", sets: 3, reps: "6", rest: 120, restLabel: "2 min", tracked: true },
+      { name: "Bulgarian Split Squat", type: "Dumbbells", sets: 3, reps: "8/leg", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Hip Abductor Machine", type: "Machine", sets: 3, reps: "15", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Hip Adductor Machine", type: "Machine", sets: 3, reps: "15", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Snap Down — Stick", type: "Bodyweight", sets: 3, reps: "5", rest: 0, restLabel: "Full", tracked: false },
+      { name: "Tibialis Raises", type: "Wall", sets: 3, reps: "15–20", rest: 45, restLabel: "45 sec", tracked: false },
+      { name: "Leg Extension Machine", type: "Machine", sets: 3, reps: "12", rest: 60, restLabel: "60 sec", tracked: true },
+    ],
+    finisher: [{ name: "Standing Calf Raise — Heavy", type: "Machine", sets: 4, reps: "15", rest: 45, restLabel: "45 sec", tracked: true },{ name: "Leg Curl Machine", type: "Machine", sets: 3, reps: "12", rest: 60, restLabel: "60 sec", tracked: true }],
+    core: { title: "Block A — Stability Foundation", exercises: [{ name: "Dead Bug", sets: 3, reps: "8/side" },{ name: "Pallof Press", sets: 3, reps: "10/side" },{ name: "Side Plank + Hip Abduction", sets: 2, reps: "20 sec/side" },{ name: "Back Plank", sets: 2, reps: "25 sec" }] },
+  },
+  W3: { id: "W3", title: "Upper Structure + Aesthetics", shortTitle: "Upper Aesthetics", day: "Saturday (Alt)", goal: "Durability · Balance · Definition", color: "#F5A623",
+    performance: [
+      { name: "Incline DB Press", type: "Dumbbells", sets: 3, reps: "8–10", rest: 120, restLabel: "2 min", tracked: true },
+      { name: "Assisted Pull-Up — Negatives", type: "Machine", sets: 4, reps: "5–6", rest: 120, restLabel: "2 min", tracked: true },
+      { name: "Lat Pulldown Machine", type: "Machine", sets: 3, reps: "10–12", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Seated Row Machine", type: "Machine", sets: 3, reps: "10–12", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Shoulder Press Machine", type: "Machine", sets: 3, reps: "10–12", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Single Arm DB Press", type: "Dumbbell", sets: 3, reps: "8/side", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Face Pulls", type: "Cable", sets: 3, reps: "15", rest: 45, restLabel: "45 sec", tracked: true },
+      { name: "Dead Hangs", type: "Pull-up bar", sets: 3, reps: "30–45 sec", rest: 0, restLabel: "Full", tracked: false },
+    ],
+    finisher: [
+      { name: "Straight Arm Pulldown", type: "Cable", sets: 3, reps: "12", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Cable Fly — Chest", type: "Cable", sets: 3, reps: "12", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Rear Delt Fly", type: "Dumbbells", sets: 3, reps: "15", rest: 45, restLabel: "45 sec", tracked: true },
+      { name: "Hammer Curl", type: "Dumbbells", sets: 3, reps: "10/side", rest: 60, restLabel: "60 sec", tracked: true },
+      { name: "Overhead Tricep Extension", type: "Cable/DB", sets: 3, reps: "12", rest: 60, restLabel: "60 sec", tracked: true },
+    ], core: null,
+  },
+  W4: { id: "W4", title: "Lower Elasticity + Reactivity", shortTitle: "Lower Elastic", day: "Saturday (Alt)", goal: "Vertical Jump · Tendon Stiffness · Bounce", color: "#45B649",
+    performance: [
+      { name: "Approach Verticals", type: "Bodyweight", sets: 7, reps: "Max", rest: 0, restLabel: "Full", tracked: false },
+      { name: "Linear Pogos", type: "Bodyweight", sets: 3, reps: "20", rest: 60, restLabel: "60 sec", tracked: false },
+      { name: "Lateral Bounds", type: "Bodyweight", sets: 3, reps: "8/side", rest: 90, restLabel: "90 sec", tracked: false },
+      { name: "Goblet Squat", type: "Dumbbell", sets: 3, reps: "5–6", rest: 120, restLabel: "2 min", tracked: true },
+      { name: "Walking Lunges", type: "Dumbbells", sets: 3, reps: "10/leg", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Single Leg RDL", type: "Dumbbell", sets: 3, reps: "6/leg", rest: 90, restLabel: "90 sec", tracked: true },
+      { name: "Split Squat Iso Hold", type: "Bodyweight", sets: 2, reps: "35–45 sec", rest: 0, restLabel: "Full", tracked: false },
+      { name: "Slow Calf Raises — Single Leg", type: "Bodyweight", sets: 3, reps: "12", rest: 45, restLabel: "45 sec", tracked: false },
+    ],
+    finisher: [{ name: "Seated Calf Raise", type: "Machine", sets: 3, reps: "20", rest: 45, restLabel: "45 sec", tracked: true }], core: null,
+  },
+};
+
+export const KEY_LIFTS = ["Bench Press","Back Squat","Romanian Deadlift","Push Press","Incline DB Press","Barbell Rows"];
+export const PHASES = [{ name: "Foundation", weeks: "1–4", theme: "Build habits. Fix mechanics. Start the engine.", color: "#2D7DD2" },{ name: "Development", weeks: "5–8", theme: "Add load. Add pressure. Add complexity.", color: "#F5A623" },{ name: "Integration", weeks: "9–12", theme: "Game speed. Game pressure. Full intensity.", color: "#E84545" }];
+export const WQ = ["Did I complete all planned sessions this week? If not, what got in the way?","Are my injury sites feeling better, the same, or worse?","What is the single most important thing to improve next week?","Did I hit 8 hours of sleep on most nights?","One highlight or win from this week?"];
+export const NAV = [{id:"home",icon:"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1",l:"Home"},{id:"history",icon:"M12 2a10 10 0 100 20 10 10 0 000-20zM12 6v6l4 2",l:"History"},{id:"progress",icon:"M3 3v18h18M7 16l4-4 4 4 5-6",l:"Progress"},{id:"pbs",icon:"M6 9H4.5a2.5 2.5 0 010-5H6M18 9h1.5a2.5 2.5 0 000-5H18M6 4h12v5a6 6 0 01-12 0V4zM9 20h6M12 15v5",l:"PBs"},{id:"more",icon:"M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z",l:"More"}];
