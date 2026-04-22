@@ -48,7 +48,7 @@ export function App() {
     submitCloudAuth,
     streakSummary,
     signOutCloud,
-    syncCloudNow,
+    toggleCloudSync,
     view,
     workoutId,
     actions,
@@ -116,7 +116,7 @@ export function App() {
         getPhaseProgress={getPhaseProgress}
         onCloudSignOut={signOutCloud}
         onCloudSubmit={submitCloudAuth}
-        onCloudSync={syncCloudNow}
+        onToggleCloudSync={toggleCloudSync}
         onExportData={actions.exportData}
         onImportData={actions.importData}
         onOpenSection={openMoreSection}

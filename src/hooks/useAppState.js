@@ -104,6 +104,7 @@ export function useAppState() {
     email: "",
     password: "",
     syncing: false,
+    syncEnabled: devicePrefs.cloudSyncEnabled !== false,
     syncStartedAt: null,
     lastSyncedAt: null,
     message: isCloudConfigured ? null : getCloudMessage("Cloud sync is optional. Add Supabase keys to turn it on."),
@@ -334,7 +335,7 @@ export function useAppState() {
   const syncCloudNow = useCallback(async (userOverride, options = {}) => {
     const { silent = false } = options;
     const user = userOverride || cloud.user;
-    if (!cloudClient || !user) {
+    if (!cloudClient || !user || !cloud.syncEnabled) {
       return null;
     }
 
@@ -381,10 +382,10 @@ export function useAppState() {
 
     syncRequestRef.current = syncPromise;
     return syncPromise;
-  }, [cloud.user, cloudClient]);
+  }, [cloud.syncEnabled, cloud.user, cloudClient]);
 
   const pullCloudState = useCallback(async (user) => {
-    if (!cloudClient || !user) {
+    if (!cloudClient || !user || !cloud.syncEnabled) {
       return;
     }
 
@@ -443,7 +444,7 @@ export function useAppState() {
         message: getCloudMessage(error.message || "Could not load cloud data.", "error"),
       }));
     }
-  }, [applyApp, cloudClient, syncCloudNow]);
+  }, [applyApp, cloud.syncEnabled, cloudClient, syncCloudNow]);
 
   useEffect(() => {
     if (!cloudClient) {
@@ -466,7 +467,7 @@ export function useAppState() {
         message: error ? getCloudMessage(error.message, "error") : current.message,
       }));
 
-      if (user) {
+      if (user && cloud.syncEnabled) {
         pullCloudState(user);
       }
     });
@@ -484,7 +485,7 @@ export function useAppState() {
           : current.message,
       }));
 
-      if (user && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED")) {
+      if (user && cloud.syncEnabled && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED")) {
         pullCloudState(user);
       }
     });
@@ -493,10 +494,10 @@ export function useAppState() {
       active = false;
       subscription.unsubscribe();
     };
-  }, [cloudClient, pullCloudState]);
+  }, [cloud.syncEnabled, cloudClient, pullCloudState]);
 
   useEffect(() => {
-    if (!cloudClient || !cloud.user) {
+    if (!cloudClient || !cloud.user || !cloud.syncEnabled) {
       return undefined;
     }
 
@@ -511,7 +512,34 @@ export function useAppState() {
     }, CLOUD_SYNC_DELAY_MS);
 
     return () => clearTimeout(cloudSaveTimeoutRef.current);
-  }, [app, cloud.user, cloudClient, syncCloudNow]);
+  }, [app, cloud.syncEnabled, cloud.user, cloudClient, syncCloudNow]);
+
+  const toggleCloudSync = useCallback(() => {
+    const nextEnabled = !cloud.syncEnabled;
+    setDevicePrefs((current) => ({ ...current, cloudSyncEnabled: nextEnabled }));
+
+    if (!nextEnabled) {
+      clearTimeout(cloudSaveTimeoutRef.current);
+      setCloud((current) => ({
+        ...current,
+        syncEnabled: false,
+        syncing: false,
+        syncStartedAt: null,
+        message: getCloudMessage("Cloud sync turned off for this device."),
+      }));
+      return;
+    }
+
+    setCloud((current) => ({
+      ...current,
+      syncEnabled: true,
+      message: getCloudMessage("Cloud sync turned on.", "success"),
+    }));
+
+    if (cloud.user) {
+      syncCloudNow(cloud.user);
+    }
+  }, [cloud.syncEnabled, cloud.user, setDevicePrefs, syncCloudNow]);
 
   const exportData = useCallback(() => {
     try {
@@ -932,6 +960,7 @@ export function useAppState() {
     streakSummary,
     submitCloudAuth,
     syncCloudNow,
+    toggleCloudSync,
     view,
     workoutId,
     actions: {
