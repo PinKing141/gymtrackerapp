@@ -10,6 +10,7 @@ const DEFAULT_STREAK_STATE = {
 };
 const DEFAULT_PROFILE = {
   name: "",
+  unitSystem: "imperial",
   age: "",
   sex: "male",
   heightCm: "",

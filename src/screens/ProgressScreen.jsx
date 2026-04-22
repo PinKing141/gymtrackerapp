@@ -5,6 +5,25 @@ import { getExercisesForWorkout, getWorkoutForSession } from "../workouts.js";
 import { Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
 
 export function ProgressScreen({ app }) {
+  const weeklySessionTrend = (() => {
+    const buckets = new Map();
+    app.sessions.forEach((session) => {
+      const date = new Date(`${session.date}T00:00:00`);
+      if (Number.isNaN(date.getTime())) {
+        return;
+      }
+      const monday = new Date(date);
+      monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
+      const key = monday.toISOString().slice(0, 10);
+      buckets.set(key, (buckets.get(key) || 0) + 1);
+    });
+
+    return [...buckets.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-12)
+      .map(([, count]) => count);
+  })();
+
   const liftData = (liftName) => {
     const points = [];
     app.sessions.forEach((session) => {
@@ -24,6 +43,19 @@ export function ProgressScreen({ app }) {
   return (
     <Screen>
       <ScreenHeader title="Progress" />
+
+      {weeklySessionTrend.length > 1 && (
+        <SurfaceCard>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: "#fff" }}>Workout Frequency</p>
+            <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: "#2D7DD2" }}>{weeklySessionTrend[weeklySessionTrend.length - 1]} this week</p>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <Spark data={weeklySessionTrend} color="#2D7DD2" height={40} />
+          </div>
+          <p style={{ fontSize: 9, color: "#555", margin: "6px 0 0" }}>Last 12 weeks (sessions per week)</p>
+        </SurfaceCard>
+      )}
 
       {KEY_LIFTS.map((lift) => {
         const data = liftData(lift);
