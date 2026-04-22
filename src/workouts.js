@@ -1,8 +1,8 @@
 import { WORKOUTS } from "./data.js";
 
 const cloneExercises = (exercises = []) => exercises.map((exercise) => ({ ...exercise }));
-const SIDE_PATTERN = /\/(side|leg|arm)\b/i;
-const DURATION_PATTERN = /\b(sec|min)\b/i;
+const SIDE_PATTERN = /(?:\/\s*|\bper\s+)(side|leg|arm)\b/i;
+const DURATION_PATTERN = /\b(sec|min|seconds?|minutes?)\b/i;
 const DISTANCE_PATTERN = /^\s*\d+(\.\d+)?\s*(m|meters?)\s*$/i;
 
 function hasValue(value) {
@@ -18,7 +18,7 @@ function isPairedLoadExercise(exercise) {
     return false;
   }
 
-  return exercise.name === "Farmer Carries" || (isDumbbellType(exercise.type) && (SIDE_PATTERN.test(exercise.reps || "") || /single arm|single leg/i.test(exercise.name)));
+  return /farmer\s*carr(y|ies)/i.test(exercise.name || "") || (isDumbbellType(exercise.type) && (SIDE_PATTERN.test(exercise.reps || "") || /single arm|single leg/i.test(exercise.name)));
 }
 
 export function getExerciseTrackingMode(exercise) {

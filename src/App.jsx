@@ -37,6 +37,7 @@ export function App() {
     setBodyStatsForm,
     setCloud,
     setCoreOpen,
+    setDevicePrefs,
     setExpandedExercise,
     setHistoryDetailIndex,
     setPrehabOpen,
@@ -129,6 +130,7 @@ export function App() {
         setApp={setApp}
         setBodyStatsForm={setBodyStatsForm}
         setCloud={setCloud}
+        setDevicePrefs={setDevicePrefs}
         setRecoveryForm={setRecoveryForm}
         setReviewForm={setReviewForm}
         streakSummary={streakSummary}

@@ -1,9 +1,10 @@
 import { ExerciseCard, LiveTimer } from "../components/WorkoutComponents.jsx";
+import { Icon } from "../components/icons.jsx";
 import { PREHAB, WORKOUTS } from "../data.js";
 import { BB, C, L, fd } from "../storage.js";
 import { ActionButton, BackButton, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
 
-export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout }) {
+export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, sessionNotice, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout }) {
   if (!session || !workoutId) {
     return null;
   }
@@ -19,6 +20,12 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
           <BackButton onClick={onCancelWorkout} label="Cancel" />
           <h2 style={{ fontSize: 21, fontWeight: 700, margin: 0, color: workout.color }}>{workout.shortTitle}</h2>
           <p style={{ fontSize: 11, color: "#555", margin: "2px 0 0" }}>{fd(session.date)}</p>
+          {sessionNotice && (
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#8BA6C9", display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="save" size={13} color="#8BA6C9" />
+              {sessionNotice}
+            </p>
+          )}
         </div>
 
         <SurfaceCard style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -70,7 +77,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
         </SurfaceCard>
 
         <SurfaceButton onClick={() => setPrehabOpen((open) => !open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderColor: session.prehabDone ? "rgba(69,182,73,0.2)" : "rgba(255,255,255,0.06)", background: session.prehabDone ? "rgba(69,182,73,0.05)" : C.background }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: session.prehabDone ? "#45B649" : "#fff" }}>{session.prehabDone ? "✓ " : ""}Prehab Block — 15 min</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: session.prehabDone ? "#45B649" : "#fff", display: "flex", alignItems: "center", gap: 6 }}>{session.prehabDone && <Icon name="check" size={13} color="#45B649" />}Prehab Block — 15 min</span>
           <span style={{ color: "#555", fontSize: 16, transform: prehabOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
         </SurfaceButton>
         {prehabOpen && (
@@ -82,7 +89,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
               </div>
             ))}
             <ActionButton onClick={() => setSession((current) => ({ ...current, prehabDone: true }))} tone={session.prehabDone ? "tinted" : "primary"} color={session.prehabDone ? "#45B649" : workout.color} compact style={{ marginTop: 8 }}>
-              {session.prehabDone ? "✓ Done" : "Mark Complete"}
+                  {session.prehabDone ? "Done" : "Mark Complete"}
             </ActionButton>
           </SurfaceCard>
         )}
@@ -127,7 +134,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
         {workout.core && (
           <>
             <SurfaceButton onClick={() => setCoreOpen((open) => !open)} style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", borderColor: session.coreDone ? "rgba(69,182,73,0.2)" : "rgba(255,255,255,0.06)", background: session.coreDone ? "rgba(69,182,73,0.05)" : C.background }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: session.coreDone ? "#45B649" : "#fff" }}>{session.coreDone ? "✓ " : ""}{workout.core.title}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: session.coreDone ? "#45B649" : "#fff", display: "flex", alignItems: "center", gap: 6 }}>{session.coreDone && <Icon name="check" size={13} color="#45B649" />}{workout.core.title}</span>
               <span style={{ color: "#555", fontSize: 16, transform: coreOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
             </SurfaceButton>
             {coreOpen && (
@@ -139,7 +146,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
                   </div>
                 ))}
                 <ActionButton onClick={() => setSession((current) => ({ ...current, coreDone: true }))} tone={session.coreDone ? "tinted" : "primary"} color={session.coreDone ? "#45B649" : workout.color} compact style={{ marginTop: 8 }}>
-                  {session.coreDone ? "✓ Done" : "Mark Complete"}
+                  {session.coreDone ? "Done" : "Mark Complete"}
                 </ActionButton>
               </SurfaceCard>
             )}
@@ -148,7 +155,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
 
         <TextAreaField placeholder="Session notes..." value={session.notes} onChange={(event) => setSession((current) => ({ ...current, notes: event.target.value }))} style={{ marginTop: 14, minHeight: 50, color: "#bbb", background: "rgba(255,255,255,0.03)" }} />
         <ActionButton onClick={onFinishWorkout} color={workout.color} style={{ marginTop: 14, marginBottom: 40, padding: "15px", borderRadius: 14, background: `linear-gradient(135deg,${workout.color},${workout.color}cc)`, boxShadow: `0 4px 20px ${workout.color}44` }}>
-          Finish Session ✓
+          Finish Session
         </ActionButton>
       </div>
     </div>
