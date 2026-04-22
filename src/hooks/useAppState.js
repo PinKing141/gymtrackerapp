@@ -115,6 +115,7 @@ export function useAppState() {
   const cloudSaveTimeoutRef = useRef(null);
   const draftSaveTimeoutRef = useRef(null);
   const skipNextCloudPushRef = useRef(false);
+  const syncRequestRef = useRef(null);
   const appRef = useRef(app);
   const sessionRef = useRef(session);
   const workoutIdRef = useRef(workoutId);
@@ -337,6 +338,10 @@ export function useAppState() {
       return null;
     }
 
+    if (syncRequestRef.current) {
+      return syncRequestRef.current;
+    }
+
     const syncStartedAt = Date.now();
     setCloud((current) => ({
       ...current,
@@ -345,30 +350,37 @@ export function useAppState() {
       message: silent && current.message?.tone === "error" ? current.message : (silent ? current.message : null),
     }));
 
-    try {
-      const saved = await Promise.race([
-        saveRemoteApp(user.id, appRef.current),
-        new Promise((_, reject) => {
-          setTimeout(() => reject(new Error("Sync is taking longer than expected. Please try again in a moment.")), CLOUD_SYNC_TIMEOUT_MS);
-        }),
-      ]);
-      setCloud((current) => ({
-        ...current,
-        syncing: false,
-        syncStartedAt: null,
-        lastSyncedAt: saved?.updatedAt || new Date().toISOString(),
-        message: silent ? current.message : getCloudMessage("Cloud sync complete.", "success"),
-      }));
-      return saved;
-    } catch (error) {
-      setCloud((current) => ({
-        ...current,
-        syncing: false,
-        syncStartedAt: null,
-        message: getCloudMessage(error.message || "Cloud sync failed.", "error"),
-      }));
-      return null;
-    }
+    const syncPromise = (async () => {
+      try {
+        const saved = await Promise.race([
+          saveRemoteApp(user.id, appRef.current),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("Sync is taking longer than expected. Please try again in a moment.")), CLOUD_SYNC_TIMEOUT_MS);
+          }),
+        ]);
+        setCloud((current) => ({
+          ...current,
+          syncing: false,
+          syncStartedAt: null,
+          lastSyncedAt: saved?.updatedAt || new Date().toISOString(),
+          message: silent ? current.message : getCloudMessage("Cloud sync complete.", "success"),
+        }));
+        return saved;
+      } catch (error) {
+        setCloud((current) => ({
+          ...current,
+          syncing: false,
+          syncStartedAt: null,
+          message: getCloudMessage(error.message || "Cloud sync failed.", "error"),
+        }));
+        return null;
+      } finally {
+        syncRequestRef.current = null;
+      }
+    })();
+
+    syncRequestRef.current = syncPromise;
+    return syncPromise;
   }, [cloud.user, cloudClient]);
 
   const pullCloudState = useCallback(async (user) => {
