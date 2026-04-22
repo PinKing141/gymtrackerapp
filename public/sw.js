@@ -1,4 +1,4 @@
-const CACHE_NAME = "orion-gym-v2";
+const CACHE_NAME = "orion-gym-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -49,4 +49,18 @@ self.addEventListener("fetch", (event) => {
         throw new Error("Network request failed and no cached response is available.");
       })
   );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  event.waitUntil((async () => {
+    const allClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const existing = allClients[0];
+    if (existing) {
+      existing.focus();
+      return;
+    }
+    await self.clients.openWindow("./");
+  })());
 });
