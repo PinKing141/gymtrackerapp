@@ -25,9 +25,8 @@ import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } 
 import {
   createEmptySet,
   createWorkoutSnapshot,
+  getExerciseRecordCandidate,
   getExercisesForWorkout,
-  getRecordWeight,
-  getSetSummary,
   getWorkoutById,
 } from "../workouts.js";
 
@@ -66,8 +65,12 @@ function getCloudMessage(text, tone = "neutral") {
   return text ? { text, tone } : null;
 }
 
-function buildReminderBody(daysSinceLastSession) {
-  return `It has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last session. Keep this week moving.`;
+function buildReminderBody(daysSinceLastSession, streakSummary) {
+  const sessionsRemaining = Math.max(0, (streakSummary?.weeklyTarget || 0) - (streakSummary?.currentWeekCount || 0));
+  if (sessionsRemaining === 0) {
+    return `It has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last session. Recovery is fine, but do not let the streak drift.`;
+  }
+  return `It has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last session. ${sessionsRemaining} more session${sessionsRemaining === 1 ? "" : "s"} hits this week's target.`;
 }
 
 export function useAppState() {
@@ -111,14 +114,53 @@ export function useAppState() {
   const draftSaveTimeoutRef = useRef(null);
   const skipNextCloudPushRef = useRef(false);
   const appRef = useRef(app);
+  const sessionRef = useRef(session);
+  const workoutIdRef = useRef(workoutId);
+  const expandedExerciseRef = useRef(expandedExercise);
+  const prehabOpenRef = useRef(prehabOpen);
+  const coreOpenRef = useRef(coreOpen);
   const cloudClient = getCloudClient();
   const notificationSupported = typeof window !== "undefined" && "Notification" in window;
   const notificationPermission = notificationSupported ? Notification.permission : "unsupported";
   const streakSummary = getStreakSummary(app);
 
+  const getDraftPayload = useCallback(() => {
+    if (!sessionRef.current || !workoutIdRef.current) {
+      return null;
+    }
+
+    return {
+      workoutId: workoutIdRef.current,
+      session: sessionRef.current,
+      expandedExercise: expandedExerciseRef.current,
+      prehabOpen: prehabOpenRef.current,
+      coreOpen: coreOpenRef.current,
+    };
+  }, []);
+
   useEffect(() => {
     appRef.current = app;
   }, [app]);
+
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  useEffect(() => {
+    workoutIdRef.current = workoutId;
+  }, [workoutId]);
+
+  useEffect(() => {
+    expandedExerciseRef.current = expandedExercise;
+  }, [expandedExercise]);
+
+  useEffect(() => {
+    prehabOpenRef.current = prehabOpen;
+  }, [prehabOpen]);
+
+  useEffect(() => {
+    coreOpenRef.current = coreOpen;
+  }, [coreOpen]);
 
   const setDevicePrefs = useCallback((updater) => {
     setDevicePrefsState((current) => {
@@ -139,6 +181,36 @@ export function useAppState() {
   const setApp = useCallback((updater) => {
     applyApp(updater);
   }, [applyApp]);
+
+  const showLocalNotification = useCallback(async (title, body) => {
+    if (!notificationSupported || notificationPermission !== "granted") {
+      return false;
+    }
+
+    try {
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        if (registration?.showNotification) {
+          await registration.showNotification(title, {
+            body,
+            tag: "orion-gym-reminder",
+            renotify: true,
+          });
+          return true;
+        }
+      }
+
+      new Notification(title, { body });
+      return true;
+    } catch {
+      try {
+        new Notification(title, { body });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }, [notificationPermission, notificationSupported]);
 
   useEffect(() => {
     clearTimeout(localSaveTimeoutRef.current);
@@ -169,6 +241,38 @@ export function useAppState() {
 
     return () => clearTimeout(draftSaveTimeoutRef.current);
   }, [coreOpen, expandedExercise, prehabOpen, session, workoutId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const flushLocalState = () => {
+      dbSave(appRef.current);
+      const draftPayload = getDraftPayload();
+      if (draftPayload) {
+        draftSave(draftPayload);
+      } else {
+        draftClear();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushLocalState();
+      }
+    };
+
+    window.addEventListener("pagehide", flushLocalState);
+    window.addEventListener("beforeunload", flushLocalState);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", flushLocalState);
+      window.removeEventListener("beforeunload", flushLocalState);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [getDraftPayload]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, 0);
@@ -206,14 +310,11 @@ export function useAppState() {
       return;
     }
 
-    try {
-      new Notification("Gym reminder", {
-        body: buildReminderBody(daysSinceLastSession),
-      });
-      setDevicePrefs((current) => ({ ...current, lastReminderKey: reminderKey }));
-    } catch {
-      // Ignore browser notification failures.
-    }
+    showLocalNotification("Gym reminder", buildReminderBody(daysSinceLastSession, streakSummary)).then((sent) => {
+      if (sent) {
+        setDevicePrefs((current) => ({ ...current, lastReminderKey: reminderKey }));
+      }
+    });
   }, [
     devicePrefs.lastReminderKey,
     devicePrefs.reminderNotifications,
@@ -221,7 +322,9 @@ export function useAppState() {
     notificationPermission,
     notificationSupported,
     setDevicePrefs,
+    showLocalNotification,
     streakSummary.daysSinceLastSession,
+    streakSummary,
   ]);
 
   const syncCloudNow = useCallback(async (userOverride) => {
@@ -481,17 +584,23 @@ export function useAppState() {
     getExercisesForWorkout(workout).forEach((exercise, index) => {
       const exerciseKey = `${index}-${exercise.name}`;
       (finishedSession.sets[exerciseKey] || []).forEach((setData) => {
-        const kg = getRecordWeight(setData, exercise);
-        const currentBest = Number(personalBests[exercise.name]?.kg || 0);
-        if (kg > 0 && kg > currentBest) {
-          const summary = getSetSummary(setData, exercise);
+        const candidate = getExerciseRecordCandidate(setData, exercise);
+        const currentBest = Number(personalBests[exercise.name]?.value ?? personalBests[exercise.name]?.kg ?? 0);
+        if (candidate && candidate.value > currentBest) {
           personalBests[exercise.name] = {
-            kg,
-            reps: setData.reps || null,
-            summary,
+            value: candidate.value,
+            unit: candidate.unit,
+            kg: candidate.unit === "kg" ? candidate.value : 0,
+            reps: candidate.reps || null,
+            summary: candidate.summary,
             date: finishedSession.date,
           };
-          earnedRecords.set(exercise.name, { name: exercise.name, kg, summary });
+          earnedRecords.set(exercise.name, {
+            name: exercise.name,
+            value: candidate.value,
+            unit: candidate.unit,
+            summary: candidate.summary,
+          });
         }
       });
     });
@@ -742,15 +851,9 @@ export function useAppState() {
       return false;
     }
 
-    try {
-      new Notification("Gym reminder", {
-        body: "Browser reminders are active on this device.",
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }, [notificationPermission, notificationSupported]);
+    showLocalNotification("Gym reminder", "Browser reminders are active on this device.");
+    return true;
+  }, [notificationPermission, notificationSupported, showLocalNotification]);
 
   const dismissCelebration = useCallback(() => {
     setCelebration(null);

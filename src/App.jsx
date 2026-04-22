@@ -1,4 +1,5 @@
 import { NI } from "./components/WorkoutComponents.jsx";
+import { CelebrationOverlay } from "./components/ui.jsx";
 import { HistoryScreen } from "./screens/HistoryScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
@@ -11,14 +12,18 @@ export function App() {
   const {
     app,
     bodyStatsForm,
+    celebration,
     cloud,
     coreOpen,
+    devicePrefs,
     expandedExercise,
     fileInputRef,
     getPhaseProgress,
     historyDetailIndex,
     navItems,
     navigate,
+    notificationPermission,
+    notificationSupported,
     openMoreSection,
     prehabOpen,
     recoveryForm,
@@ -26,6 +31,7 @@ export function App() {
     scrollRef,
     sectionView,
     session,
+    sessionNotice,
     sessionsThisWeek,
     setApp,
     setBodyStatsForm,
@@ -38,6 +44,7 @@ export function App() {
     setReviewForm,
     setSession,
     submitCloudAuth,
+    streakSummary,
     signOutCloud,
     syncCloudNow,
     view,
@@ -55,6 +62,8 @@ export function App() {
         onOpenRecovery={actions.openRecoveryFromHome}
         onOpenReview={actions.openReviewFromHome}
         onStartWorkout={actions.startWorkout}
+        onUseWeekFreeze={actions.useCurrentWeekFreeze}
+        streakSummary={streakSummary}
       />
     );
   }
@@ -69,6 +78,7 @@ export function App() {
         coreOpen={coreOpen}
         setCoreOpen={setCoreOpen}
         session={session}
+        sessionNotice={sessionNotice}
         setSession={setSession}
         workoutId={workoutId}
         onUpdateSet={actions.updateSet}
@@ -113,11 +123,18 @@ export function App() {
         recoveryForm={recoveryForm}
         reviewForm={reviewForm}
         sectionView={sectionView}
+        devicePrefs={devicePrefs}
+        notificationPermission={notificationPermission}
+        notificationSupported={notificationSupported}
         setApp={setApp}
         setBodyStatsForm={setBodyStatsForm}
         setCloud={setCloud}
         setRecoveryForm={setRecoveryForm}
         setReviewForm={setReviewForm}
+        streakSummary={streakSummary}
+        onRequestReminderPermission={actions.requestReminderPermission}
+        onSendTestReminder={actions.sendTestReminder}
+        onUseWeekFreeze={actions.useCurrentWeekFreeze}
       />
     );
   }
@@ -189,6 +206,7 @@ export function App() {
           ))}
         </div>
       )}
+      <CelebrationOverlay celebration={celebration} onDismiss={actions.dismissCelebration} />
     </div>
   );
 }

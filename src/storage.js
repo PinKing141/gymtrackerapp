@@ -1,7 +1,7 @@
 import { createWorkoutSnapshot, getExercisesForWorkout, getResolvedSet, getWorkoutById, migrateSessionSetData } from "./workouts.js";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
 const DEFAULT_STREAK_STATE = {
   weeklyTarget: 3,
   freezeCredits: 1,
@@ -130,9 +130,15 @@ function normalizePersonalBests(personalBests) {
     if (!isObj(value)) {
       return [name, value];
     }
+    const normalizedValue = Number(value.value ?? value.kg ?? 0) || 0;
+    const normalizedUnit = typeof value.unit === "string" ? value.unit : "kg";
+    const fallbackSummary = normalizedValue > 0 ? `${normalizedValue}${normalizedUnit}${value.reps ? ` x ${value.reps}` : ""}` : "";
     return [name, {
       ...value,
-      summary: typeof value.summary === "string" ? value.summary : value.kg ? `${value.kg}kg${value.reps ? ` x ${value.reps}` : ""}` : "",
+      value: normalizedValue,
+      unit: normalizedUnit,
+      kg: normalizedUnit === "kg" ? normalizedValue : Number(value.kg) || 0,
+      summary: typeof value.summary === "string" && value.summary ? value.summary : fallbackSummary,
     }];
   }));
 }
@@ -166,6 +172,10 @@ export const withDefaults = (d) => {
   if (dataVersion < 4) {
     sessions = migrateTrackedSetShapes(sessions);
     dataVersion = 4;
+  }
+
+  if (dataVersion < 5) {
+    dataVersion = 5;
   }
 
   return {

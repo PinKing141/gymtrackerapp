@@ -159,6 +159,55 @@ export function getRecordWeight(setData, exercise) {
   return Number(resolved.kg) || 0;
 }
 
+function getMetricComparisonValue(resolved, exercise) {
+  const { metricMode, perSideMetric } = getExerciseTrackingMode(exercise);
+  const metricField = metricMode === "distance" ? "distance" : metricMode;
+
+  if (!perSideMetric) {
+    return Number(resolved[metricField]) || 0;
+  }
+
+  if (metricMode === "duration") {
+    const left = Number(resolved.leftDuration) || 0;
+    const right = Number(resolved.rightDuration) || 0;
+    return Math.min(left || right, right || left);
+  }
+
+  const left = Number(resolved.leftReps) || 0;
+  const right = Number(resolved.rightReps) || 0;
+  return Math.min(left || right, right || left);
+}
+
+export function getExerciseRecordCandidate(setData, exercise) {
+  const resolved = getResolvedSet(setData, exercise);
+  if (!isSetComplete(resolved, exercise)) {
+    return null;
+  }
+
+  const { metricMode } = getExerciseTrackingMode(exercise);
+  const weight = getRecordWeight(resolved, exercise);
+  if (weight > 0) {
+    return {
+      value: weight,
+      unit: "kg",
+      summary: getSetSummary(resolved, exercise),
+      reps: resolved.reps || null,
+    };
+  }
+
+  const metricValue = getMetricComparisonValue(resolved, exercise);
+  if (metricValue <= 0) {
+    return null;
+  }
+
+  return {
+    value: metricValue,
+    unit: metricMode === "duration" ? "sec" : metricMode === "distance" ? "m" : "reps",
+    summary: getSetSummary(resolved, exercise),
+    reps: resolved.reps || null,
+  };
+}
+
 export function getSetSummary(setData, exercise) {
   const resolved = getResolvedSet(setData, exercise);
   const { loadMode, metricMode, perSideMetric } = getExerciseTrackingMode(exercise);
@@ -189,7 +238,9 @@ export function getSetSummary(setData, exercise) {
   const metricField = metricMode === "distance" ? "distance" : metricMode;
   const metricValue = resolved[metricField] || "–";
   if (loadMode === "single") {
-    return `${resolved.kg || "–"}kg × ${metricValue}${metricUnit}`;
+    return metricMode === "distance"
+      ? `${resolved.kg || "–"}kg · ${metricValue}${metricUnit}`
+      : `${resolved.kg || "–"}kg × ${metricValue}${metricUnit}`;
   }
   return `${metricValue}${metricUnit}`;
 }

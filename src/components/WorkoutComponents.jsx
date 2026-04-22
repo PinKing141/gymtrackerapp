@@ -1,30 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, IS } from "../storage.js";
 import { getExerciseInputConfig, getResolvedSet, getSetSummary, isSetComplete, isSetStarted } from "../workouts.js";
-
-const iconBase = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-function Glyph({ d, size = 16, color = "currentColor", fill = "none", strokeWidth = 1.8 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill={fill}
-      stroke={fill === "none" ? color : "none"}
-      strokeWidth={fill === "none" ? strokeWidth : 0}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={iconBase}
-    >
-      <path d={d} />
-    </svg>
-  );
-}
+import { Icon } from "./icons.jsx";
 
 function NumberInput({ value, onChange, placeholder, inputMode = "numeric" }) {
   return (
@@ -68,6 +45,26 @@ function getColumnConfig(exercise) {
   }
 
   return columns;
+}
+
+function getTrackingTags(exercise) {
+  const config = getExerciseInputConfig(exercise);
+  const tags = [];
+
+  if (config.metricMode === "duration") {
+    tags.push("Timed");
+  }
+  if (config.metricMode === "distance") {
+    tags.push("Distance");
+  }
+  if (config.perSideMetric) {
+    tags.push("Per Side");
+  }
+  if (config.loadMode === "paired") {
+    tags.push("L/R Load");
+  }
+
+  return tags;
 }
 
 function copyPreviousSet(exercise, exerciseKey, previousSets, onSet) {
@@ -148,7 +145,7 @@ export function RestTimer({ seconds, color }) {
         />
       )}
       <span style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 4 }}>
-        <Glyph d="M12 8v4l3 2M9 2h6M12 5a8 8 0 110 16 8 8 0 010-16z" size={13} color={running ? color : "#777"} />
+        <Icon name="calendar" paths={["M12 8v4l3 2", "M9 2h6", "M12 5a8 8 0 110 16 8 8 0 010-16z"]} size={13} color={running ? color : "#777"} />
         {running ? `${minutes}:${secondsText}` : seconds >= 60 ? `${seconds / 60}m` : `${seconds}s`}
       </span>
     </button>
@@ -302,6 +299,7 @@ export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, on
   const startedSets = sets.filter((setData) => isSetStarted(setData, exercise)).length;
   const done = completedSets === exercise.sets;
   const columns = getColumnConfig(exercise);
+  const tags = getTrackingTags(exercise);
   const gridTemplateColumns = `28px ${columns.map(() => "minmax(0,1fr)").join(" ")} auto`;
   const previousSummaries = (previousSets || []).map((setData) => getSetSummary(setData, exercise)).filter(Boolean);
 
@@ -310,10 +308,19 @@ export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, on
       <button onClick={() => onToggle(exerciseKey)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#E8E6E1", padding: "13px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {done && <Glyph d="M5 12l4 4L19 7" size={14} color="#45B649" />}
+            {done && <Icon name="check" size={14} color="#45B649" />}
             <span style={{ fontSize: 13, fontWeight: 600, color: done ? "#45B649" : "#fff" }}>{exercise.name}</span>
           </div>
           <p style={{ fontSize: 10, color: "#555", margin: "2px 0 0" }}>{exercise.type} · {exercise.sets}x{exercise.reps} · {exercise.restLabel}</p>
+          {tags.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+              {tags.map((tag) => (
+                <span key={tag} style={{ fontSize: 9, color: "#8BA6C9", background: "rgba(139,166,201,0.1)", border: "1px solid rgba(139,166,201,0.16)", borderRadius: 999, padding: "2px 6px" }}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
           {startedSets > 0 && (
             <p style={{ fontSize: 10, color: done ? "#5dcf67" : "#777", margin: "5px 0 0" }}>
               {sets.map((setData) => getSetSummary(setData, exercise)).filter(Boolean).slice(0, 2).join("  •  ")}
@@ -340,7 +347,7 @@ export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, on
               onClick={() => copyPreviousSet(exercise, exerciseKey, previousSets, onSet)}
               style={{ marginTop: 8, width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "8px 10px", color: "#777", fontSize: 11, cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}
             >
-              <Glyph d="M9 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2zM9 7h6" size={14} color="#888" />
+              <Icon paths={["M9 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2z", "M9 7h6"]} size={14} color="#888" />
               Copy last
               <span style={{ color: "#555" }}>{previousSummaries.slice(0, 2).join(" · ")}</span>
             </button>
