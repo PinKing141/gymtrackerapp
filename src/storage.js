@@ -23,6 +23,7 @@ const DEFAULT_DEVICE_PREFS = {
   reminderNotifications: false,
   reminderThresholdDays: 2,
   lastReminderKey: null,
+  cloudSyncEnabled: true,
 };
 
 const toLocalDateString = (value) => {
