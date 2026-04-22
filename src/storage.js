@@ -1,7 +1,18 @@
-import { createWorkoutSnapshot, getWorkoutById } from "./workouts.js";
+import { createWorkoutSnapshot, getExercisesForWorkout, getResolvedSet, getWorkoutById, migrateSessionSetData } from "./workouts.js";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
+const DEFAULT_STREAK_STATE = {
+  weeklyTarget: 3,
+  freezeCredits: 1,
+  frozenWeeks: [],
+  rewardedWeeks: [],
+};
+const DEFAULT_DEVICE_PREFS = {
+  reminderNotifications: false,
+  reminderThresholdDays: 2,
+  lastReminderKey: null,
+};
 
 const toLocalDateString = (value) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -30,9 +41,20 @@ export const C = { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(2
 export const L = { fontSize:11,color:"#555",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:600,margin:"20px 0 10px" };
 export const BB = { background:"none",border:"none",color:"#666",fontSize:13,cursor:"pointer",padding:0,marginBottom:12 };
 export const IS = { background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,padding:"9px 10px",color:"#fff",fontSize:14,fontWeight:600,width:"100%",boxSizing:"border-box",outline:"none",WebkitAppearance:"none" };
-export const DD = () => ({sessions:[],personalBests:{},recovery:[],bodyStats:[],weeklyReviews:[],phaseStart:null,meta:{lastSavedAt:null,dataVersion:DATA_VERSION,lastSyncedAt:null}});
+export const DD = () => ({
+  sessions: [],
+  personalBests: {},
+  recovery: [],
+  bodyStats: [],
+  weeklyReviews: [],
+  phaseStart: null,
+  streakState: { ...DEFAULT_STREAK_STATE },
+  meta: { lastSavedAt: null, dataVersion: DATA_VERSION, lastSyncedAt: null },
+});
 export const DB = "orion-gym-v4";
 export const DB_BACKUP = "orion-gym-v4-backup";
+export const DRAFT_DB = "orion-gym-v4-draft";
+export const DEVICE_PREFS_DB = "orion-gym-v4-device";
 
 export const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
 export const isArr = (v) => Array.isArray(v);
@@ -73,6 +95,57 @@ const migrateWorkoutSnapshots = (sessions) => sessions.map((session) => {
   };
 });
 
+function migrateSessionSets(session) {
+  if (!isObj(session)) {
+    return session;
+  }
+
+  const workout = session.workoutSnapshot || getWorkoutById(session.workoutId);
+  if (!workout) {
+    return session;
+  }
+
+  const migratedSets = { ...(session.sets || {}) };
+  getExercisesForWorkout(workout).forEach((exercise, index) => {
+    const exerciseKey = `${index}-${exercise.name}`;
+    const exerciseSets = Array.isArray(migratedSets[exerciseKey]) ? migratedSets[exerciseKey] : [];
+    migratedSets[exerciseKey] = exerciseSets.map((setData) => migrateSessionSetData(setData, exercise));
+  });
+
+  return {
+    ...session,
+    workoutSnapshot: session.workoutSnapshot || createWorkoutSnapshot(workout),
+    sets: migratedSets,
+  };
+}
+
+const migrateTrackedSetShapes = (sessions) => sessions.map(migrateSessionSets);
+
+function normalizePersonalBests(personalBests) {
+  if (!isObj(personalBests)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(personalBests).map(([name, value]) => {
+    if (!isObj(value)) {
+      return [name, value];
+    }
+    return [name, {
+      ...value,
+      summary: typeof value.summary === "string" ? value.summary : value.kg ? `${value.kg}kg${value.reps ? ` x ${value.reps}` : ""}` : "",
+    }];
+  }));
+}
+
+function normalizeStreakState(value) {
+  return {
+    ...DEFAULT_STREAK_STATE,
+    ...(isObj(value) ? value : {}),
+    frozenWeeks: isArr(value?.frozenWeeks) ? value.frozenWeeks : [],
+    rewardedWeeks: isArr(value?.rewardedWeeks) ? value.rewardedWeeks : [],
+  };
+}
+
 export const withDefaults = (d) => {
   const b = DD();
   const meta = { ...b.meta, ...(isObj(d?.meta) ? d.meta : {}) };
@@ -90,14 +163,20 @@ export const withDefaults = (d) => {
     dataVersion = 3;
   }
 
+  if (dataVersion < 4) {
+    sessions = migrateTrackedSetShapes(sessions);
+    dataVersion = 4;
+  }
+
   return {
     ...b,
     ...d,
     sessions,
-    personalBests: isObj(d?.personalBests) ? d.personalBests : b.personalBests,
+    personalBests: normalizePersonalBests(d?.personalBests),
     recovery: isArr(d?.recovery) ? d.recovery : b.recovery,
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
+    streakState: normalizeStreakState(d?.streakState),
     meta: { ...meta, dataVersion: DATA_VERSION },
   };
 };
@@ -145,5 +224,91 @@ export function dbRestoreBackup() {
     return withDefaults(backup);
   } catch (e) {
     return null;
+  }
+}
+
+function migrateDraftPayload(payload) {
+  if (!isObj(payload) || !isObj(payload.session)) {
+    return null;
+  }
+
+  const session = migrateSessionSets(payload.session);
+  if (!session || !session.workoutId) {
+    return null;
+  }
+
+  return {
+    workoutId: payload.workoutId || session.workoutId,
+    session,
+    expandedExercise: payload.expandedExercise || null,
+    prehabOpen: payload.prehabOpen !== false,
+    coreOpen: Boolean(payload.coreOpen),
+    savedAt: payload.savedAt || null,
+  };
+}
+
+export function draftLoad() {
+  try {
+    return migrateDraftPayload(safeParse(localStorage.getItem(DRAFT_DB) || ""));
+  } catch (e) {
+    return null;
+  }
+}
+
+export function draftSave(payload) {
+  try {
+    if (!payload) {
+      localStorage.removeItem(DRAFT_DB);
+      return null;
+    }
+    const migrated = migrateDraftPayload(payload);
+    if (!migrated) {
+      return null;
+    }
+    localStorage.setItem(DRAFT_DB, JSON.stringify({ ...migrated, savedAt: Date.now() }));
+    return migrated;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function draftClear() {
+  try {
+    localStorage.removeItem(DRAFT_DB);
+  } catch (e) {
+    // Ignore draft cleanup failures.
+  }
+}
+
+export function devicePrefsLoad() {
+  try {
+    const parsed = safeParse(localStorage.getItem(DEVICE_PREFS_DB) || "");
+    return {
+      ...DEFAULT_DEVICE_PREFS,
+      ...(isObj(parsed) ? parsed : {}),
+    };
+  } catch (e) {
+    return { ...DEFAULT_DEVICE_PREFS };
+  }
+}
+
+export function devicePrefsSave(prefs) {
+  try {
+    const nextPrefs = {
+      ...DEFAULT_DEVICE_PREFS,
+      ...(isObj(prefs) ? prefs : {}),
+    };
+    localStorage.setItem(DEVICE_PREFS_DB, JSON.stringify(nextPrefs));
+    return nextPrefs;
+  } catch (e) {
+    return prefs;
+  }
+}
+
+export function devicePrefsReset() {
+  try {
+    localStorage.removeItem(DEVICE_PREFS_DB);
+  } catch (e) {
+    // Ignore prefs cleanup failures.
   }
 }

@@ -1,8 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchRemoteApp, getCloudClient, isCloudConfigured, saveRemoteApp } from "../cloud.js";
 import { NAV, WQ } from "../data.js";
-import { DB, DB_BACKUP, DD, dbLoad, dbRestoreBackup, dbSave, hasAnyUserData, isValidData, parseStoredDate, stampAppData, today, withDefaults } from "../storage.js";
-import { createWorkoutSnapshot, getExercisesForWorkout, getWorkoutById } from "../workouts.js";
+import {
+  DB,
+  DB_BACKUP,
+  DD,
+  devicePrefsLoad,
+  devicePrefsReset,
+  devicePrefsSave,
+  draftClear,
+  draftLoad,
+  draftSave,
+  dbLoad,
+  dbRestoreBackup,
+  dbSave,
+  hasAnyUserData,
+  isValidData,
+  parseStoredDate,
+  stampAppData,
+  today,
+  withDefaults,
+} from "../storage.js";
+import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
+import {
+  createEmptySet,
+  createWorkoutSnapshot,
+  getExercisesForWorkout,
+  getRecordWeight,
+  getSetSummary,
+  getWorkoutById,
+} from "../workouts.js";
 
 const CLOUD_SYNC_DELAY_MS = 1200;
 
@@ -14,7 +41,7 @@ function createWorkoutSession(workoutId) {
 
   const sets = {};
   getExercisesForWorkout(workout).forEach((exercise, index) => {
-    sets[`${index}-${exercise.name}`] = Array.from({ length: exercise.sets }, () => ({ kg: "", reps: "" }));
+    sets[`${index}-${exercise.name}`] = Array.from({ length: exercise.sets }, () => createEmptySet(exercise));
   });
 
   return {
@@ -39,19 +66,32 @@ function getCloudMessage(text, tone = "neutral") {
   return text ? { text, tone } : null;
 }
 
+function buildReminderBody(daysSinceLastSession) {
+  return `It has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last session. Keep this week moving.`;
+}
+
 export function useAppState() {
+  const initialDraftRef = useRef(undefined);
+  if (initialDraftRef.current === undefined) {
+    initialDraftRef.current = draftLoad();
+  }
+  const initialDraft = initialDraftRef.current;
+
   const [app, setAppState] = useState(() => withDefaults(dbLoad()));
-  const [view, setView] = useState("home");
-  const [workoutId, setWorkoutId] = useState(null);
-  const [session, setSession] = useState(null);
+  const [view, setView] = useState(() => initialDraft ? "log" : "home");
+  const [workoutId, setWorkoutId] = useState(() => initialDraft?.workoutId || null);
+  const [session, setSession] = useState(() => initialDraft?.session || null);
   const [historyDetailIndex, setHistoryDetailIndex] = useState(null);
   const [sectionView, setSectionView] = useState(null);
-  const [expandedExercise, setExpandedExercise] = useState(null);
-  const [prehabOpen, setPrehabOpen] = useState(true);
-  const [coreOpen, setCoreOpen] = useState(false);
+  const [expandedExercise, setExpandedExercise] = useState(() => initialDraft?.expandedExercise || null);
+  const [prehabOpen, setPrehabOpen] = useState(() => initialDraft?.prehabOpen !== false);
+  const [coreOpen, setCoreOpen] = useState(() => Boolean(initialDraft?.coreOpen));
   const [recoveryForm, setRecoveryForm] = useState(null);
   const [bodyStatsForm, setBodyStatsForm] = useState(null);
   const [reviewForm, setReviewForm] = useState(null);
+  const [sessionNotice, setSessionNotice] = useState(() => initialDraft ? "Draft restored from your last session." : null);
+  const [celebration, setCelebration] = useState(null);
+  const [devicePrefs, setDevicePrefsState] = useState(() => devicePrefsLoad());
   const [cloud, setCloud] = useState({
     available: isCloudConfigured,
     loading: isCloudConfigured,
@@ -68,13 +108,24 @@ export function useAppState() {
   const fileInputRef = useRef(null);
   const localSaveTimeoutRef = useRef(null);
   const cloudSaveTimeoutRef = useRef(null);
+  const draftSaveTimeoutRef = useRef(null);
   const skipNextCloudPushRef = useRef(false);
   const appRef = useRef(app);
   const cloudClient = getCloudClient();
+  const notificationSupported = typeof window !== "undefined" && "Notification" in window;
+  const notificationPermission = notificationSupported ? Notification.permission : "unsupported";
+  const streakSummary = getStreakSummary(app);
 
   useEffect(() => {
     appRef.current = app;
   }, [app]);
+
+  const setDevicePrefs = useCallback((updater) => {
+    setDevicePrefsState((current) => {
+      const nextPrefs = typeof updater === "function" ? updater(current) : updater;
+      return devicePrefsSave(nextPrefs);
+    });
+  }, []);
 
   const applyApp = useCallback((updater, options = {}) => {
     const { stamp = true } = options;
@@ -99,8 +150,79 @@ export function useAppState() {
   }, [app]);
 
   useEffect(() => {
+    clearTimeout(draftSaveTimeoutRef.current);
+
+    if (!session || !workoutId) {
+      draftClear();
+      return undefined;
+    }
+
+    draftSaveTimeoutRef.current = setTimeout(() => {
+      draftSave({
+        workoutId,
+        session,
+        expandedExercise,
+        prehabOpen,
+        coreOpen,
+      });
+    }, 250);
+
+    return () => clearTimeout(draftSaveTimeoutRef.current);
+  }, [coreOpen, expandedExercise, prehabOpen, session, workoutId]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo(0, 0);
   }, [view, sectionView]);
+
+  useEffect(() => {
+    if (!celebration) {
+      return undefined;
+    }
+
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([35, 25, 60]);
+    }
+
+    const timeoutId = setTimeout(() => setCelebration(null), 3200);
+    return () => clearTimeout(timeoutId);
+  }, [celebration]);
+
+  useEffect(() => {
+    if (!notificationSupported || notificationPermission !== "granted") {
+      return;
+    }
+
+    if (!devicePrefs.reminderNotifications) {
+      return;
+    }
+
+    const daysSinceLastSession = streakSummary.daysSinceLastSession;
+    if (daysSinceLastSession === null || daysSinceLastSession < devicePrefs.reminderThresholdDays) {
+      return;
+    }
+
+    const reminderKey = `${today()}-${daysSinceLastSession}`;
+    if (devicePrefs.lastReminderKey === reminderKey) {
+      return;
+    }
+
+    try {
+      new Notification("Gym reminder", {
+        body: buildReminderBody(daysSinceLastSession),
+      });
+      setDevicePrefs((current) => ({ ...current, lastReminderKey: reminderKey }));
+    } catch {
+      // Ignore browser notification failures.
+    }
+  }, [
+    devicePrefs.lastReminderKey,
+    devicePrefs.reminderNotifications,
+    devicePrefs.reminderThresholdDays,
+    notificationPermission,
+    notificationSupported,
+    setDevicePrefs,
+    streakSummary.daysSinceLastSession,
+  ]);
 
   const syncCloudNow = useCallback(async (userOverride) => {
     const user = userOverride || cloud.user;
@@ -308,8 +430,11 @@ export function useAppState() {
 
   const updateSet = useCallback((exerciseKey, setIndex, field, value) => {
     setSession((current) => {
+      if (!current) {
+        return current;
+      }
       const nextSets = { ...current.sets };
-      const exerciseSets = [...nextSets[exerciseKey]];
+      const exerciseSets = [...(nextSets[exerciseKey] || [])];
       exerciseSets[setIndex] = { ...exerciseSets[setIndex], [field]: value };
       nextSets[exerciseKey] = exerciseSets;
       return { ...current, sets: nextSets };
@@ -328,6 +453,7 @@ export function useAppState() {
     setExpandedExercise(null);
     setPrehabOpen(true);
     setCoreOpen(false);
+    setSessionNotice("Draft autosaves on this device while you log.");
   }, []);
 
   const finishWorkout = useCallback(() => {
@@ -347,38 +473,56 @@ export function useAppState() {
     };
     delete finishedSession.timer;
 
-    applyApp((current) => {
-      const workout = finishedSession.workoutSnapshot || getWorkoutById(finishedSession.workoutId);
-      const personalBests = { ...current.personalBests };
+    const workout = finishedSession.workoutSnapshot || getWorkoutById(finishedSession.workoutId);
+    const currentApp = appRef.current;
+    const personalBests = { ...currentApp.personalBests };
+    const earnedRecords = new Map();
 
-      getExercisesForWorkout(workout).forEach((exercise, index) => {
-        if (!exercise.tracked) {
-          return;
+    getExercisesForWorkout(workout).forEach((exercise, index) => {
+      const exerciseKey = `${index}-${exercise.name}`;
+      (finishedSession.sets[exerciseKey] || []).forEach((setData) => {
+        const kg = getRecordWeight(setData, exercise);
+        const currentBest = Number(personalBests[exercise.name]?.kg || 0);
+        if (kg > 0 && kg > currentBest) {
+          const summary = getSetSummary(setData, exercise);
+          personalBests[exercise.name] = {
+            kg,
+            reps: setData.reps || null,
+            summary,
+            date: finishedSession.date,
+          };
+          earnedRecords.set(exercise.name, { name: exercise.name, kg, summary });
         }
-        (finishedSession.sets[`${index}-${exercise.name}`] || []).forEach((setData) => {
-          const kg = parseFloat(setData.kg);
-          if (kg > 0 && kg > (personalBests[exercise.name]?.kg || 0)) {
-            personalBests[exercise.name] = { kg, reps: setData.reps, date: finishedSession.date };
-          }
-        });
       });
-
-      return {
-        ...current,
-        sessions: [...current.sessions, finishedSession],
-        personalBests,
-        phaseStart: current.phaseStart || today(),
-      };
     });
 
-    setView("home");
-    setWorkoutId(null);
-    setSession(null);
-  }, [applyApp, session]);
+    const weekKey = getWeekKey(finishedSession.date);
+    const beforeStreak = getStreakSummary(currentApp);
+    let nextApp = {
+      ...currentApp,
+      sessions: [...currentApp.sessions, finishedSession],
+      personalBests,
+      phaseStart: currentApp.phaseStart || today(),
+    };
+    nextApp = rewardCompletedWeek(nextApp, weekKey);
+    const afterStreak = getStreakSummary(nextApp);
 
-  const cancelWorkout = useCallback(() => {
-    if (!window.confirm("Discard this session?")) {
-      return;
+    applyApp(nextApp);
+    draftClear();
+    setDevicePrefs((current) => ({ ...current, lastReminderKey: null }));
+    setSessionNotice(null);
+
+    const justCompletedWeek = !beforeStreak.currentWeekComplete && afterStreak.currentWeekComplete;
+    if (earnedRecords.size || justCompletedWeek) {
+      setCelebration({
+        color: workout?.color || "#45B649",
+        title: earnedRecords.size ? "New personal record" : "Week complete",
+        subtitle: justCompletedWeek
+          ? `Weekly streak: ${afterStreak.currentStreak} week${afterStreak.currentStreak === 1 ? "" : "s"}`
+          : workout?.shortTitle || "Session complete",
+        records: [...earnedRecords.values()],
+        weekComplete: justCompletedWeek,
+      });
     }
 
     setView("home");
@@ -387,6 +531,21 @@ export function useAppState() {
     setExpandedExercise(null);
     setPrehabOpen(true);
     setCoreOpen(false);
+  }, [applyApp, session, setDevicePrefs]);
+
+  const cancelWorkout = useCallback(() => {
+    if (!window.confirm("Discard this session?")) {
+      return;
+    }
+
+    draftClear();
+    setView("home");
+    setWorkoutId(null);
+    setSession(null);
+    setExpandedExercise(null);
+    setPrehabOpen(true);
+    setCoreOpen(false);
+    setSessionNotice(null);
   }, []);
 
   const getPhaseProgress = useCallback(() => {
@@ -460,7 +619,15 @@ export function useAppState() {
       // Ignore local storage cleanup issues.
     }
 
+    draftClear();
+    devicePrefsReset();
+    setDevicePrefsState(devicePrefsLoad());
+    setCelebration(null);
+    setSessionNotice(null);
     applyApp(DD());
+    setView("home");
+    setWorkoutId(null);
+    setSession(null);
   }, [applyApp]);
 
   const submitCloudAuth = useCallback(async () => {
@@ -537,21 +704,72 @@ export function useAppState() {
     }
   }, [cloudClient]);
 
-  const sessionsThisWeek = app.sessions.filter((entry) => {
-    const sessionDate = parseStoredDate(entry.date);
-    return sessionDate && (Date.now() - sessionDate.getTime()) / 86400000 < 7;
-  }).length;
+  const useCurrentWeekFreeze = useCallback(() => {
+    const currentApp = appRef.current;
+    const nextApp = applyWeeklyFreeze(currentApp, getWeekKey(today()));
+    if (nextApp === currentApp) {
+      return false;
+    }
+
+    const afterStreak = getStreakSummary(nextApp);
+    applyApp(nextApp);
+    setCelebration({
+      color: "#2D7DD2",
+      title: "Streak protected",
+      subtitle: `Freeze bank: ${afterStreak.freezeCredits}`,
+      records: [],
+      weekComplete: false,
+    });
+    return true;
+  }, [applyApp]);
+
+  const requestReminderPermission = useCallback(async () => {
+    if (!notificationSupported) {
+      return "unsupported";
+    }
+
+    const permission = await Notification.requestPermission();
+    setDevicePrefs((current) => ({
+      ...current,
+      reminderNotifications: permission === "granted" ? true : current.reminderNotifications && permission === "granted",
+      lastReminderKey: permission === "granted" ? current.lastReminderKey : null,
+    }));
+    return permission;
+  }, [notificationSupported, setDevicePrefs]);
+
+  const sendTestReminder = useCallback(() => {
+    if (!notificationSupported || notificationPermission !== "granted") {
+      return false;
+    }
+
+    try {
+      new Notification("Gym reminder", {
+        body: "Browser reminders are active on this device.",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [notificationPermission, notificationSupported]);
+
+  const dismissCelebration = useCallback(() => {
+    setCelebration(null);
+  }, []);
 
   return {
     app,
     bodyStatsForm,
+    celebration,
     cloud,
     coreOpen,
+    devicePrefs,
     expandedExercise,
     fileInputRef,
     getPhaseProgress,
     historyDetailIndex,
     navigate,
+    notificationPermission,
+    notificationSupported,
     openMoreSection,
     prehabOpen,
     recoveryForm,
@@ -559,34 +777,41 @@ export function useAppState() {
     scrollRef,
     sectionView,
     session,
-    sessionsThisWeek,
+    sessionNotice,
+    sessionsThisWeek: streakSummary.currentWeekCount,
     setApp,
     setBodyStatsForm,
     setCloud,
     setCoreOpen,
+    setDevicePrefs,
     setExpandedExercise,
     setHistoryDetailIndex,
     setPrehabOpen,
     setRecoveryForm,
     setReviewForm,
     setSession,
-    submitCloudAuth,
     signOutCloud,
+    streakSummary,
+    submitCloudAuth,
     syncCloudNow,
     view,
     workoutId,
     actions: {
       cancelWorkout,
       closeMoreSection,
+      dismissCelebration,
       exportData,
       finishWorkout,
       importData,
       openRecoveryFromHome,
       openReviewFromHome,
+      requestReminderPermission,
       resetAllData,
       restoreBackup,
+      sendTestReminder,
       startWorkout,
       updateSet,
+      useCurrentWeekFreeze,
     },
     navItems: NAV,
   };

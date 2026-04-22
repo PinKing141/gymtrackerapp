@@ -1,5 +1,85 @@
 import { useEffect, useRef, useState } from "react";
 import { C, IS } from "../storage.js";
+import { getExerciseInputConfig, getResolvedSet, getSetSummary, isSetComplete, isSetStarted } from "../workouts.js";
+
+const iconBase = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+function Glyph({ d, size = 16, color = "currentColor", fill = "none", strokeWidth = 1.8 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={fill}
+      stroke={fill === "none" ? color : "none"}
+      strokeWidth={fill === "none" ? strokeWidth : 0}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={iconBase}
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
+function NumberInput({ value, onChange, placeholder, inputMode = "numeric" }) {
+  return (
+    <input
+      type="number"
+      inputMode={inputMode}
+      placeholder={placeholder}
+      value={value ?? ""}
+      onChange={onChange}
+      style={IS}
+    />
+  );
+}
+
+function getColumnConfig(exercise) {
+  const config = getExerciseInputConfig(exercise);
+  const columns = [];
+
+  if (config.loadMode === "single") {
+    columns.push({ field: "kg", label: "KG", inputMode: "decimal", placeholder: "0" });
+  }
+  if (config.loadMode === "paired") {
+    columns.push({ field: "leftKg", label: "L KG", inputMode: "decimal", placeholder: "0" });
+    columns.push({ field: "rightKg", label: "R KG", inputMode: "decimal", placeholder: "0" });
+  }
+
+  if (config.metricMode === "distance") {
+    columns.push({ field: "distance", label: config.metricLabel, inputMode: "decimal", placeholder: config.metricPlaceholder });
+  } else if (config.perSideMetric) {
+    const suffix = config.metricMode === "duration" ? "SEC" : "REPS";
+    const prefix = config.metricMode === "duration" ? "Duration" : "Reps";
+    columns.push({ field: `left${prefix}`, label: `L ${suffix}`, inputMode: "numeric", placeholder: config.metricPlaceholder });
+    columns.push({ field: `right${prefix}`, label: `R ${suffix}`, inputMode: "numeric", placeholder: config.metricPlaceholder });
+  } else {
+    columns.push({
+      field: config.metricMode === "duration" ? "duration" : "reps",
+      label: config.metricLabel,
+      inputMode: config.metricMode === "reps" ? "numeric" : "decimal",
+      placeholder: config.metricPlaceholder,
+    });
+  }
+
+  return columns;
+}
+
+function copyPreviousSet(exercise, exerciseKey, previousSets, onSet) {
+  previousSets.forEach((setData, setIndex) => {
+    const resolved = getResolvedSet(setData, exercise);
+    Object.entries(resolved).forEach(([field, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        onSet(exerciseKey, setIndex, field, value);
+      }
+    });
+  });
+}
 
 export function RestTimer({ seconds, color }) {
   const [remaining, setRemaining] = useState(seconds);
@@ -44,13 +124,14 @@ export function RestTimer({ seconds, color }) {
         borderRadius: 8,
         border: "none",
         cursor: "pointer",
-        minWidth: 72,
+        minWidth: 78,
         background: running ? `${color}22` : "rgba(255,255,255,0.04)",
         color: running ? color : "#666",
         fontSize: 12,
         fontWeight: 600,
         position: "relative",
         overflow: "hidden",
+        justifyContent: "center",
       }}
     >
       {running && (
@@ -66,8 +147,9 @@ export function RestTimer({ seconds, color }) {
           }}
         />
       )}
-      <span style={{ position: "relative", zIndex: 1 }}>
-        {running ? `${minutes}:${secondsText}` : `⏱ ${seconds >= 60 ? `${seconds / 60}m` : `${seconds}s`}`}
+      <span style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 4 }}>
+        <Glyph d="M12 8v4l3 2M9 2h6M12 5a8 8 0 110 16 8 8 0 010-16z" size={13} color={running ? color : "#777"} />
+        {running ? `${minutes}:${secondsText}` : seconds >= 60 ? `${seconds / 60}m` : `${seconds}s`}
       </span>
     </button>
   );
@@ -195,59 +277,72 @@ export function LiveTimer({ color, timerState, onUpdate }) {
 }
 
 function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet }) {
+  const columns = getColumnConfig(exercise);
+  const resolved = getResolvedSet(setData, exercise);
+
   return (
     <>
       <span style={{ fontSize: 12, color: "#555", textAlign: "center", fontWeight: 600 }}>{setIndex + 1}</span>
-      <input type="number" inputMode="decimal" placeholder="—" value={setData.kg} onChange={(event) => onSet(exerciseKey, setIndex, "kg", event.target.value)} style={IS} />
-      <input type="number" inputMode="numeric" placeholder={exercise.reps.replace(/[^0-9]/g, "") || "—"} value={setData.reps} onChange={(event) => onSet(exerciseKey, setIndex, "reps", event.target.value)} style={IS} />
+      {columns.map((column) => (
+        <NumberInput
+          key={`${exerciseKey}-${setIndex}-${column.field}`}
+          value={resolved[column.field]}
+          inputMode={column.inputMode}
+          placeholder={column.placeholder}
+          onChange={(event) => onSet(exerciseKey, setIndex, column.field, event.target.value)}
+        />
+      ))}
       {exercise.rest > 0 ? <RestTimer seconds={exercise.rest} color={color} /> : <span style={{ fontSize: 10, color: "#444", textAlign: "center" }}>Full</span>}
     </>
   );
 }
 
 export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, onSet, color, previousSets }) {
-  const completedSets = sets.filter((setData) => setData.kg || setData.reps).length;
+  const completedSets = sets.filter((setData) => isSetComplete(setData, exercise)).length;
+  const startedSets = sets.filter((setData) => isSetStarted(setData, exercise)).length;
   const done = completedSets === exercise.sets;
+  const columns = getColumnConfig(exercise);
+  const gridTemplateColumns = `28px ${columns.map(() => "minmax(0,1fr)").join(" ")} auto`;
+  const previousSummaries = (previousSets || []).map((setData) => getSetSummary(setData, exercise)).filter(Boolean);
 
   return (
     <div style={{ ...C, padding: 0, overflow: "hidden", background: done ? "rgba(69,182,73,0.05)" : C.background, borderColor: done ? "rgba(69,182,73,0.18)" : "rgba(255,255,255,0.06)" }}>
-      <button onClick={() => onToggle(exerciseKey)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#E8E6E1", padding: "13px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ flex: 1 }}>
+      <button onClick={() => onToggle(exerciseKey)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: "#E8E6E1", padding: "13px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {done && <span style={{ color: "#45B649", fontSize: 13 }}>✓</span>}
+            {done && <Glyph d="M5 12l4 4L19 7" size={14} color="#45B649" />}
             <span style={{ fontSize: 13, fontWeight: 600, color: done ? "#45B649" : "#fff" }}>{exercise.name}</span>
           </div>
-          <p style={{ fontSize: 10, color: "#555", margin: "2px 0 0" }}>{exercise.type} · {exercise.sets}×{exercise.reps} · {exercise.restLabel}</p>
+          <p style={{ fontSize: 10, color: "#555", margin: "2px 0 0" }}>{exercise.type} · {exercise.sets}x{exercise.reps} · {exercise.restLabel}</p>
+          {startedSets > 0 && (
+            <p style={{ fontSize: 10, color: done ? "#5dcf67" : "#777", margin: "5px 0 0" }}>
+              {sets.map((setData) => getSetSummary(setData, exercise)).filter(Boolean).slice(0, 2).join("  •  ")}
+            </p>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          {completedSets > 0 && !done && <span style={{ fontSize: 9, color: "#888", background: "rgba(255,255,255,0.06)", padding: "2px 6px", borderRadius: 6 }}>{completedSets}/{exercise.sets}</span>}
+          {startedSets > 0 && !done && <span style={{ fontSize: 9, color: "#888", background: "rgba(255,255,255,0.06)", padding: "2px 6px", borderRadius: 6 }}>{completedSets}/{exercise.sets}</span>}
           <span style={{ color: "#555", fontSize: 16, transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
         </div>
       </button>
       {isOpen && (
         <div style={{ padding: "0 14px 12px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 1fr auto", gap: "5px 6px", alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns, gap: "5px 6px", alignItems: "center" }}>
             <span style={{ fontSize: 9, color: "#444", textAlign: "center" }}>SET</span>
-            <span style={{ fontSize: 9, color: "#444" }}>KG</span>
-            <span style={{ fontSize: 9, color: "#444" }}>REPS</span>
+            {columns.map((column) => <span key={`${exerciseKey}-${column.field}-label`} style={{ fontSize: 9, color: "#444" }}>{column.label}</span>)}
             <span style={{ fontSize: 9, color: "#444" }}>REST</span>
             {sets.map((setData, setIndex) => (
               <SetRow key={`${exerciseKey}-s${setIndex}`} exerciseKey={exerciseKey} setIndex={setIndex} setData={setData} exercise={exercise} color={color} onSet={onSet} />
             ))}
           </div>
-          {previousSets?.some((setData) => setData.kg) && (
+          {previousSummaries.length > 0 && (
             <button
-              onClick={() => previousSets.forEach((previousSet, setIndex) => {
-                if (previousSet.kg) {
-                  onSet(exerciseKey, setIndex, "kg", previousSet.kg);
-                }
-                if (previousSet.reps) {
-                  onSet(exerciseKey, setIndex, "reps", previousSet.reps);
-                }
-              })}
-              style={{ marginTop: 8, width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "8px", color: "#777", fontSize: 11, cursor: "pointer", fontWeight: 500 }}
+              onClick={() => copyPreviousSet(exercise, exerciseKey, previousSets, onSet)}
+              style={{ marginTop: 8, width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "8px 10px", color: "#777", fontSize: 11, cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}
             >
-              📋 Copy last ({previousSets.filter((setData) => setData.kg).map((setData) => `${setData.kg}kg`).join(", ")})
+              <Glyph d="M9 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2zM9 7h6" size={14} color="#888" />
+              Copy last
+              <span style={{ color: "#555" }}>{previousSummaries.slice(0, 2).join(" · ")}</span>
             </button>
           )}
         </div>
