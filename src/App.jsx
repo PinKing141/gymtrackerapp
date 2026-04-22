@@ -30,6 +30,7 @@ export function App() {
     reviewForm,
     scrollRef,
     sectionView,
+    serviceWorkerSupported,
     session,
     sessionNotice,
     sessionsThisWeek,
@@ -127,6 +128,7 @@ export function App() {
         devicePrefs={devicePrefs}
         notificationPermission={notificationPermission}
         notificationSupported={notificationSupported}
+        serviceWorkerSupported={serviceWorkerSupported}
         setApp={setApp}
         setBodyStatsForm={setBodyStatsForm}
         setCloud={setCloud}

@@ -8,6 +8,16 @@ const DEFAULT_STREAK_STATE = {
   frozenWeeks: [],
   rewardedWeeks: [],
 };
+const DEFAULT_PROFILE = {
+  name: "",
+  age: "",
+  sex: "male",
+  heightCm: "",
+  weightKg: "",
+  activityLevel: "moderate",
+  goal: "maintain",
+  notes: "",
+};
 const DEFAULT_DEVICE_PREFS = {
   reminderNotifications: false,
   reminderThresholdDays: 2,
@@ -47,6 +57,7 @@ export const DD = () => ({
   recovery: [],
   bodyStats: [],
   weeklyReviews: [],
+  profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   streakState: { ...DEFAULT_STREAK_STATE },
   meta: { lastSavedAt: null, dataVersion: DATA_VERSION, lastSyncedAt: null },
@@ -186,6 +197,7 @@ export const withDefaults = (d) => {
     recovery: isArr(d?.recovery) ? d.recovery : b.recovery,
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
+    profile: { ...DEFAULT_PROFILE, ...(isObj(d?.profile) ? d.profile : {}) },
     streakState: normalizeStreakState(d?.streakState),
     meta: { ...meta, dataVersion: DATA_VERSION },
   };

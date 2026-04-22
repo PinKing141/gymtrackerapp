@@ -28,6 +28,38 @@ function formatSyncTime(value) {
   });
 }
 
+const ACTIVITY_OPTIONS = [
+  { value: "sedentary", label: "Sedentary", factor: 1.2 },
+  { value: "light", label: "Lightly active", factor: 1.375 },
+  { value: "moderate", label: "Moderately active", factor: 1.55 },
+  { value: "high", label: "Very active", factor: 1.725 },
+];
+
+const GOAL_OPTIONS = [
+  { value: "cut", label: "Fat loss", delta: -450 },
+  { value: "maintain", label: "Maintain", delta: 0 },
+  { value: "bulk", label: "Muscle gain", delta: 300 },
+];
+
+function calculateCalories(profile) {
+  const age = Number(profile.age);
+  const heightCm = Number(profile.heightCm);
+  const weightKg = Number(profile.weightKg);
+  if (!age || !heightCm || !weightKg) {
+    return null;
+  }
+
+  const bmr = profile.sex === "female"
+    ? (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161
+    : (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
+  const activityFactor = ACTIVITY_OPTIONS.find((option) => option.value === profile.activityLevel)?.factor || 1.55;
+  const maintenance = Math.round(bmr * activityFactor);
+  const goalDelta = GOAL_OPTIONS.find((option) => option.value === profile.goal)?.delta || 0;
+  const target = Math.max(1200, maintenance + goalDelta);
+
+  return { bmr: Math.round(bmr), maintenance, target };
+}
+
 export function MoreScreen({
   app,
   bodyStatsForm,
@@ -49,6 +81,7 @@ export function MoreScreen({
   devicePrefs,
   notificationPermission,
   notificationSupported,
+  serviceWorkerSupported,
   onRequestReminderPermission,
   onSendTestReminder,
   setApp,
@@ -58,6 +91,9 @@ export function MoreScreen({
   setRecoveryForm,
   setReviewForm,
 }) {
+  const profile = app.profile || {};
+  const calorieStats = calculateCalories(profile);
+
   if (sectionView === "recovery" && recoveryForm) {
     return (
       <Screen>
@@ -226,9 +262,11 @@ export function MoreScreen({
 
       <SurfaceCard style={{ marginTop: 16 }}>
         <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Notifications</p>
-        <p style={{ fontSize: 12, color: "#bbb", margin: "0 0 8px" }}>Get reminders when you have missed the gym for 2 days.</p>
+        <p style={{ fontSize: 12, color: "#bbb", margin: "0 0 8px" }}>We'll send a friendly training reminder when your streak is at risk.</p>
         {!notificationSupported ? (
-          <p style={{ fontSize: 11, color: "#666", margin: 0 }}>This browser does not support notifications.</p>
+          <p style={{ fontSize: 11, color: "#666", margin: 0 }}>
+            Push notifications are not available in this browser, but in-app reminders still update as you log workouts.
+          </p>
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -237,6 +275,9 @@ export function MoreScreen({
                 {notificationPermission === "granted" ? "Enabled" : "Enable"}
               </ActionButton>
             </div>
+            {!serviceWorkerSupported && (
+              <p style={{ margin: "8px 0 0", fontSize: 10, color: "#777" }}>Service workers are unavailable here, so reminders may only appear while the app is open.</p>
+            )}
             <div style={{ marginTop: 10 }}>
               <p style={{ margin: "0 0 6px", fontSize: 10, color: "#666" }}>Reminder trigger (days since last session)</p>
               <input type="range" min="2" max="5" value={devicePrefs.reminderThresholdDays} onChange={(event) => setDevicePrefs((current) => ({ ...current, reminderThresholdDays: Number(event.target.value), lastReminderKey: null }))} style={{ width: "100%", accentColor: "#2D7DD2" }} />
@@ -247,6 +288,43 @@ export function MoreScreen({
             </ActionButton>
           </>
         )}
+      </SurfaceCard>
+
+      <SurfaceCard style={{ marginTop: 16 }}>
+        <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Profile & Calories</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <input type="text" autoComplete="name" value={profile.name || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), name: event.target.value } }))} placeholder="Name" style={IS} />
+          <input type="number" inputMode="numeric" value={profile.age || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), age: event.target.value } }))} placeholder="Age" style={IS} />
+          <input type="number" inputMode="decimal" value={profile.heightCm || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), heightCm: event.target.value } }))} placeholder="Height (cm)" style={IS} />
+          <input type="number" inputMode="decimal" value={profile.weightKg || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), weightKg: event.target.value } }))} placeholder="Weight (kg)" style={IS} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          <select value={profile.sex || "male"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), sex: event.target.value } }))} style={IS}>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+          </select>
+          <select value={profile.activityLevel || "moderate"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), activityLevel: event.target.value } }))} style={IS}>
+            {ACTIVITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <select value={profile.goal || "maintain"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), goal: event.target.value } }))} style={IS}>
+            {GOAL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </div>
+        <TextAreaField value={profile.notes || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), notes: event.target.value } }))} placeholder="Any personal notes (injuries, schedule, food preferences)..." style={{ marginTop: 8 }} />
+        <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(45,125,210,0.2)", background: "rgba(45,125,210,0.08)" }}>
+          <p style={{ margin: 0, fontSize: 11, color: "#8BA6C9", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Calorie Calculator</p>
+          {!calorieStats ? (
+            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#888" }}>Add age, height, and weight to estimate calories.</p>
+          ) : (
+            <>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#fff" }}>Maintenance: <strong>{calorieStats.maintenance}</strong> kcal/day</p>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#fff" }}>Goal target: <strong>{calorieStats.target}</strong> kcal/day</p>
+              <p style={{ margin: "4px 0 0", fontSize: 10, color: "#7F8B99" }}>BMR estimate: {calorieStats.bmr} kcal/day</p>
+            </>
+          )}
+        </div>
       </SurfaceCard>
 
       <SurfaceCard style={{ marginTop: 16 }}>
