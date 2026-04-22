@@ -1,5 +1,6 @@
 import { NI } from "./components/WorkoutComponents.jsx";
 import { CelebrationOverlay } from "./components/ui.jsx";
+import { BikeRoutineScreen } from "./screens/BikeRoutineScreen.jsx";
 import { HistoryScreen } from "./screens/HistoryScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
@@ -64,11 +65,17 @@ export function App() {
         onOpenRecovery={actions.openRecoveryFromHome}
         onOpenReview={actions.openReviewFromHome}
         onStartWorkout={actions.startWorkout}
+        onUseWeekFreeze={actions.useCurrentWeekFreeze}
+        streakSummary={streakSummary}
+      />
+    );
+  }
+  if (view === "bike") {
+    content = (
+      <BikeRoutineScreen
         notificationPermission={notificationPermission}
         notificationSupported={notificationSupported}
         onRequestReminderPermission={actions.requestReminderPermission}
-        onUseWeekFreeze={actions.useCurrentWeekFreeze}
-        streakSummary={streakSummary}
       />
     );
   }
