@@ -34,7 +34,7 @@ To install it like an app on iPhone:
 
 ## Cloud sync setup
 
-The app still works fully offline with local storage. Cloud sync is optional and uses Supabase so it can still run as a static GitHub Pages app.
+The app still works fully offline with local storage. Cloud sync is optional and uses Supabase so it can still run as a static GitHub Pages app. 
 
 ### 1. Create a Supabase project
 
