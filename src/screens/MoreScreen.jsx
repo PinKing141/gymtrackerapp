@@ -428,7 +428,7 @@ export function MoreScreen({
             <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, margin: "0 0 4px" }}>{cloud.user.email}</p>
             <p style={{ fontSize: 11, color: "#666", margin: "0 0 10px" }}>Last sync: {formatSyncTime(cloud.lastSyncedAt)}</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <ActionButton onClick={() => onCloudSync()} tone="tinted" color="#2D7DD2" compact>{cloud.syncing ? "Syncing..." : "Sync Now"}</ActionButton>
+              <ActionButton onClick={() => onCloudSync()} disabled={cloud.syncing} tone="tinted" color="#2D7DD2" compact>{cloud.syncing ? "Syncing..." : "Sync Now"}</ActionButton>
               <ActionButton onClick={onCloudSignOut} tone="secondary" compact>Sign Out</ActionButton>
             </div>
           </>
@@ -445,7 +445,7 @@ export function MoreScreen({
             </ActionButton>
           </>
         )}
-        {cloud.syncing && <p style={{ fontSize: 10, color: "#888", margin: "8px 0 0" }}>Sync in progress. If this lasts over 15 seconds, tap Sync Now again.</p>}
+        {cloud.syncing && <p style={{ fontSize: 10, color: "#888", margin: "8px 0 0" }}>Sync in progress. Please wait while we finish your latest backup.</p>}
         {cloud.message && <p style={{ fontSize: 11, color: cloudMessageColors[cloud.message.tone] || "#888", margin: "10px 0 0" }}>{cloud.message.text}</p>}
       </SurfaceCard>
 

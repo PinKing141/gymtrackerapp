@@ -158,6 +158,7 @@ export function ActionButton({
   };
 
   const palette = palettes[tone] || palettes.primary;
+  const disabled = Boolean(props.disabled);
 
   return (
     <button
@@ -172,7 +173,8 @@ export function ActionButton({
         color: palette.text,
         fontSize: compact ? 12 : 14,
         fontWeight: 700,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.6 : 1,
         ...style,
       }}
     >
