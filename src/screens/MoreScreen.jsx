@@ -41,6 +41,42 @@ const GOAL_OPTIONS = [
   { value: "bulk", label: "Muscle gain", delta: 300 },
 ];
 
+const CM_PER_INCH = 2.54;
+const KG_PER_LB = 0.45359237;
+
+function toInches(heightCm) {
+  const cm = Number(heightCm);
+  if (!cm) return 0;
+  return cm / CM_PER_INCH;
+}
+
+function toFeetInches(heightCm) {
+  const totalInches = Math.max(0, Math.round(toInches(heightCm)));
+  return {
+    feet: Math.floor(totalInches / 12),
+    inches: totalInches % 12,
+  };
+}
+
+function feetInchesToCm(feet, inches) {
+  const ft = Number(feet) || 0;
+  const inch = Number(inches) || 0;
+  const totalInches = Math.max(0, (ft * 12) + inch);
+  return Number((totalInches * CM_PER_INCH).toFixed(1));
+}
+
+function poundsToKg(pounds) {
+  const lbs = Number(pounds);
+  if (!lbs) return "";
+  return Number((lbs * KG_PER_LB).toFixed(2));
+}
+
+function kgToPounds(weightKg) {
+  const kg = Number(weightKg);
+  if (!kg) return "";
+  return Number((kg / KG_PER_LB).toFixed(1));
+}
+
 function calculateCalories(profile) {
   const age = Number(profile.age);
   const heightCm = Number(profile.heightCm);
@@ -93,6 +129,8 @@ export function MoreScreen({
 }) {
   const profile = app.profile || {};
   const calorieStats = calculateCalories(profile);
+  const unitSystem = profile.unitSystem || "imperial";
+  const { feet: profileFeet, inches: profileInches } = toFeetInches(profile.heightCm);
 
   if (sectionView === "recovery" && recoveryForm) {
     return (
@@ -292,11 +330,62 @@ export function MoreScreen({
 
       <SurfaceCard style={{ marginTop: 16 }}>
         <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Profile & Calories</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+          <button
+            onClick={() => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), unitSystem: "imperial" } }))}
+            style={{ ...IS, background: unitSystem === "imperial" ? "rgba(45,125,210,0.2)" : "rgba(255,255,255,0.06)", borderColor: unitSystem === "imperial" ? "rgba(45,125,210,0.45)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}
+          >
+            Imperial (ft/lb)
+          </button>
+          <button
+            onClick={() => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), unitSystem: "metric" } }))}
+            style={{ ...IS, background: unitSystem === "metric" ? "rgba(45,125,210,0.2)" : "rgba(255,255,255,0.06)", borderColor: unitSystem === "metric" ? "rgba(45,125,210,0.45)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}
+          >
+            Metric (cm/kg)
+          </button>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <input type="text" autoComplete="name" value={profile.name || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), name: event.target.value } }))} placeholder="Name" style={IS} />
           <input type="number" inputMode="numeric" value={profile.age || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), age: event.target.value } }))} placeholder="Age" style={IS} />
-          <input type="number" inputMode="decimal" value={profile.heightCm || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), heightCm: event.target.value } }))} placeholder="Height (cm)" style={IS} />
-          <input type="number" inputMode="decimal" value={profile.weightKg || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), weightKg: event.target.value } }))} placeholder="Weight (kg)" style={IS} />
+          {unitSystem === "imperial" ? (
+            <>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={profileFeet || ""}
+                onChange={(event) => setApp((current) => {
+                  const currentHeight = toFeetInches(current.profile?.heightCm);
+                  return { ...current, profile: { ...(current.profile || {}), heightCm: feetInchesToCm(event.target.value, currentHeight.inches) } };
+                })}
+                placeholder="Height (ft)"
+                style={IS}
+              />
+              <input
+                type="number"
+                inputMode="numeric"
+                value={profileInches || ""}
+                onChange={(event) => setApp((current) => {
+                  const currentHeight = toFeetInches(current.profile?.heightCm);
+                  return { ...current, profile: { ...(current.profile || {}), heightCm: feetInchesToCm(currentHeight.feet, event.target.value) } };
+                })}
+                placeholder="Height (in)"
+                style={IS}
+              />
+              <input
+                type="number"
+                inputMode="decimal"
+                value={kgToPounds(profile.weightKg)}
+                onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), weightKg: poundsToKg(event.target.value) } }))}
+                placeholder="Weight (lbs)"
+                style={{ ...IS, gridColumn: "1 / span 2" }}
+              />
+            </>
+          ) : (
+            <>
+              <input type="number" inputMode="decimal" value={profile.heightCm || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), heightCm: event.target.value } }))} placeholder="Height (cm)" style={IS} />
+              <input type="number" inputMode="decimal" value={profile.weightKg || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), weightKg: event.target.value } }))} placeholder="Weight (kg)" style={IS} />
+            </>
+          )}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
           <select value={profile.sex || "male"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), sex: event.target.value } }))} style={IS}>
@@ -356,6 +445,7 @@ export function MoreScreen({
             </ActionButton>
           </>
         )}
+        {cloud.syncing && <p style={{ fontSize: 10, color: "#888", margin: "8px 0 0" }}>Sync in progress. If this lasts over 15 seconds, tap Sync Now again.</p>}
         {cloud.message && <p style={{ fontSize: 11, color: cloudMessageColors[cloud.message.tone] || "#888", margin: "10px 0 0" }}>{cloud.message.text}</p>}
       </SurfaceCard>
 

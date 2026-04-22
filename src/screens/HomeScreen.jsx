@@ -6,12 +6,13 @@ import { Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/
 export function HomeScreen({ app, sessionsThisWeek, streakSummary, getPhaseProgress, onOpenRecovery, onOpenReview, onStartWorkout }) {
   const { phase, week, deload } = getPhaseProgress();
   const todayRecovery = app.recovery.find((entry) => entry.date === today());
+  const athleteName = (app.profile?.name || "").trim();
 
   return (
     <Screen>
       <ScreenHeader bottomSpace={28} topPadding="calc(env(safe-area-inset-top, 0px) + 24px)">
         <p style={{ fontSize: 12, color: "#555", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>Coach Orion Hale</p>
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, lineHeight: 1.2, color: "#fff" }}>Elite Athlete Program</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, lineHeight: 1.2, color: "#fff" }}>{athleteName ? `${athleteName}, ready to train?` : "Elite Athlete Program"}</h1>
         {app.phaseStart && (
           <SurfaceCard style={{ marginTop: 14, background: `${PHASES[phase].color}12`, border: `1px solid ${PHASES[phase].color}33`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>

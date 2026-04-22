@@ -31,6 +31,7 @@ import {
 } from "../workouts.js";
 
 const CLOUD_SYNC_DELAY_MS = 1200;
+const CLOUD_SYNC_TIMEOUT_MS = 15000;
 
 function createWorkoutSession(workoutId) {
   const workout = getWorkoutById(workoutId);
@@ -103,6 +104,7 @@ export function useAppState() {
     email: "",
     password: "",
     syncing: false,
+    syncStartedAt: null,
     lastSyncedAt: null,
     message: isCloudConfigured ? null : getCloudMessage("Cloud sync is optional. Add Supabase keys to turn it on."),
   });
@@ -335,14 +337,25 @@ export function useAppState() {
       return null;
     }
 
+    const syncStartedAt = Date.now();
+    setCloud((current) => ({
+      ...current,
+      syncing: true,
+      syncStartedAt,
+      message: silent && current.message?.tone === "error" ? current.message : (silent ? current.message : null),
+    }));
+
     try {
-      if (!silent) {
-        setCloud((current) => ({ ...current, syncing: true, message: current.message?.tone === "error" ? null : current.message }));
-      }
-      const saved = await saveRemoteApp(user.id, appRef.current);
+      const saved = await Promise.race([
+        saveRemoteApp(user.id, appRef.current),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Sync is taking longer than expected. Please try again in a moment.")), CLOUD_SYNC_TIMEOUT_MS);
+        }),
+      ]);
       setCloud((current) => ({
         ...current,
         syncing: false,
+        syncStartedAt: null,
         lastSyncedAt: saved?.updatedAt || new Date().toISOString(),
         message: silent ? current.message : getCloudMessage("Cloud sync complete.", "success"),
       }));
@@ -351,6 +364,7 @@ export function useAppState() {
       setCloud((current) => ({
         ...current,
         syncing: false,
+        syncStartedAt: null,
         message: getCloudMessage(error.message || "Cloud sync failed.", "error"),
       }));
       return null;
@@ -363,7 +377,7 @@ export function useAppState() {
     }
 
     try {
-      setCloud((current) => ({ ...current, syncing: true }));
+      setCloud((current) => ({ ...current, syncing: true, syncStartedAt: Date.now() }));
       const remote = await fetchRemoteApp(user.id);
       const local = appRef.current;
 
@@ -374,6 +388,7 @@ export function useAppState() {
           setCloud((current) => ({
             ...current,
             syncing: false,
+            syncStartedAt: null,
             message: getCloudMessage("Signed in. Your cloud account is ready.", "success"),
           }));
         }
@@ -390,6 +405,7 @@ export function useAppState() {
         setCloud((current) => ({
           ...current,
           syncing: false,
+          syncStartedAt: null,
           lastSyncedAt: remote.updatedAt,
           message: getCloudMessage("Loaded your latest cloud backup.", "success"),
         }));
@@ -404,12 +420,14 @@ export function useAppState() {
       setCloud((current) => ({
         ...current,
         syncing: false,
+        syncStartedAt: null,
         lastSyncedAt: remote.updatedAt,
       }));
     } catch (error) {
       setCloud((current) => ({
         ...current,
         syncing: false,
+        syncStartedAt: null,
         message: getCloudMessage(error.message || "Could not load cloud data.", "error"),
       }));
     }
