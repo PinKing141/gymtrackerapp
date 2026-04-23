@@ -161,6 +161,7 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
   const alarmLoopRef = useRef(null);
   const wakeLockRef = useRef(null);
   const audioContextRef = useRef(null);
+  const sentMilestonesRef = useRef(new Set());
 
   const activeStep = useMemo(() => {
     if (!activeTimer) {
@@ -236,9 +237,35 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
     }
 
     const currentStep = activeTimer.sequence[activeTimer.stepIndex];
-    const body = activeTimer.status === "done"
-      ? `${activeTimer.routineTitle} complete. Tap to return.`
-      : `${currentStep.label} · ${formatClock(activeTimer.remaining)} left`;
+    let body = null;
+    let milestoneKey = null;
+
+    if (activeTimer.status === "done") {
+      body = `${activeTimer.routineTitle} complete. Tap to return.`;
+      milestoneKey = "done";
+    } else if (currentStep) {
+      const halfwayRemaining = Math.ceil(currentStep.seconds / 2);
+      const tenSecondRemaining = 10;
+      const shouldNotifyHalfway = activeTimer.remaining === halfwayRemaining && currentStep.seconds > 1;
+      const shouldNotifyTenSeconds = activeTimer.remaining === tenSecondRemaining && currentStep.seconds > 10;
+
+      if (shouldNotifyHalfway && shouldNotifyTenSeconds) {
+        body = `${currentStep.label} · Halfway and 10 seconds left.`;
+        milestoneKey = `${activeTimer.stepIndex}-halfway-10`;
+      } else if (shouldNotifyHalfway) {
+        body = `${currentStep.label} · Halfway point reached.`;
+        milestoneKey = `${activeTimer.stepIndex}-halfway`;
+      } else if (shouldNotifyTenSeconds) {
+        body = `${currentStep.label} · 10 seconds left.`;
+        milestoneKey = `${activeTimer.stepIndex}-ten-seconds`;
+      }
+    }
+
+    if (!body || !milestoneKey || sentMilestonesRef.current.has(milestoneKey)) {
+      return;
+    }
+
+    sentMilestonesRef.current.add(milestoneKey);
 
     navigator.serviceWorker?.ready
       ?.then((registration) => registration.showNotification("Bike routine alarm", {
@@ -251,6 +278,12 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
       }))
       .catch(() => {});
   }, [activeTimer, notificationPermission, notificationSupported]);
+
+  useEffect(() => {
+    if (!activeTimer) {
+      sentMilestonesRef.current.clear();
+    }
+  }, [activeTimer]);
 
   useEffect(() => {
     const requestWakeLock = async () => {
@@ -294,6 +327,7 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
     const totalSeconds = sequence.reduce((sum, step) => sum + step.seconds, 0);
 
     pulseAlarm(audioContextRef);
+    sentMilestonesRef.current.clear();
     setActiveTimer({
       routineId: routine.id,
       routineTitle: `${routine.code} — ${routine.title}`,
@@ -310,6 +344,7 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
     clearInterval(alarmLoopRef.current);
     alarmLoopRef.current = null;
     navigator.vibrate?.(0);
+    sentMilestonesRef.current.clear();
     setActiveTimer(null);
   };
 
