@@ -162,6 +162,7 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
   const wakeLockRef = useRef(null);
   const audioContextRef = useRef(null);
   const sentMilestonesRef = useRef(new Set());
+  const previousTickRef = useRef(null);
 
   const activeStep = useMemo(() => {
     if (!activeTimer) {
@@ -233,21 +234,47 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
 
   useEffect(() => {
     if (!activeTimer || !notificationSupported || notificationPermission !== "granted") {
+      previousTickRef.current = null;
       return;
     }
 
     const currentStep = activeTimer.sequence[activeTimer.stepIndex];
+    const previousTick = previousTickRef.current;
+    previousTickRef.current = {
+      status: activeTimer.status,
+      stepIndex: activeTimer.stepIndex,
+      remaining: activeTimer.remaining,
+    };
+
+    if (
+      previousTick
+      && previousTick.status === activeTimer.status
+      && previousTick.stepIndex === activeTimer.stepIndex
+      && previousTick.remaining === activeTimer.remaining
+    ) {
+      return;
+    }
+
     let body = null;
     let milestoneKey = null;
 
-    if (activeTimer.status === "done") {
+    if (activeTimer.status === "done" && previousTick?.status !== "done") {
       body = `${activeTimer.routineTitle} complete. Tap to return.`;
       milestoneKey = "done";
     } else if (currentStep) {
       const halfwayRemaining = Math.ceil(currentStep.seconds / 2);
       const tenSecondRemaining = 10;
-      const shouldNotifyHalfway = activeTimer.remaining === halfwayRemaining && currentStep.seconds > 1;
-      const shouldNotifyTenSeconds = activeTimer.remaining === tenSecondRemaining && currentStep.seconds > 10;
+      const previousRemaining = previousTick?.stepIndex === activeTimer.stepIndex ? previousTick.remaining : currentStep.seconds + 1;
+      const shouldNotifyHalfway = (
+        currentStep.seconds > 1
+        && previousRemaining > halfwayRemaining
+        && activeTimer.remaining <= halfwayRemaining
+      );
+      const shouldNotifyTenSeconds = (
+        currentStep.seconds > 10
+        && previousRemaining > tenSecondRemaining
+        && activeTimer.remaining <= tenSecondRemaining
+      );
 
       if (shouldNotifyHalfway && shouldNotifyTenSeconds) {
         body = `${currentStep.label} · Halfway and 10 seconds left.`;
@@ -271,7 +298,7 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
       ?.then((registration) => registration.showNotification("Bike routine alarm", {
         body,
         tag: "bike-routine-alarm",
-        renotify: true,
+        renotify: false,
         requireInteraction: activeTimer.status !== "done",
         silent: false,
         vibrate: activeTimer.status === "done" ? [200, 120, 200, 120, 260] : [120],
@@ -282,6 +309,7 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
   useEffect(() => {
     if (!activeTimer) {
       sentMilestonesRef.current.clear();
+      previousTickRef.current = null;
     }
   }, [activeTimer]);
 
