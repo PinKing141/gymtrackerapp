@@ -64,3 +64,18 @@ self.addEventListener("notificationclick", (event) => {
     await self.clients.openWindow("./");
   })());
 });
+
+
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag !== "orion-gym-reminder-check") {
+    return;
+  }
+
+  event.waitUntil((async () => {
+    await self.registration.showNotification("Orion Gym Reminder", {
+      body: "Quick reminder to check in on your training streak today.",
+      tag: "orion-gym-periodic-reminder",
+      renotify: false,
+    });
+  })());
+});
