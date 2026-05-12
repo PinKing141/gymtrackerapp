@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { fetchRemoteApp, getCloudClient, isCloudConfigured, saveRemoteApp } from "../cloud.js";
 import { NAV, WQ } from "../data.js";
 import {
@@ -332,6 +333,29 @@ export function useAppState() {
     streakSummary,
   ]);
 
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !serviceWorkerSupported || !notificationSupported) {
+      return;
+    }
+
+    navigator.serviceWorker.ready
+      .then(async (registration) => {
+        const supportsPeriodic = "periodicSync" in registration;
+        if (!supportsPeriodic || !devicePrefs.reminderNotifications || notificationPermission !== "granted") {
+          return;
+        }
+        try {
+          await registration.periodicSync.register("orion-gym-reminder-check", {
+            minInterval: 24 * 60 * 60 * 1000,
+          });
+        } catch {
+          // Periodic sync may be blocked by browser policies.
+        }
+      })
+      .catch(() => {});
+  }, [devicePrefs.reminderNotifications, notificationPermission, notificationSupported, serviceWorkerSupported]);
+
   const syncCloudNow = useCallback(async (userOverride, options = {}) => {
     const { silent = false } = options;
     const user = userOverride || cloud.user;
@@ -543,19 +567,68 @@ export function useAppState() {
 
   const exportData = useCallback(() => {
     try {
-      const blob = new Blob([JSON.stringify(app, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `orion-gym-backup-${today()}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const workbook = XLSX.utils.book_new();
+      const sessions = [...(app.sessions || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+      const recovery = [...(app.recovery || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+      const bodyStats = [...(app.bodyStats || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+
+      const sessionsByWeek = sessions.reduce((acc, session) => {
+        const key = getWeekKey(session.date || today());
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+
+      const summaryRows = [
+        ["Orion Gym - Workout Export"],
+        ["Generated", new Date().toLocaleString()],
+        [],
+        ["Metric", "Value"],
+        ["Total sessions", sessions.length],
+        ["Current streak (weeks on target)", streakSummary.streakWeeks],
+        ["Sessions this week", streakSummary.currentWeekCount],
+        ["Weekly target", streakSummary.weeklyTarget],
+        ["Recovery logs", recovery.length],
+        ["Bodyweight entries", bodyStats.length],
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+      summarySheet['!cols'] = [{ wch: 36 }, { wch: 18 }];
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+      const sessionRows = sessions.map((session) => ({
+        Date: session.date || "",
+        Workout: session.workoutSnapshot?.name || session.workoutId || "",
+        Energy: session.energy ?? "",
+        Duration_Min: Math.round((session.timer?.accumulated || 0) / 60000),
+        Prehab_Done: session.prehabDone ? "Yes" : "No",
+        Core_Done: session.coreDone ? "Yes" : "No",
+        Notes: session.notes || "",
+      }));
+      const sessionSheet = XLSX.utils.json_to_sheet(sessionRows);
+      sessionSheet['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 40 }];
+      XLSX.utils.book_append_sheet(workbook, sessionSheet, "Sessions");
+
+      const trendRows = [
+        ["Week", "Sessions", "Bodyweight_lbs", "Sleep_hours", "Water_litres"],
+        ...Object.entries(sessionsByWeek).sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => [week, count, "", "", ""]),
+      ];
+      const maxLen = Math.max(trendRows.length - 1, bodyStats.length, recovery.length);
+      for (let i = 1; i <= maxLen; i += 1) {
+        if (!trendRows[i]) trendRows[i] = ["", "", "", "", ""];
+        if (bodyStats[i - 1]) trendRows[i][2] = bodyStats[i - 1].weight ?? "";
+        if (recovery[i - 1]) {
+          trendRows[i][3] = recovery[i - 1].sleep ?? "";
+          trendRows[i][4] = recovery[i - 1].water ?? "";
+        }
+      }
+      const trendSheet = XLSX.utils.aoa_to_sheet(trendRows);
+      trendSheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(workbook, trendSheet, "Trend Data");
+
+      XLSX.writeFile(workbook, `orion-gym-workout-stats-${today()}.xlsx`);
     } catch {
       // Ignore export failures in-browser.
     }
-  }, [app]);
+  }, [app, streakSummary]);
 
   const importData = useCallback((event) => {
     const file = event.target.files?.[0];
