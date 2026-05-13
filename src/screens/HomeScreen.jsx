@@ -2,6 +2,7 @@ import { PHASES, WORKOUTS } from "../data.js";
 import { C, L, fd, fdu, today } from "../storage.js";
 import { Icon } from "../components/icons.jsx";
 import { Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
+import { getWorkoutSuggestion } from "../progression.js";
 
 export function HomeScreen({
   app,
@@ -81,6 +82,8 @@ export function HomeScreen({
       <p style={L}>Start a Workout</p>
       {Object.values(WORKOUTS).map((workout) => {
         const lastSession = [...app.sessions].reverse().find((session) => session.workoutId === workout.id);
+        const latestRecovery = [...(app.recovery || [])].slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
+        const suggestion = getWorkoutSuggestion({ ...app, readiness: latestRecovery }, workout);
         return (
           <SurfaceButton key={workout.id} onClick={() => onStartWorkout(workout.id)} style={{ position: "relative", overflow: "hidden", paddingLeft: 22 }}>
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: workout.color }} />
@@ -93,6 +96,14 @@ export function HomeScreen({
               <span style={{ fontSize: 22, color: workout.color, fontWeight: 300 }}>→</span>
             </div>
             {lastSession && <p style={{ fontSize: 10, color: "#444", marginTop: 6, marginBottom: 0 }}>Last: {fd(lastSession.date)} · {fdu(lastSession.duration)}</p>}
+            {suggestion && (
+              <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <p style={{ margin: 0, fontSize: 11, color: suggestion.readiness.zone === "green" ? "#45B649" : suggestion.readiness.zone === "yellow" ? "#F5A623" : "#E84545", fontWeight: 700 }}>
+                  {suggestion.readiness.label} readiness · {suggestion.headline}
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: 10, color: "#98A2B3" }}>{suggestion.note}</p>
+              </div>
+            )}
           </SurfaceButton>
         );
       })}

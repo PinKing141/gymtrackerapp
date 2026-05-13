@@ -821,7 +821,7 @@ export function useAppState() {
     setSectionView(key);
 
     if (key === "recovery") {
-      setRecoveryForm(app.recovery.find((entry) => entry.date === today()) || { date: today(), sleep: 8, water: 3, mobilityDone: false });
+      setRecoveryForm(app.recovery.find((entry) => entry.date === today()) || { date: today(), sleep: 8, water: 3, mobilityDone: false, recoveryState: 2, explosiveness: 2, jointCondition: 2, motivationState: 2, setQuality: 2 });
     }
     if (key === "bodystats") {
       setBodyStatsForm({ date: today(), weight: app.bodyStats.length ? app.bodyStats[app.bodyStats.length - 1].weight : 210 });

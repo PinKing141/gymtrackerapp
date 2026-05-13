@@ -96,6 +96,36 @@ function calculateCalories(profile) {
   return { bmr: Math.round(bmr), maintenance, target };
 }
 
+
+const READINESS_SCALES = [
+  {
+    key: "recoveryState",
+    label: "How recovered do you feel?",
+    options: ["Excellent", "Good", "Average", "Heavy", "Drained"],
+  },
+  {
+    key: "explosiveness",
+    label: "How explosive did you feel?",
+    options: ["Bouncy", "Sharp", "Normal", "Sluggish", "Flat"],
+  },
+  {
+    key: "jointCondition",
+    label: "How did your joints feel?",
+    options: ["Perfect", "Slight stiffness", "Noticeable discomfort", "Affecting movement", "Painful"],
+  },
+  {
+    key: "motivationState",
+    label: "How motivated did you feel?",
+    options: ["Locked in", "Focused", "Steady", "Low", "Flat"],
+  },
+  {
+    key: "setQuality",
+    label: "How did your top sets feel?",
+    options: ["Explosive", "Smooth", "Challenging", "Slow", "Grind"],
+  },
+];
+
+const SCORE_COLORS = ["#45B649", "#74D27F", "#F5A623", "#FF8A3D", "#E84545"];
 export function MoreScreen({
   app,
   bodyStatsForm,
@@ -173,6 +203,28 @@ export function MoreScreen({
             <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${recoveryForm.mobilityDone ? "#45B649" : "#555"}`, background: recoveryForm.mobilityDone ? "#45B649" : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>{recoveryForm.mobilityDone && <span style={{ color: "#000", fontSize: 12, fontWeight: 700 }}>✓</span>}</div>
           </button>
         </SurfaceCard>
+
+        {READINESS_SCALES.map((scale) => (
+          <SurfaceCard key={scale.key}>
+            <p style={{ fontSize: 12, color: "#999", margin: "0 0 10px" }}>{scale.label}</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 6 }}>
+              {scale.options.map((option, index) => {
+                const score = index + 1;
+                const active = Number(recoveryForm[scale.key] || 3) === score;
+                return (
+                  <button
+                    key={option}
+                    onClick={() => setRecoveryForm((current) => ({ ...current, [scale.key]: score }))}
+                    style={{ background: active ? `${SCORE_COLORS[index]}22` : "rgba(255,255,255,0.02)", border: `1px solid ${active ? SCORE_COLORS[index] : "rgba(255,255,255,0.08)"}`, borderRadius: 8, color: "#fff", fontSize: 10, padding: "8px 4px", cursor: "pointer" }}
+                  >
+                    <div style={{ fontWeight: 700, color: SCORE_COLORS[index] }}>{score}</div>
+                    <div>{option}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </SurfaceCard>
+        ))}
 
         <ActionButton onClick={() => { setApp((current) => { const nextRecovery = [...current.recovery]; const existingIndex = nextRecovery.findIndex((entry) => entry.date === recoveryForm.date); if (existingIndex >= 0) { nextRecovery[existingIndex] = recoveryForm; } else { nextRecovery.push(recoveryForm); } return { ...current, recovery: nextRecovery }; }); closeSection(); }} color="#2D7DD2" style={{ marginTop: 10 }}>
           Save
