@@ -8,6 +8,7 @@ import { MoreScreen } from "./screens/MoreScreen.jsx";
 import { PersonalBestsScreen } from "./screens/PersonalBestsScreen.jsx";
 import { ProgressScreen } from "./screens/ProgressScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
+import { colors, radii, typeScale } from "./theme.js";
 
 export function App() {
   const {
@@ -159,8 +160,8 @@ export function App() {
         maxWidth: 430,
         margin: "0 auto",
         minHeight: "100dvh",
-        background: "#0A0A0F",
-        color: "#E8E6E1",
+        background: colors.background,
+        color: colors.textPrimary,
         fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
         position: "relative",
       }}
@@ -188,7 +189,7 @@ export function App() {
             background: "rgba(10,10,15,0.94)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
-            borderTop: "1px solid rgba(255,255,255,0.06)",
+            borderTop: `1px solid ${colors.border}`,
             display: "flex",
             justifyContent: "space-around",
             padding: "6px 0 env(safe-area-inset-bottom, 6px)",
@@ -208,9 +209,10 @@ export function App() {
                 border: "none",
                 cursor: "pointer",
                 padding: "5px 12px",
-                color: view === item.id ? "#fff" : "#555",
-                fontSize: 9,
-                fontWeight: 500,
+                color: view === item.id ? colors.textPrimary : colors.textMuted,
+                background: view === item.id ? "rgba(78,161,255,0.14)" : "transparent",
+                borderRadius: radii.pill,
+                ...typeScale.caption,
                 letterSpacing: "0.02em",
               }}
             >

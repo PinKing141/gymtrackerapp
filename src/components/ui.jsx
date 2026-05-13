@@ -1,5 +1,6 @@
 import { BB, C } from "../storage.js";
 import { Icon } from "./icons.jsx";
+import { colors, radii, typeScale } from "../theme.js";
 
 const buttonReset = {
   appearance: "none",
@@ -47,7 +48,7 @@ export function ScreenHeader({
             ...defaultTitleStyle,
             fontWeight: 700,
             margin: 0,
-            color: "#fff",
+            color: colors.textPrimary,
             ...titleStyle,
           }}
         >
@@ -57,8 +58,8 @@ export function ScreenHeader({
       {subtitle && (
         <p
           style={{
-            fontSize: 11,
-            color: "#555",
+            ...typeScale.caption,
+            color: colors.textSecondary,
             margin: "4px 0 0",
             ...subtitleStyle,
           }}
@@ -73,7 +74,7 @@ export function ScreenHeader({
 export function BackButton({ onClick, label = "Back" }) {
   return (
     <button onClick={onClick} style={{ ...buttonReset, ...BB, display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <Icon name="chevronLeft" size={15} color="#777" />
+      <Icon name="chevronLeft" size={15} color={colors.textMuted} />
       {label}
     </button>
   );
@@ -93,7 +94,7 @@ export function SurfaceButton({ children, style, ...props }) {
         width: "100%",
         textAlign: "left",
         cursor: "pointer",
-        color: "#E8E6E1",
+        color: colors.textPrimary,
         ...style,
       }}
     >
@@ -102,7 +103,7 @@ export function SurfaceButton({ children, style, ...props }) {
   );
 }
 
-export function Pill({ children, color = "#888", background = "rgba(255,255,255,0.05)", border, style }) {
+export function Pill({ children, color = colors.textSecondary, background = "rgba(255,255,255,0.05)", border, style }) {
   return (
     <span
       style={{
@@ -110,10 +111,8 @@ export function Pill({ children, color = "#888", background = "rgba(255,255,255,
         alignItems: "center",
         gap: 5,
         padding: "4px 8px",
-        borderRadius: 999,
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "0.04em",
+        borderRadius: radii.pill,
+        ...typeScale.overline,
         color,
         background,
         border: border || "1px solid transparent",
@@ -128,7 +127,7 @@ export function Pill({ children, color = "#888", background = "rgba(255,255,255,
 export function ActionButton({
   children,
   tone = "primary",
-  color = "#2D7DD2",
+  color = colors.accent,
   compact = false,
   fullWidth = true,
   style,
@@ -138,12 +137,13 @@ export function ActionButton({
     primary: {
       background: color,
       border: "none",
-      text: "#fff",
+      text: colors.textPrimary,
+      boxShadow: `0 0 0 1px ${color}33 inset`,
     },
     secondary: {
       background: "rgba(255,255,255,0.03)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      text: "#888",
+      border: `1px solid ${colors.border}`,
+      text: colors.textSecondary,
     },
     tinted: {
       background: `${color}1a`,
@@ -151,9 +151,9 @@ export function ActionButton({
       text: color,
     },
     danger: {
-      background: "rgba(232,69,69,0.08)",
-      border: "1px solid rgba(232,69,69,0.3)",
-      text: "#E84545",
+      background: "rgba(255,93,93,0.12)",
+      border: `1px solid ${colors.danger}66`,
+      text: colors.danger,
     },
   };
 
@@ -167,15 +167,39 @@ export function ActionButton({
         ...buttonReset,
         width: fullWidth ? "100%" : undefined,
         padding: compact ? "11px" : "14px",
-        borderRadius: compact ? 10 : 12,
+        borderRadius: compact ? radii.sm : radii.md,
         border: palette.border,
         background: palette.background,
         color: palette.text,
-        fontSize: compact ? 12 : 14,
+        boxShadow: palette.boxShadow,
+        ...typeScale.body,
+        fontSize: compact ? typeScale.bodySm.fontSize : typeScale.body.fontSize,
         fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.6 : 1,
+        opacity: disabled ? 0.45 : 1,
+        transform: disabled ? "none" : "translateZ(0)",
+        transition: "filter 180ms ease, transform 120ms ease, box-shadow 180ms ease, opacity 160ms ease",
+        outline: "2px solid transparent",
+        outlineOffset: 2,
         ...style,
+      }}
+      onMouseDown={(event) => {
+        event.currentTarget.style.transform = "scale(0.985)";
+        event.currentTarget.style.filter = "brightness(0.96)";
+      }}
+      onMouseUp={(event) => {
+        event.currentTarget.style.transform = "scale(1)";
+        event.currentTarget.style.filter = "brightness(1)";
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.transform = "scale(1)";
+        event.currentTarget.style.filter = "brightness(1)";
+      }}
+      onFocus={(event) => {
+        event.currentTarget.style.boxShadow = `0 0 0 3px ${colors.accent}4d`;
+      }}
+      onBlur={(event) => {
+        event.currentTarget.style.boxShadow = palette.boxShadow || "none";
       }}
     >
       {children}
@@ -193,9 +217,9 @@ export function TextAreaField({ style, ...props }) {
         padding: "10px 12px",
         background: "rgba(255,255,255,0.04)",
         border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 10,
-        color: "#ccc",
-        fontSize: 12,
+        borderRadius: radii.sm,
+        color: colors.textSecondary,
+        ...typeScale.bodySm,
         minHeight: 52,
         resize: "vertical",
         fontFamily: "inherit",
@@ -217,7 +241,7 @@ export function CelebrationOverlay({ celebration, onDismiss }) {
     delay: `${(index % 5) * 0.08}s`,
     duration: `${1.6 + (index % 4) * 0.18}s`,
     rotate: index % 2 === 0 ? 18 : -18,
-    color: index % 3 === 0 ? celebration.color : index % 3 === 1 ? "#E8E6E1" : "#8BA6C9",
+    color: index % 3 === 0 ? celebration.color : index % 3 === 1 ? colors.textPrimary : "#8BA6C9",
   }));
 
   return (
