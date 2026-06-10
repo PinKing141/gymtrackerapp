@@ -1,5 +1,6 @@
 import { NI } from "./components/WorkoutComponents.jsx";
 import { CelebrationOverlay } from "./components/ui.jsx";
+import { BasketballScreen } from "./screens/BasketballScreen.jsx";
 import { BikeRoutineScreen } from "./screens/BikeRoutineScreen.jsx";
 import { HistoryScreen } from "./screens/HistoryScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
@@ -100,6 +101,9 @@ export function App() {
       />
     );
   }
+  if (view === "basketball") {
+    content = <BasketballScreen onExit={() => navigate("home")} />;
+  }
   if (view === "history") {
     content = (
       <HistoryScreen
@@ -177,7 +181,7 @@ export function App() {
       >
         {content}
       </div>
-      {view !== "log" && (
+      {view !== "log" && view !== "basketball" && (
         <div
           style={{
             position: "fixed",
