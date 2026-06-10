@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../components/icons.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -135,16 +135,6 @@ export function BasketballScreen({ onExit }) {
   const [playerName, setPlayerName] = useState("KingFizz");
   const [customName, setCustomName] = useState("My Custom Workout");
   const [customDrills, setCustomDrills] = useState([{ name: "Drill 1", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 10 }]);
-  const [cameraMode, setCameraMode] = useState(false);
-  const [cameraStatus, setCameraStatus] = useState("Camera tracking is off.");
-  const [rimPoints, setRimPoints] = useState([]);
-  const [autoEvent, setAutoEvent] = useState(null);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-  const animationRef = useRef(null);
-  const cameraModeRef = useRef(false);
-  const trackerRef = useRef({ centers: [], phase: "idle", hasBeenAboveRim: false, lastLoggedAt: 0, cooldownStartedAt: 0 });
 
   useEffect(() => {
     try {
@@ -162,11 +152,6 @@ export function BasketballScreen({ onExit }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, customTemplates, playerName }));
   }, [history, customTemplates, playerName]);
-
-  useEffect(() => () => {
-    if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-  }, []);
 
   const stats = useMemo(() => {
     const allShots = history.flatMap((session) => (Array.isArray(session.shots) ? session.shots : []));
@@ -257,20 +242,15 @@ export function BasketballScreen({ onExit }) {
     setCurrentView("workout");
   };
 
-  const recordShot = (result, source = cameraMode ? "camera" : "manual") => {
+  const recordShot = (result) => {
     setActiveSession((previous) => {
       if (!previous) return previous;
       const isStructured = previous.isStructured;
       const drillIndex = previous.currentDrillIndex;
       const currentDrill = isStructured ? previous.drills[drillIndex] : null;
-      if (isStructured && !currentDrill) return previous;
-      if (isStructured) {
-        const currentDrillMakes = previous.shots.filter((shot) => shot.drillIndex === drillIndex && shot.result === "make").length;
-        if (currentDrillMakes >= currentDrill.targetMakes) return previous;
-      }
       const zoneId = isStructured ? currentDrill.zoneId : previous.currentZone;
       const type = isStructured ? currentDrill.type : previous.currentType;
-      const newShot = { id: Date.now(), zoneId, type, result, source, drillIndex: isStructured ? drillIndex : null, timestamp: new Date().toISOString() };
+      const newShot = { id: Date.now(), zoneId, type, result, drillIndex: isStructured ? drillIndex : null, timestamp: new Date().toISOString() };
       let newShots = [...previous.shots, newShot];
       let consecutiveMisses = previous.consecutiveMisses;
       const template = getTemplateById(previous.templateId, customTemplates);
@@ -291,170 +271,11 @@ export function BasketballScreen({ onExit }) {
     });
   };
 
-  const undoLastShot = () => {
-    setActiveSession((previous) => {
-      if (!previous?.shots?.length) return previous;
-      const lastShot = previous.shots[previous.shots.length - 1];
-      return {
-        ...previous,
-        shots: previous.shots.slice(0, -1),
-        consecutiveMisses: lastShot.result === "miss" ? Math.max(0, previous.consecutiveMisses - 1) : previous.consecutiveMisses,
-      };
-    });
-    setAutoEvent(null);
-  };
-
-  const stopCamera = useCallback(() => {
-    if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    animationRef.current = null;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    cameraModeRef.current = false;
-    setCameraMode(false);
-    setCameraStatus("Camera tracking is off.");
-    trackerRef.current = { centers: [], phase: "idle", hasBeenAboveRim: false, lastLoggedAt: 0, cooldownStartedAt: 0 };
-  }, []);
-
-  const getRimZone = useCallback(() => {
-    if (rimPoints.length < 2) return null;
-    const [a, b] = rimPoints;
-    const left = Math.min(a.x, b.x);
-    const right = Math.max(a.x, b.x);
-    const centerX = (a.x + b.x) / 2;
-    const centerY = (a.y + b.y) / 2;
-    const width = Math.max(0.08, right - left);
-    return { centerX, centerY, left: centerX - width / 2, right: centerX + width / 2, top: centerY - width * 0.18, bottom: centerY + width * 0.38, width };
-  }, [rimPoints]);
-
-  const handleAutoResult = useCallback((result, confidence = 0.75) => {
-    const now = Date.now();
-    if (now - trackerRef.current.lastLoggedAt < 1800) return;
-    trackerRef.current.lastLoggedAt = now;
-    setAutoEvent({ result, confidence, timestamp: now });
-    recordShot(result, "camera");
-  }, [recordShot]);
-
-  const processCameraFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const rim = getRimZone();
-    if (!cameraModeRef.current) return;
-    if (!video || !canvas || video.readyState < 2) {
-      animationRef.current = requestAnimationFrame(processCameraFrame);
-      return;
-    }
-
-    const width = 320;
-    const height = Math.round(width * ((video.videoHeight || 720) / (video.videoWidth || 1280)));
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(video, 0, 0, width, height);
-    const { data } = ctx.getImageData(0, 0, width, height);
-    let count = 0;
-    let sumX = 0;
-    let sumY = 0;
-
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        const i = (y * width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        if (r > 120 && g > 45 && g < 190 && b < 135 && r > g * 1.15 && r > b * 1.55) {
-          count += 1;
-          sumX += x;
-          sumY += y;
-        }
-      }
-    }
-
-    if (count > 8) {
-      const center = { x: sumX / count / width, y: sumY / count / height, t: performance.now() };
-      const tracker = trackerRef.current;
-      tracker.centers = [...tracker.centers.slice(-7), center];
-      const previous = tracker.centers[tracker.centers.length - 2];
-      if (previous && rim) {
-        const dy = center.y - previous.y;
-        const nearRimHorizontally = center.x > rim.left - rim.width * 0.65 && center.x < rim.right + rim.width * 0.65;
-        if (tracker.phase === "idle" && center.y > rim.centerY + rim.width * 0.25 && dy < -0.012) {
-          tracker.phase = "rising";
-          tracker.hasBeenAboveRim = false;
-          setCameraStatus("Shot detected: tracking arc...");
-        }
-        if (tracker.phase === "rising" && center.y < rim.top) {
-          tracker.hasBeenAboveRim = true;
-        }
-        if (tracker.phase === "rising" && tracker.hasBeenAboveRim && dy > 0.008) {
-          tracker.phase = "descending";
-        }
-        if (tracker.phase === "descending" && nearRimHorizontally && previous.y < rim.centerY && center.y >= rim.centerY) {
-          const makeWindow = Math.abs(center.x - rim.centerX) < rim.width * 0.28;
-          handleAutoResult(makeWindow ? "make" : "miss", makeWindow ? 0.84 : 0.72);
-          setCameraStatus(makeWindow ? "Auto logged MAKE." : "Auto logged MISS.");
-          tracker.phase = "cooldown";
-          tracker.cooldownStartedAt = performance.now();
-        }
-        if (tracker.phase === "descending" && center.y > rim.bottom + rim.width * 1.4) {
-          handleAutoResult("miss", 0.68);
-          setCameraStatus("Auto logged MISS.");
-          tracker.phase = "cooldown";
-          tracker.cooldownStartedAt = performance.now();
-        }
-        if (tracker.phase === "cooldown" && performance.now() - tracker.cooldownStartedAt > 1400) {
-          tracker.phase = "idle";
-          tracker.hasBeenAboveRim = false;
-        }
-      }
-    }
-
-    animationRef.current = requestAnimationFrame(processCameraFrame);
-  }, [getRimZone, handleAutoResult]);
-
-  const startCamera = useCallback(async () => {
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraStatus("Camera access is not supported in this browser.");
-        return;
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-      streamRef.current = stream;
-      cameraModeRef.current = true;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setCameraMode(true);
-      setCameraStatus(rimPoints.length === 2 ? "Camera tracking is ready." : "Tap the left and right rim edges before shooting.");
-      trackerRef.current = { centers: [], phase: "idle", hasBeenAboveRim: false, lastLoggedAt: 0, cooldownStartedAt: 0 };
-      animationRef.current = requestAnimationFrame(processCameraFrame);
-    } catch (error) {
-      setCameraStatus(error?.message || "Could not start camera.");
-    }
-  }, [processCameraFrame, rimPoints.length]);
-
-  const resetRimCalibration = () => {
-    setRimPoints([]);
-    setCameraStatus("Tap the left rim edge, then the right rim edge.");
-    trackerRef.current = { centers: [], phase: "idle", hasBeenAboveRim: false, lastLoggedAt: 0, cooldownStartedAt: 0 };
-  };
-
-  const handleRimTap = (event) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const point = { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
-    setRimPoints((previous) => {
-      const next = previous.length >= 2 ? [point] : [...previous, point];
-      setCameraStatus(next.length === 1 ? "Now tap the right rim edge." : "Rim set. Start shooting when ready.");
-      return next;
-    });
-  };
-
   const advanceDrill = () => {
     setActiveSession((previous) => (previous ? { ...previous, currentDrillIndex: previous.currentDrillIndex + 1, consecutiveMisses: 0 } : previous));
   };
 
   const endSession = () => {
-    stopCamera();
     if (activeSession?.shots?.length > 0) {
       setHistory((previous) => [activeSession, ...previous]);
     }
@@ -629,37 +450,6 @@ export function BasketballScreen({ onExit }) {
         <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", background: colors.surface, borderBottom: `1px solid ${colors.border}` }}>
           <p style={{ ...typeScale.overline, color: colors.textMuted, margin: 0, textTransform: "uppercase" }}>{isStructured ? `Drill ${drillIndex + 1} of ${activeSession.drills.length}` : "Free Shoot"}</p>
           <button onClick={endSession} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,93,93,0.12)", color: "#FF9A9A", padding: "9px 12px", fontWeight: 900, cursor: "pointer" }}>END EARLY</button>
-        </div>
-
-        <div style={{ padding: 12, background: "rgba(255,255,255,0.025)", borderBottom: `1px solid ${colors.border}` }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", marginBottom: cameraMode ? 10 : 0 }}>
-            <button onClick={cameraMode ? stopCamera : startCamera} style={{ flex: 1, border: `1px solid ${cameraMode ? "rgba(255,93,93,0.32)" : "rgba(255,122,26,0.35)"}`, borderRadius: radii.pill, background: cameraMode ? "rgba(255,93,93,0.12)" : "rgba(255,122,26,0.12)", color: cameraMode ? "#FFB4B4" : "#FF9F1C", padding: "10px 12px", fontWeight: 950, cursor: "pointer" }}>
-              {cameraMode ? "Stop Camera Tracking" : "Camera Tracking Beta"}
-            </button>
-            <button onClick={undoLastShot} disabled={!sessionShots.length} style={{ border: `1px solid ${colors.border}`, borderRadius: radii.pill, background: "rgba(255,255,255,0.05)", color: sessionShots.length ? colors.textPrimary : colors.textMuted, padding: "10px 12px", fontWeight: 900, cursor: sessionShots.length ? "pointer" : "not-allowed" }}>Undo</button>
-          </div>
-          {cameraMode && (
-            <div>
-              <div onClick={handleRimTap} style={{ position: "relative", overflow: "hidden", borderRadius: radii.lg, border: `1px solid ${rimPoints.length === 2 ? "rgba(61,220,151,0.38)" : "rgba(255,122,26,0.38)"}`, background: "#000", aspectRatio: "16 / 9", cursor: "crosshair" }}>
-                <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                <canvas ref={canvasRef} style={{ display: "none" }} />
-                <svg viewBox="0 0 1 1" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-                  {rimPoints.map((point, index) => <circle key={`${point.x}-${point.y}-${index}`} cx={point.x} cy={point.y} r="0.018" fill={index === 0 ? "#3DDC97" : "#FF9F1C"} />)}
-                  {rimPoints.length === 2 && (
-                    <>
-                      <line x1={rimPoints[0].x} y1={rimPoints[0].y} x2={rimPoints[1].x} y2={rimPoints[1].y} stroke="#FF9F1C" strokeWidth="0.01" />
-                      <rect x={getRimZone().left} y={getRimZone().top} width={getRimZone().width} height={getRimZone().bottom - getRimZone().top} fill="rgba(255,159,28,0.15)" stroke="#FF9F1C" strokeWidth="0.006" />
-                    </>
-                  )}
-                </svg>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 8 }}>
-                <p style={{ ...typeScale.caption, color: colors.textSecondary, margin: 0 }}>{cameraStatus}</p>
-                <button onClick={resetRimCalibration} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,255,255,0.08)", color: colors.textPrimary, padding: "7px 10px", fontWeight: 900, cursor: "pointer", whiteSpace: "nowrap" }}>Set Rim</button>
-              </div>
-              {autoEvent && <p style={{ ...typeScale.caption, margin: "6px 0 0", color: autoEvent.result === "make" ? colors.success : colors.danger }}>Last auto log: {autoEvent.result.toUpperCase()} · {Math.round(autoEvent.confidence * 100)}% confidence</p>}
-            </div>
-          )}
         </div>
 
         {isStructured ? (
