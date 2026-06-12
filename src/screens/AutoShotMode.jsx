@@ -11,6 +11,8 @@ function StatusPill({ label, value, accent = "#FF9F1C" }) {
 }
 
 export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disabled = false }) {
+  const { videoRef, canvasRef, status, error, fps, videoSize, modelStatus, modelError, detection, startCamera, stopCamera, isStreaming } = useAutoShotMode();
+  const ball = detection?.ball;
   const { videoRef, canvasRef, status, error, fps, videoSize, startCamera, stopCamera, isStreaming } = useAutoShotMode();
 
   const logTestShot = (result) => {
@@ -40,6 +42,19 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
             </div>
           </div>
         )}
+        {(error || modelError) && <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, padding: 12, borderRadius: radii.md, background: "rgba(244,63,94,0.16)", border: "1px solid rgba(244,63,94,0.38)", color: "#FFC2CD", fontWeight: 800 }}>{error || modelError}</div>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <StatusPill label="Camera" value={isStreaming ? "Live" : status === "error" ? "Blocked" : "Ready"} accent={isStreaming ? colors.success : "#FF9F1C"} />
+        <StatusPill label="Model" value={modelStatus === "ready" ? "Loaded" : modelStatus === "loading" ? "Loading" : modelStatus === "error" ? "Error" : "Idle"} accent={modelStatus === "ready" ? colors.success : "#FF9F1C"} />
+        <StatusPill label="FPS" value={isStreaming ? fps || "…" : "—"} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <StatusPill label="Frame" value={videoSize.width ? `${videoSize.width}p` : "—"} />
+        <StatusPill label="Ball" value={ball ? `${Math.round(ball.score * 100)}%` : isStreaming ? "Searching" : "—"} accent={ball ? colors.success : "#FF9F1C"} />
+        <StatusPill label="Infer" value={detection?.inferenceMs ? `${detection.inferenceMs}ms` : "—"} />
         {error && <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, padding: 12, borderRadius: radii.md, background: "rgba(244,63,94,0.16)", border: "1px solid rgba(244,63,94,0.38)", color: "#FFC2CD", fontWeight: 800 }}>{error}</div>}
       </div>
 
@@ -52,6 +67,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
       <div style={{ padding: 12, borderRadius: radii.lg, background: "rgba(255,255,255,0.05)", border: `1px solid ${colors.border}`, textAlign: "left" }}>
         <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 6px" }}>Current logging target</p>
         <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 900 }}>{currentZoneName || "Selected zone"} • {currentType || "Selected shot"}</p>
+        {ball && <p style={{ ...typeScale.caption, margin: "6px 0 0", color: colors.textSecondary }}>Ball center: {Math.round(ball.center.x)}, {Math.round(ball.center.y)} • smoothed over recent frames</p>}
       </div>
 
       <div style={{ display: "flex", gap: 8 }}>
