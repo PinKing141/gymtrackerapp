@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AutoShotMode } from "./AutoShotMode.jsx";
 import { Icon } from "../components/icons.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -134,6 +135,7 @@ export function BasketballScreen({ onExit }) {
   const [activeSession, setActiveSession] = useState(null);
   const [playerName, setPlayerName] = useState("KingFizz");
   const [customName, setCustomName] = useState("My Custom Workout");
+  const [shotInputMode, setShotInputMode] = useState("manual");
   const [customDrills, setCustomDrills] = useState([{ name: "Drill 1", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 10 }]);
 
   useEffect(() => {
@@ -242,21 +244,32 @@ export function BasketballScreen({ onExit }) {
     setCurrentView("workout");
   };
 
-  const recordShot = (result) => {
+  const recordShot = (shotInput) => {
     setActiveSession((previous) => {
       if (!previous) return previous;
+      const shotPayload = typeof shotInput === "string" ? { result: shotInput } : shotInput;
+      if (!shotPayload?.result) return previous;
       const isStructured = previous.isStructured;
       const drillIndex = previous.currentDrillIndex;
       const currentDrill = isStructured ? previous.drills[drillIndex] : null;
-      const zoneId = isStructured ? currentDrill.zoneId : previous.currentZone;
-      const type = isStructured ? currentDrill.type : previous.currentType;
-      const newShot = { id: Date.now(), zoneId, type, result, drillIndex: isStructured ? drillIndex : null, timestamp: new Date().toISOString() };
+      const zoneId = isStructured ? currentDrill.zoneId : shotPayload.zoneId || previous.currentZone;
+      const type = isStructured ? currentDrill.type : shotPayload.type || previous.currentType;
+      const newShot = {
+        id: Date.now(),
+        zoneId,
+        type,
+        result: shotPayload.result,
+        drillIndex: isStructured ? drillIndex : null,
+        timestamp: new Date().toISOString(),
+        source: shotPayload.source || shotInputMode,
+        confidence: shotPayload.confidence,
+      };
       let newShots = [...previous.shots, newShot];
       let consecutiveMisses = previous.consecutiveMisses;
       const template = getTemplateById(previous.templateId, customTemplates);
 
       if (template?.specialRule === "pressure" && isStructured) {
-        if (result === "miss") {
+        if (shotPayload.result === "miss") {
           consecutiveMisses += 1;
           if (consecutiveMisses >= 2) {
             newShots = newShots.filter((shot) => shot.drillIndex !== drillIndex);
@@ -452,6 +465,11 @@ export function BasketballScreen({ onExit }) {
           <button onClick={endSession} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,93,93,0.12)", color: "#FF9A9A", padding: "9px 12px", fontWeight: 900, cursor: "pointer" }}>END EARLY</button>
         </div>
 
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
+          <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
+          <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Mode</button>
+        </div>
+
         {isStructured ? (
           <div style={{ padding: 22, textAlign: "center", borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
             {pressureMode && activeSession.consecutiveMisses > 0 && <p style={{ margin: "0 0 8px", color: colors.danger, fontWeight: 950, letterSpacing: "0.08em" }}>⚠ 1 MISS... DANGER!</p>}
@@ -471,7 +489,16 @@ export function BasketballScreen({ onExit }) {
         )}
 
         <div style={{ flex: 1, display: "grid", placeItems: "center", textAlign: "center", padding: 24 }}>
-          {!isStructured && <div><p style={{ fontSize: 72, lineHeight: 1, fontWeight: 950, margin: 0 }}>{getPercent(freeMakes, freeTotal)}<span style={{ fontSize: 32, color: colors.textMuted }}>%</span></p><p style={{ color: colors.textSecondary, fontWeight: 900, margin: "8px 0 0" }}>{freeMakes} / {freeTotal}</p></div>}
+          {shotInputMode === "auto" ? (
+            <AutoShotMode
+              onRecordShot={recordShot}
+              currentZoneName={ZONES[isStructured ? currentDrill.zoneId : activeSession.currentZone]?.name}
+              currentType={isStructured ? currentDrill.type : activeSession.currentType}
+              disabled={isStructured && drillMakes >= currentDrill.targetMakes}
+            />
+          ) : (
+            !isStructured && <div><p style={{ fontSize: 72, lineHeight: 1, fontWeight: 950, margin: 0 }}>{getPercent(freeMakes, freeTotal)}<span style={{ fontSize: 32, color: colors.textMuted }}>%</span></p><p style={{ color: colors.textSecondary, fontWeight: 900, margin: "8px 0 0" }}>{freeMakes} / {freeTotal}</p></div>
+          )}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)", minHeight: "38dvh" }}>
