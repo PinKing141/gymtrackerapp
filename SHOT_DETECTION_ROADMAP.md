@@ -13,60 +13,60 @@
 - ✅ Shot data model (zoneId, type, result, timestamp)
 - ✅ Session management and history storage
 - ✅ Stats dashboard with zone-based breakdown
+- ✅ Manual/Auto workout mode toggle inside active basketball sessions
+- ✅ Camera feed integration via `navigator.mediaDevices.getUserMedia()`
+- ✅ Canvas overlay loop with FPS/frame-size diagnostics
+- ✅ Phase 1 baseline ball detection using TensorFlow.js COCO-SSD (`sports ball`) with temporal smoothing
+- ✅ Auto-mode test make/miss callbacks wired into the existing `recordShot()` path
 
-### Missing
-- ❌ Camera feed integration
-- ❌ Ball detection
+### Missing / Not Yet Production-Ready
+- ⚠️ Ball detection needs real-device tuning, lighting tests, and false-positive filtering
 - ❌ Rim detection & calibration
 - ❌ Trajectory tracking
 - ❌ Shot event classification (make/miss)
-- ❌ Automatic result logging
+- ❌ Fully automatic result logging from real trajectory outcomes
 
 ### Architecture
 ```
 Phone Camera
     ↓
-navigator.mediaDevices.getUserMedia() [JS]
+navigator.mediaDevices.getUserMedia() [JS]       ✅ implemented in useAutoShotMode.js
     ↓
-Video Stream → Canvas
+Video Stream → Canvas Overlay                    ✅ implemented in AutoShotMode.jsx
     ↓
-Frame Processing (TensorFlow.js / ONNX)
+Frame Processing (TensorFlow.js / ONNX)           ✅ TensorFlow.js baseline implemented
     ↓
-Ball Detection (YOLOv8-nano or similar)
+Ball Detection (COCO-SSD now → YOLO later)        ✅ baseline implemented in ballDetector.js
     ↓
-Rim Calibration (user marks once)
+Rim Calibration (user marks once)                 ❌ next phase
     ↓
-Trajectory Tracking (OpenCV.js)
+Trajectory Tracking (state machine + smoothing)   ❌ planned
     ↓
-Shot Event Detection (state machine)
+Shot Event Detection (make/miss classifier)       ❌ planned
     ↓
-Make/Miss Classifier
+recordShot() → Existing BasketballScreen logic    ⚠️ test callbacks wired; real trajectory events pending
     ↓
-recordShot() → Existing BasketballScreen logic
-    ↓
-Automatic session update + stats
+Automatic session update + stats                  ❌ pending real shot events
 ```
 
 ---
 
 ## 2. Phase Breakdown
 
-### **PHASE 0: Setup & Tooling** (2–3 days)
+### **PHASE 0: Setup & Tooling** (Completed MVP skeleton)
 **Objective:** Get camera access and basic rendering working.
 
+**Implementation status (2026-06-12):** ✅ Complete for MVP. `AutoShotMode.jsx` and `useAutoShotMode.js` are in place, the camera stream renders into a `<video>`, and a canvas overlay loop reports FPS/frame dimensions.
+
 #### 0.1 Install dependencies
+Current baseline dependencies installed:
 ```bash
-npm install --save \
-  @tensorflow/tfjs \
-  @tensorflow/tfjs-core \
-  @tensorflow/tfjs-converter \
-  @tensorflow/tfjs-backend-webgl \
-  opencv.js  # or use npm package if available
+npm install --save @tensorflow/tfjs @tensorflow-models/coco-ssd
 ```
 
-**Alternative:** Use ONNX Runtime Web instead of TensorFlow.js for lighter footprint:
+Future trajectory/performance dependencies are still optional and should be added only when that phase starts:
 ```bash
-npm install --save onnxruntime-web
+npm install --save onnxruntime-web opencv.js
 ```
 
 #### 0.2 Create `AutoShotMode` screen component
@@ -82,18 +82,21 @@ npm install --save onnxruntime-web
 - Wire `AutoShotMode` into the view routing
 
 #### 0.4 Test checklist
-- [ ] Camera permission prompt appears
-- [ ] Video feed renders on screen
-- [ ] Canvas drawing works
-- [ ] Frame rate ≥ 24 fps on target device
+- [x] Camera permission flow implemented
+- [x] Video feed rendering implemented
+- [x] Canvas drawing implemented
+- [x] FPS counter implemented
+- [ ] Real-device validation: frame rate ≥ 24 fps on target phone
 
 **Estimated effort:** 2–3 days  
 **Success metric:** Live camera feed visible, 60fps canvas drawing
 
 ---
 
-### **PHASE 1: Ball Detection** (5–7 days)
+### **PHASE 1: Ball Detection** (In progress — baseline implemented)
 **Objective:** Reliably detect the basketball in every frame.
+
+**Implementation status (2026-06-12):** ⚠️ Baseline complete, production tuning pending. `src/lib/ballDetector.js` lazy-loads TensorFlow.js + COCO-SSD, filters predictions to `sports ball`, smooths position over recent detections, and exposes inference timing. `useAutoShotMode.js` runs throttled live inference and draws bounding boxes/center markers.
 
 #### 1.1 Choose detection model
 **Option A: YOLOv8-nano** (recommended for web)
@@ -107,45 +110,36 @@ npm install --save onnxruntime-web
 - Slower (~50–100 ms)
 - Less accurate for basketball-specific scenarios
 
-**Recommendation:** Start with Option B for speed, upgrade to YOLOv8 after proving the pipeline.
+**Current implementation:** Option B is now the active baseline (`@tensorflow-models/coco-ssd` + `@tensorflow/tfjs`). Keep YOLOv8-nano as the next upgrade path after validating camera placement, rim calibration, and trajectory logic.
 
 #### 1.2 Implement detection loop
 - **File:** `src/lib/ballDetector.js`
-- **Key functions:**
-  - `initModel()` - load YOLO/COCO-SSD
-  - `detectBall(canvas)` - run inference on frame
-  - `trackBall(detections)` - smooth detections across frames
-
-```js
-export const ballDetector = {
-  async init() {
-    // Load model from CDN or local
-    this.model = await cocoSsd.load();
-  },
-
-  async detect(videoElement) {
-    const predictions = await this.model.estimateObjects(videoElement);
-    // Filter for "sports ball" or "basketball"
-    return predictions.filter(p => p.class === 'sports ball');
-  }
-};
-```
+- **Status:** ✅ Implemented baseline
+- **Current key functions:**
+  - `createBallDetector().init()` - lazy-load TensorFlow.js/COCO-SSD and prefer WebGL with CPU fallback
+  - `createBallDetector().detect(videoElement)` - run inference on the live video frame
+  - `smoothDetection()` - simple moving average over recent ball detections
+- **Current inference cadence:** throttled from `useAutoShotMode.js` with `DETECTION_INTERVAL_MS = 140` to avoid running model inference every animation frame.
 
 #### 1.3 Add detection overlay
-- Draw bounding box + confidence score on canvas
-- Show detected ball position in real-time
-- Add debug info: FPS, inference time, ball coordinates
+- [x] Draw bounding box + confidence score on canvas
+- [x] Show detected ball position in real-time
+- [x] Add debug info: FPS, inference time, ball coordinates
 
 #### 1.4 Implement temporal smoothing
-- Use Kalman filter or simple moving average to smooth ball position
-- Reduces jitter and false detections
+- [x] Simple moving average implemented as the first pass
+- [ ] Upgrade to Kalman filter if jitter remains high during real-device testing
+- [ ] Add basketball color/size gating to reduce false positives
 
 #### 1.5 Test checklist
-- [ ] Ball detected in video stream
-- [ ] Bounding box appears around basketball
+- [x] Ball detector code path implemented
+- [x] Bounding-box overlay implemented
+- [x] Inference-time/FPS/coordinate UI implemented
+- [ ] Ball detected in a real phone video stream
 - [ ] Detection works in various lighting (indoor/outdoor)
-- [ ] Inference speed ≥ 15 fps
-- [ ] Position jitter reduced with smoothing
+- [ ] Inference speed ≥ 15 fps on target device
+- [ ] Position jitter reduced to acceptable levels with smoothing
+- [ ] False-positive rate measured over 30+ seconds
 
 **Estimated effort:** 5–7 days  
 **Success metric:** Ball position accurate within ±10px, no false positives for 30+ seconds
@@ -328,8 +322,10 @@ export class TrajectoryTracker {
 
 ---
 
-### **PHASE 4: Integration with Existing App** (3–4 days)
+### **PHASE 4: Integration with Existing App** (Partially complete)
 **Objective:** Wire automatic detection results into the existing basketball screen.
+
+**Implementation status (2026-06-12):** ⚠️ UI/callback plumbing is in place, but real automatic shot events are pending Phase 2/3. Basketball sessions now support Manual/Auto mode switching, `AutoShotMode` receives the active logging target, and `recordShot()` accepts payload objects with optional `source`/`confidence` metadata.
 
 #### 4.1 Add callback to AutoShotMode
 ```js
@@ -352,17 +348,19 @@ export function AutoShotMode({ onRecordShot, currentZone, currentType }) {
 ```
 
 #### 4.2 Modify BasketballScreen
-- Keep existing manual mode intact
-- Add mode toggle: "Manual" / "Auto"
-- Pass `onRecordShot` callback to AutoShotMode
-- Use same `recordShot()` logic for both modes
+- [x] Keep existing manual mode intact
+- [x] Add mode toggle: "Manual" / "Auto"
+- [x] Pass `onRecordShot` callback to AutoShotMode
+- [x] Use same `recordShot()` path for manual shots and auto/test payloads
+- [ ] Wire real trajectory outcomes into `onRecordShot` once Phase 3 is complete
 
 #### 4.3 Add UI elements
-- **Mode toggle button** (top of screen)
-- **Rim calibration button** (settings)
-- **FPS counter** (debug mode only)
-- **Confidence score** on each auto-detected shot
-- **Confidence threshold slider** (allow user to filter low-confidence shots)
+- [x] **Mode toggle button** (top of active workout screen)
+- [ ] **Rim calibration button** (settings / Auto Mode panel)
+- [x] **FPS counter** (Auto Mode diagnostics)
+- [x] **Ball detection confidence + inference time** (Auto Mode diagnostics)
+- [ ] **Shot confidence score** on each auto-detected shot
+- [ ] **Confidence threshold slider** (allow user to filter low-confidence shots)
 
 #### 4.4 Add confirmations
 - Optional: show make/miss popup before logging
@@ -370,11 +368,13 @@ export function AutoShotMode({ onRecordShot, currentZone, currentType }) {
 - Show confidence level: "High", "Medium", "Low"
 
 #### 4.5 Test checklist
-- [ ] Auto mode records shots correctly
-- [ ] Stats update in real-time
-- [ ] Zone/type auto-detection or manual selection works
-- [ ] Can switch between manual and auto modes
-- [ ] Undo functionality works
+- [x] Auto Mode test buttons call `recordShot()` correctly
+- [x] Manual selected zone/type still flows into the logging target
+- [x] Can switch between manual and auto modes
+- [ ] Real auto mode records trajectory-derived shots correctly
+- [ ] Stats update in real-time from trajectory-derived shots
+- [ ] Zone/type auto-detection or manual selection works under real shot flow
+- [ ] Undo functionality works for auto-detected shots
 
 **Estimated effort:** 3–4 days  
 **Success metric:** 100+ shots logged automatically, stats match manual counting
@@ -464,13 +464,21 @@ frameCount++;
 
 ## 3. Technical Requirements
 
-### Dependencies to Add
+### Dependencies
+Current installed dependencies:
 ```json
 {
   "dependencies": {
-    "@tensorflow/tfjs": "^4.11.0",
-    "@tensorflow/tfjs-converter": "^4.11.0",
-    "@tensorflow/tfjs-backend-webgl": "^4.11.0",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow/tfjs": "^4.22.0"
+  }
+}
+```
+
+Future candidate dependencies (add only when needed):
+```json
+{
+  "dependencies": {
     "onnxruntime-web": "^1.15.0",
     "opencv.js": "^4.5.0"
   }
@@ -506,53 +514,53 @@ Or via CDN (no npm needed):
 ```
 src/
 ├── screens/
-│   ├── BasketballScreen.jsx          ← MODIFY
-│   ├── AutoShotMode.jsx              ← NEW (Phase 0)
-│   └── RimCalibrationScreen.jsx      ← NEW (Phase 2)
+│   ├── BasketballScreen.jsx          ← MODIFIED (manual/auto toggle + payload-aware recordShot)
+│   ├── AutoShotMode.jsx              ← ADDED (Phase 0/1 camera + detector UI)
+│   └── RimCalibrationScreen.jsx      ← TODO (Phase 2)
 │
 ├── lib/
-│   ├── ballDetector.js               ← NEW (Phase 1)
-│   ├── trajectoryTracker.js          ← NEW (Phase 3)
-│   ├── rimCalibration.js             ← NEW (Phase 2)
-│   └── shotEventClassifier.js        ← NEW (Phase 3)
+│   ├── ballDetector.js               ← ADDED (Phase 1 COCO-SSD baseline)
+│   ├── trajectoryTracker.js          ← TODO (Phase 3)
+│   ├── rimCalibration.js             ← TODO (Phase 2)
+│   └── shotEventClassifier.js        ← TODO (Phase 3)
 │
 └── hooks/
-    └── useAutoShotMode.js            ← NEW (Phase 0)
+    └── useAutoShotMode.js            ← ADDED (Phase 0/1 camera + detection loop)
 ```
 
 ---
 
 ## 5. Integration Hooks
 
-### Modify BasketballScreen.jsx
+### Current BasketballScreen integration
 ```js
-// Add mode state
-const [mode, setMode] = useState('manual'); // 'manual' or 'auto'
+const [shotInputMode, setShotInputMode] = useState("manual");
 
-// Pass callback to AutoShotMode
-{mode === 'auto' && (
+{shotInputMode === "auto" ? (
   <AutoShotMode
     onRecordShot={recordShot}
-    currentZone={/* user selected or auto-detected */}
-    currentType={/* user selected or auto-detected */}
+    currentZoneName={ZONES[isStructured ? currentDrill.zoneId : activeSession.currentZone]?.name}
+    currentType={isStructured ? currentDrill.type : activeSession.currentType}
+    disabled={isStructured && drillMakes >= currentDrill.targetMakes}
   />
+) : (
+  // existing manual workout UI
 )}
-
-// Add mode toggle
-<button onClick={() => setMode(mode === 'manual' ? 'auto' : 'manual')}>
-  {mode === 'manual' ? '📷 Auto Mode' : '👆 Manual Mode'}
-</button>
 ```
 
-### Existing recordShot() function
-No changes needed—both manual and auto modes call the same function:
+### Current `recordShot()` compatibility
+`recordShot()` now accepts both the legacy string input and future auto-detection payloads:
 ```js
-const recordShot = (result) => {
-  setActiveSession((previous) => {
-    // existing logic handles both sources
-  });
-};
+recordShot("make");
+
+recordShot({
+  result: "make",
+  source: "auto",
+  confidence: 0.87,
+});
 ```
+
+Structured workouts still derive `zoneId` and `type` from the active drill. Free-shoot sessions can accept payload `zoneId`/`type` overrides later when zone auto-detection exists.
 
 ---
 
@@ -586,16 +594,16 @@ const recordShot = (result) => {
 
 ## 7. Timeline Estimate
 
-| Phase | Duration | Cumulative |
-|-------|----------|-----------|
-| Phase 0: Setup | 2–3 days | 2–3 days |
-| Phase 1: Ball Detection | 5–7 days | 7–10 days |
-| Phase 2: Rim Calibration | 2–3 days | 9–13 days |
-| Phase 3: Trajectory | 4–6 days | 13–19 days |
-| Phase 4: Integration | 3–4 days | 16–23 days |
-| Phase 5: Performance | 3–5 days | 19–28 days |
-| **Total MVP** | | **3–4 weeks** |
-| Phase 6: Advanced | Ongoing | — |
+| Phase | Status | Original Duration | Notes |
+|-------|--------|-------------------|-------|
+| Phase 0: Setup | ✅ Complete for MVP | 2–3 days | Camera/video/canvas/FPS shell implemented |
+| Phase 1: Ball Detection | ⚠️ Baseline implemented; tuning pending | 5–7 days | COCO-SSD + smoothing + overlay implemented; needs real-device QA |
+| Phase 2: Rim Calibration | ⏭️ Next | 2–3 days | Add tap/drag rim marking and persistence |
+| Phase 3: Trajectory | Not started | 4–6 days | Requires rim calibration and stable ball positions |
+| Phase 4: Integration | ⚠️ Partially complete | 3–4 days | Manual/Auto toggle and test callbacks complete; real shot events pending |
+| Phase 5: Performance | Not started | 3–5 days | Optimize after Phase 2/3 produce measurable workloads |
+| **Total MVP remaining** | | **~2–3 weeks** | Assuming Phase 1 tuning + Phases 2–4 completion |
+| Phase 6: Advanced | Ongoing | — | Post-MVP enhancements |
 
 **Fast track:** Focus on Phases 0–4 first (2–3 weeks), then optimize later.
 
@@ -604,13 +612,14 @@ const recordShot = (result) => {
 ## 8. Success Metrics
 
 ### Launch Readiness (MVP)
-- ✅ Ball detected in ≥95% of frames
-- ✅ Make/miss accuracy ≥85%
-- ✅ False positive rate <5%
-- ✅ Runs at 30+ fps on target device
-- ✅ Rim calibration persists
-- ✅ Results log into existing basketball screen correctly
-- ✅ No crashes over 1-hour session
+- [ ] Ball detected in ≥95% of frames on target device
+- [ ] Make/miss accuracy ≥85%
+- [ ] False positive rate <5%
+- [ ] Runs at 30+ fps on target device, or maintains acceptable UX with throttled inference
+- [ ] Rim calibration persists
+- [x] Auto/test results can flow into existing basketball screen logic
+- [ ] Real trajectory-derived results log into existing basketball screen correctly
+- [ ] No crashes over 1-hour session
 
 ### Post-Launch Goals
 - Reach 90%+ accuracy
@@ -655,11 +664,11 @@ const recordShot = (result) => {
 
 ## 10. Next Immediate Steps
 
-1. **Today:** Create PHASE 0 screen skeleton
-2. **Tomorrow:** Get camera feed rendering
-3. **Day 3:** Integrate TensorFlow.js + COCO-SSD
-4. **Day 4:** Implement ball detection + visualization
-5. **Day 5:** Start trajectory tracker state machine
+1. **Real-device QA:** Open Auto Mode on an actual phone and record FPS, inference time, and ball-lock reliability for indoor/outdoor lighting.
+2. **Tune Phase 1:** Add confidence threshold controls and basketball-specific post-filters (orange color, size range, motion continuity) to reduce false positives.
+3. **Begin Phase 2:** Add rim calibration persistence (`rimCalibration.js`) and an in-camera tap/drag calibration UI.
+4. **Overlay Phase 2:** Draw the saved rim center/radius over the existing video canvas.
+5. **Prepare Phase 3:** Feed smoothed ball centers plus rim calibration into a `trajectoryTracker.js` state machine.
 
 ---
 
@@ -674,5 +683,5 @@ const recordShot = (result) => {
 
 ---
 
-**Status:** Planning complete, ready to begin Phase 0.  
-**Last updated:** 2026-06-10
+**Status:** Phase 0 complete; Phase 1 baseline implemented; Phase 1 real-device tuning and Phase 2 rim calibration are next.
+**Last updated:** 2026-06-12
