@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBallDetector } from "../lib/ballDetector.js";
+import { drawRimOverlay, scaleCalibration } from "../lib/rimCalibration.js";
 
 const CAMERA_CONSTRAINTS = {
   audio: false,
@@ -60,7 +61,10 @@ function drawBallOverlay(context, ball) {
   context.fillText(`Ball ${Math.round(score * 100)}%`, bbox.x + 10, Math.max(27, bbox.y - 15));
 }
 
-export function useAutoShotMode() {
+/**
+ * @param {{ rimCalibration?: import('../lib/rimCalibration.js').RimCalibration | null }} options
+ */
+export function useAutoShotMode({ rimCalibration = null } = {}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -70,6 +74,9 @@ export function useAutoShotMode() {
   const detectionInFlightRef = useRef(false);
   const lastDetectionTimeRef = useRef(0);
   const latestDetectionRef = useRef(null);
+  // Keep a ref so the animation loop always sees the latest calibration without needing to re-bind
+  const rimCalibrationRef = useRef(rimCalibration);
+
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [fps, setFps] = useState(0);
@@ -77,6 +84,11 @@ export function useAutoShotMode() {
   const [modelStatus, setModelStatus] = useState("idle");
   const [modelError, setModelError] = useState("");
   const [detection, setDetection] = useState(null);
+
+  // Keep ref in sync
+  useEffect(() => {
+    rimCalibrationRef.current = rimCalibration;
+  }, [rimCalibration]);
 
   const initDetector = useCallback(async () => {
     if (detectorRef.current.ready || modelStatus === "loading" || modelStatus === "ready") return;
@@ -161,26 +173,49 @@ export function useAutoShotMode() {
       const context = canvas.getContext("2d");
       if (context) {
         context.clearRect(0, 0, width, height);
+
+        // Draw ball bounding box
         drawBallOverlay(context, latestDetectionRef.current?.ball);
 
-        context.lineWidth = Math.max(2, width * 0.004);
-        context.strokeStyle = "rgba(255, 159, 28, 0.95)";
-        context.fillStyle = "rgba(255, 159, 28, 0.16)";
+        // Draw rim calibration overlay
+        const cal = rimCalibrationRef.current;
+        if (cal) {
+          const scaled = scaleCalibration(cal, width, height);
+          if (scaled) {
+            drawRimOverlay(context, scaled, { alpha: 0.9 });
+          }
+        } else {
+          // Show hoop guide zone if not yet calibrated
+          context.lineWidth = Math.max(2, width * 0.004);
+          context.strokeStyle = "rgba(255, 159, 28, 0.95)";
+          context.fillStyle = "rgba(255, 159, 28, 0.16)";
 
-        const guideWidth = width * 0.38;
-        const guideHeight = height * 0.28;
-        const guideX = (width - guideWidth) / 2;
-        const guideY = height * 0.12;
-        drawRoundedRect(context, guideX, guideY, guideWidth, guideHeight, 18);
-        context.fill();
-        context.stroke();
+          const guideWidth = width * 0.38;
+          const guideHeight = height * 0.28;
+          const guideX = (width - guideWidth) / 2;
+          const guideY = height * 0.12;
+          drawRoundedRect(context, guideX, guideY, guideWidth, guideHeight, 18);
+          context.fill();
+          context.stroke();
+        }
 
+        // Status text
+        const ball = latestDetectionRef.current?.ball;
         context.fillStyle = "rgba(255, 255, 255, 0.9)";
         context.font = `${Math.max(14, width * 0.026)}px system-ui, sans-serif`;
-        context.fillText("Phase 1 ball detection", 18, 32);
-        context.fillText(latestDetectionRef.current?.ball ? "Sports ball locked" : "Searching for basketball…", 18, 58);
+        context.fillText(
+          cal ? "Rim locked · Phase 2 active" : "No rim calibration — tap Calibrate Rim",
+          18,
+          32,
+        );
+        context.fillText(
+          ball ? `Ball locked @ (${Math.round(ball.center.x)}, ${Math.round(ball.center.y)})` : "Searching for basketball…",
+          18,
+          58,
+        );
       }
 
+      // FPS counter
       const sample = fpsSampleRef.current;
       sample.frames += 1;
       if (!sample.lastTime) sample.lastTime = timestamp;
@@ -195,53 +230,6 @@ export function useAutoShotMode() {
     },
     [runDetection],
   );
-  const drawOverlay = useCallback((timestamp) => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    const width = video.videoWidth || canvas.clientWidth || 640;
-    const height = video.videoHeight || canvas.clientHeight || 360;
-
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-      setVideoSize({ width, height });
-    }
-
-    const context = canvas.getContext("2d");
-    if (context) {
-      context.clearRect(0, 0, width, height);
-      context.lineWidth = Math.max(2, width * 0.004);
-      context.strokeStyle = "rgba(255, 159, 28, 0.95)";
-      context.fillStyle = "rgba(255, 159, 28, 0.16)";
-
-      const guideWidth = width * 0.38;
-      const guideHeight = height * 0.28;
-      const guideX = (width - guideWidth) / 2;
-      const guideY = height * 0.12;
-      drawRoundedRect(context, guideX, guideY, guideWidth, guideHeight, 18);
-      context.fill();
-      context.stroke();
-
-      context.fillStyle = "rgba(255, 255, 255, 0.9)";
-      context.font = `${Math.max(14, width * 0.026)}px system-ui, sans-serif`;
-      context.fillText("Phase 0 camera overlay", 18, 32);
-      context.fillText("Ball + rim detection coming next", 18, 58);
-    }
-
-    const sample = fpsSampleRef.current;
-    sample.frames += 1;
-    if (!sample.lastTime) sample.lastTime = timestamp;
-    const elapsed = timestamp - sample.lastTime;
-    if (elapsed >= 1000) {
-      setFps(Math.round((sample.frames * 1000) / elapsed));
-      sample.frames = 0;
-      sample.lastTime = timestamp;
-    }
-
-    animationFrameRef.current = requestAnimationFrame(drawOverlay);
-  }, []);
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -274,7 +262,6 @@ export function useAutoShotMode() {
       setStatus("error");
     }
   }, [drawOverlay, initDetector]);
-  }, [drawOverlay, stopCamera]);
 
   useEffect(() => stopCamera, [stopCamera]);
 
