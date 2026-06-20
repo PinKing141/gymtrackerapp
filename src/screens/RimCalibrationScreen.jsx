@@ -78,6 +78,7 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
   const { videoRef, status, error, startCamera, stopCamera, isStreaming } = useCalibrationCamera();
   const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
+  const activePointerIdRef = useRef(null);
 
   // calibration draft state
   const [phase, setPhase] = useState("idle"); // idle | tap-center | drag-radius | preview
@@ -174,19 +175,28 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
     const canvas = canvasRef.current;
     if (!canvas || !isStreaming) return;
     e.preventDefault();
+
+    if (activePointerIdRef.current !== null && activePointerIdRef.current !== e.pointerId) {
+      return;
+    }
+
+    activePointerIdRef.current = e.pointerId;
+    canvas.setPointerCapture?.(e.pointerId);
+
     const pos = eventToCanvasCoords(e, canvas);
 
     if (phase === "tap-center" || phase === "idle" || phase === "preview") {
       setCenter(pos);
       setRadius(0);
-      setDragStart(null);
+      setDragStart(pos);
       setPhase("drag-radius");
     } else if (phase === "drag-radius") {
       setDragStart(pos);
     }
-  }, [phase, center, isStreaming]);
+  }, [phase, isStreaming]);
 
   const handlePointerMove = useCallback((e) => {
+    if (activePointerIdRef.current !== e.pointerId) return;
     if (phase !== "drag-radius" || !center || !dragStart) return;
     e.preventDefault();
     const canvas = canvasRef.current;
@@ -197,8 +207,16 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
   }, [phase, center, dragStart]);
 
   const handlePointerUp = useCallback((e) => {
+    if (activePointerIdRef.current !== null && activePointerIdRef.current !== e.pointerId) return;
     if (phase !== "drag-radius") return;
     e.preventDefault();
+
+    const canvas = canvasRef.current;
+    if (canvas && e.pointerId != null && canvas.hasPointerCapture?.(e.pointerId)) {
+      canvas.releasePointerCapture?.(e.pointerId);
+    }
+
+    activePointerIdRef.current = null;
     if (radius > 10) {
       setPhase("preview");
     } else {
@@ -227,6 +245,7 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
   }, [center, radius, stopCamera, onSave]);
 
   const handleReset = () => {
+    activePointerIdRef.current = null;
     setPhase("tap-center");
     setCenter(null);
     setRadius(0);
@@ -291,9 +310,6 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          onTouchStart={handlePointerDown}
-          onTouchMove={handlePointerMove}
-          onTouchEnd={handlePointerUp}
           onContextMenu={(event) => event.preventDefault()}
           style={{
             position: "absolute",

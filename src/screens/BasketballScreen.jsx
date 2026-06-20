@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AutoShotMode } from "./AutoShotMode.jsx";
+import { ShotZoneCourtPicker } from "../components/ShotZoneCourtPicker.jsx";
 import { Icon } from "../components/icons.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -8,17 +9,57 @@ const STORAGE_KEY = "hoopTrackerProData";
 const SHOT_TYPES = ["Form", "Catch & Shoot", "Pull-Up", "Step-In", "Floater", "Layup", "Reverse", "Contact", "Free Throw"];
 
 const ZONES = {
-  PAINT: { id: "PAINT", name: "Paint / Restricted", type: "finishing" },
-  MID_LEFT: { id: "MID_LEFT", name: "Left Elbow/Wing", type: "mid" },
-  MID_RIGHT: { id: "MID_RIGHT", name: "Right Elbow/Wing", type: "mid" },
-  MID_TOP: { id: "MID_TOP", name: "Top Mid-Range", type: "mid" },
-  THREE_LEFT_CORNER: { id: "THREE_LEFT_CORNER", name: "Left Corner 3", type: "three" },
-  THREE_RIGHT_CORNER: { id: "THREE_RIGHT_CORNER", name: "Right Corner 3", type: "three" },
-  THREE_LEFT_WING: { id: "THREE_LEFT_WING", name: "Left Wing 3", type: "three" },
-  THREE_RIGHT_WING: { id: "THREE_RIGHT_WING", name: "Right Wing 3", type: "three" },
-  THREE_TOP: { id: "THREE_TOP", name: "Top of Key 3", type: "three" },
+  PAINT: { id: "PAINT", name: "Paint / Restricted (Legacy)", type: "finishing", selectable: false },
+  MID_LEFT: { id: "MID_LEFT", name: "Left Elbow/Wing (Legacy)", type: "mid", selectable: false },
+  MID_RIGHT: { id: "MID_RIGHT", name: "Right Elbow/Wing (Legacy)", type: "mid", selectable: false },
+  MID_LEFT_SHORT_CORNER: { id: "MID_LEFT_SHORT_CORNER", name: "Left Short Corner (Legacy)", type: "mid", selectable: false },
+  MID_LEFT_WING: { id: "MID_LEFT_WING", name: "Left Wing 2 (Legacy)", type: "mid", selectable: false },
+  MID_LEFT_ELBOW: { id: "MID_LEFT_ELBOW", name: "Left Elbow (Legacy)", type: "mid", selectable: false },
+  MID_RIGHT_ELBOW: { id: "MID_RIGHT_ELBOW", name: "Right Elbow (Legacy)", type: "mid", selectable: false },
+  MID_RIGHT_WING: { id: "MID_RIGHT_WING", name: "Right Wing 2 (Legacy)", type: "mid", selectable: false },
+  MID_RIGHT_SHORT_CORNER: { id: "MID_RIGHT_SHORT_CORNER", name: "Right Short Corner (Legacy)", type: "mid", selectable: false },
+  under_basket: { id: "under_basket", name: "Rim", type: "finishing" },
+  close_l: { id: "close_l", name: "Left Close", type: "finishing" },
+  close_c: { id: "close_c", name: "Close Center", type: "finishing" },
+  close_r: { id: "close_r", name: "Right Close", type: "finishing" },
+  mid_base_l: { id: "mid_base_l", name: "Left Baseline 2", type: "mid" },
+  mid_wing_l: { id: "mid_wing_l", name: "Left Wing 2", type: "mid" },
+  MID_TOP: { id: "MID_TOP", name: "Top Mid-Range (Legacy)", type: "mid", selectable: false },
+  mid_top: { id: "mid_top", name: "Top Mid-Range", type: "mid" },
+  mid_wing_r: { id: "mid_wing_r", name: "Right Wing 2", type: "mid" },
+  mid_base_r: { id: "mid_base_r", name: "Right Baseline 2", type: "mid" },
+  THREE_LEFT_CORNER: { id: "THREE_LEFT_CORNER", name: "Left Corner 3 (Legacy)", type: "three", selectable: false },
+  THREE_RIGHT_CORNER: { id: "THREE_RIGHT_CORNER", name: "Right Corner 3 (Legacy)", type: "three", selectable: false },
+  THREE_LEFT_WING: { id: "THREE_LEFT_WING", name: "Left Wing 3 (Legacy)", type: "three", selectable: false },
+  THREE_RIGHT_WING: { id: "THREE_RIGHT_WING", name: "Right Wing 3 (Legacy)", type: "three", selectable: false },
+  THREE_TOP: { id: "THREE_TOP", name: "Top of Key 3 (Legacy)", type: "three", selectable: false },
+  corner3_l: { id: "corner3_l", name: "Left Corner 3", type: "three" },
+  wing3_l: { id: "wing3_l", name: "Left Wing 3", type: "three" },
+  top3: { id: "top3", name: "Top of Key 3", type: "three" },
+  wing3_r: { id: "wing3_r", name: "Right Wing 3", type: "three" },
+  corner3_r: { id: "corner3_r", name: "Right Corner 3", type: "three" },
   FREE_THROW: { id: "FREE_THROW", name: "Free Throw Line", type: "ft" },
 };
+
+const SELECTABLE_ZONE_IDS = [
+  "under_basket",
+  "close_l",
+  "close_c",
+  "close_r",
+  "mid_base_l",
+  "mid_wing_l",
+  "mid_top",
+  "mid_wing_r",
+  "mid_base_r",
+  "corner3_l",
+  "wing3_l",
+  "top3",
+  "wing3_r",
+  "corner3_r",
+  "FREE_THROW",
+];
+
+const SELECTABLE_ZONES = SELECTABLE_ZONE_IDS.map((zoneId) => ZONES[zoneId]);
 
 const BUILT_IN_TEMPLATES = [
   { id: "free", name: "Free Shoot", desc: "Track anywhere, anytime. No targets.", isStructured: false },
@@ -28,10 +69,10 @@ const BUILT_IN_TEMPLATES = [
     desc: "For beginners or off-days (30-45 mins).",
     isStructured: true,
     drills: [
-      { name: "Form Shots", zoneId: "PAINT", type: "Form", targetMakes: 50 },
-      { name: "Left Elbow Mid", zoneId: "MID_LEFT", type: "Catch & Shoot", targetMakes: 10 },
-      { name: "Right Elbow Mid", zoneId: "MID_RIGHT", type: "Catch & Shoot", targetMakes: 10 },
-      { name: "Around the Arc", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 25 },
+      { name: "Form Shots", zoneId: "close_c", type: "Form", targetMakes: 50 },
+      { name: "Left Wing Mid", zoneId: "mid_wing_l", type: "Catch & Shoot", targetMakes: 10 },
+      { name: "Right Wing Mid", zoneId: "mid_wing_r", type: "Catch & Shoot", targetMakes: 10 },
+      { name: "Around the Arc", zoneId: "top3", type: "Catch & Shoot", targetMakes: 25 },
       { name: "Free Throws", zoneId: "FREE_THROW", type: "Free Throw", targetMakes: 20 },
     ],
   },
@@ -41,12 +82,12 @@ const BUILT_IN_TEMPLATES = [
     desc: "Your Main Workout. Finish, Mid, 3PT, FT.",
     isStructured: true,
     drills: [
-      { name: "Right Hand Finishes", zoneId: "PAINT", type: "Layup", targetMakes: 10 },
-      { name: "Left Hand Finishes", zoneId: "PAINT", type: "Layup", targetMakes: 10 },
-      { name: "Contact Finishes", zoneId: "PAINT", type: "Contact", targetMakes: 10 },
-      { name: "Left Mid-Range", zoneId: "MID_LEFT", type: "Pull-Up", targetMakes: 20 },
-      { name: "Right Mid-Range", zoneId: "MID_RIGHT", type: "Pull-Up", targetMakes: 20 },
-      { name: "Three Pointers", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 50 },
+      { name: "Rim Finishes", zoneId: "under_basket", type: "Layup", targetMakes: 10 },
+      { name: "Left Close Finishes", zoneId: "close_l", type: "Layup", targetMakes: 10 },
+      { name: "Right Close Finishes", zoneId: "close_r", type: "Contact", targetMakes: 10 },
+      { name: "Left Wing Mid-Range", zoneId: "mid_wing_l", type: "Pull-Up", targetMakes: 20 },
+      { name: "Right Wing Mid-Range", zoneId: "mid_wing_r", type: "Pull-Up", targetMakes: 20 },
+      { name: "Three Pointers", zoneId: "top3", type: "Catch & Shoot", targetMakes: 50 },
       { name: "Free Throws", zoneId: "FREE_THROW", type: "Free Throw", targetMakes: 25 },
     ],
   },
@@ -56,10 +97,10 @@ const BUILT_IN_TEMPLATES = [
     desc: "High volume perimeter shooting.",
     isStructured: true,
     drills: [
-      { name: "Form Shooting", zoneId: "PAINT", type: "Form", targetMakes: 50 },
-      { name: "Corners", zoneId: "THREE_LEFT_CORNER", type: "Catch & Shoot", targetMakes: 50 },
-      { name: "Wings", zoneId: "THREE_LEFT_WING", type: "Catch & Shoot", targetMakes: 50 },
-      { name: "Top of Key", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 25 },
+      { name: "Form Shooting", zoneId: "close_c", type: "Form", targetMakes: 50 },
+      { name: "Corners", zoneId: "corner3_l", type: "Catch & Shoot", targetMakes: 50 },
+      { name: "Wings", zoneId: "wing3_l", type: "Catch & Shoot", targetMakes: 50 },
+      { name: "Top of Key", zoneId: "top3", type: "Catch & Shoot", targetMakes: 25 },
       { name: "Free Throws", zoneId: "FREE_THROW", type: "Free Throw", targetMakes: 30 },
     ],
   },
@@ -70,9 +111,9 @@ const BUILT_IN_TEMPLATES = [
     isStructured: true,
     specialRule: "pressure",
     drills: [
-      { name: "Corner Pressure", zoneId: "THREE_RIGHT_CORNER", type: "Catch & Shoot", targetMakes: 10 },
-      { name: "Wing Pressure", zoneId: "THREE_RIGHT_WING", type: "Catch & Shoot", targetMakes: 10 },
-      { name: "Top Pressure", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 10 },
+      { name: "Corner Pressure", zoneId: "corner3_r", type: "Catch & Shoot", targetMakes: 10 },
+      { name: "Wing Pressure", zoneId: "wing3_r", type: "Catch & Shoot", targetMakes: 10 },
+      { name: "Top Pressure", zoneId: "top3", type: "Catch & Shoot", targetMakes: 10 },
     ],
   },
   {
@@ -81,10 +122,10 @@ const BUILT_IN_TEMPLATES = [
     desc: "The ultimate daily grind.",
     isStructured: true,
     drills: [
-      { name: "Phase 1: Form", zoneId: "PAINT", type: "Form", targetMakes: 50 },
-      { name: "Phase 2: Finishes", zoneId: "PAINT", type: "Layup", targetMakes: 40 },
-      { name: "Phase 3: Mid-Range", zoneId: "MID_TOP", type: "Pull-Up", targetMakes: 40 },
-      { name: "Phase 4: Threes", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 50 },
+      { name: "Phase 1: Form", zoneId: "close_c", type: "Form", targetMakes: 50 },
+      { name: "Phase 2: Finishes", zoneId: "under_basket", type: "Layup", targetMakes: 40 },
+      { name: "Phase 3: Mid-Range", zoneId: "mid_top", type: "Pull-Up", targetMakes: 40 },
+      { name: "Phase 4: Threes", zoneId: "top3", type: "Catch & Shoot", targetMakes: 50 },
       { name: "Phase 5: Free Throws", zoneId: "FREE_THROW", type: "Free Throw", targetMakes: 20 },
     ],
   },
@@ -128,6 +169,12 @@ function SelectField({ label, value, onChange, children }) {
   );
 }
 
+function ZoneOptions() {
+  return SELECTABLE_ZONES.map((zone) => (
+    <option key={zone.id} value={zone.id}>{zone.name}</option>
+  ));
+}
+
 export function BasketballScreen({ onExit }) {
   const [currentView, setCurrentView] = useState("dashboard");
   const [history, setHistory] = useState([]);
@@ -136,7 +183,7 @@ export function BasketballScreen({ onExit }) {
   const [playerName, setPlayerName] = useState("KingFizz");
   const [customName, setCustomName] = useState("My Custom Workout");
   const [shotInputMode, setShotInputMode] = useState("manual");
-  const [customDrills, setCustomDrills] = useState([{ name: "Drill 1", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 10 }]);
+  const [customDrills, setCustomDrills] = useState([{ name: "Drill 1", zoneId: "top3", type: "Catch & Shoot", targetMakes: 10 }]);
 
   useEffect(() => {
     try {
@@ -238,7 +285,7 @@ export function BasketballScreen({ onExit }) {
       currentDrillIndex: 0,
       consecutiveMisses: 0,
       shots: [],
-      currentZone: "THREE_TOP",
+      currentZone: "top3",
       currentType: "Catch & Shoot",
     });
     setCurrentView("workout");
@@ -308,7 +355,7 @@ export function BasketballScreen({ onExit }) {
     setCustomTemplates((previous) => [...previous, newTemplate]);
     setCurrentView("setup");
     setCustomName("My Custom Workout");
-    setCustomDrills([{ name: "Drill 1", zoneId: "THREE_TOP", type: "Catch & Shoot", targetMakes: 10 }]);
+    setCustomDrills([{ name: "Drill 1", zoneId: "top3", type: "Catch & Shoot", targetMakes: 10 }]);
   };
 
   const updateCustomDrill = (index, patch) => {
@@ -417,14 +464,19 @@ export function BasketballScreen({ onExit }) {
         <div key={`${drill.name}-${index}`} style={{ display: "grid", gap: 11, padding: 14, borderRadius: radii.lg, background: colors.surface, border: `1px solid ${colors.border}` }}>
           <p style={{ ...typeScale.bodySm, fontWeight: 900, margin: 0 }}>Drill {index + 1}</p>
           <input value={drill.name} onChange={(event) => updateCustomDrill(index, { name: event.target.value })} style={{ width: "100%", padding: 11, borderRadius: radii.md, border: `1px solid ${colors.border}`, background: colors.surfaceElevated, color: colors.textPrimary, fontWeight: 800 }} />
-          <SelectField label="Spot" value={drill.zoneId} onChange={(event) => updateCustomDrill(index, { zoneId: event.target.value })}>{Object.entries(ZONES).map(([key, zone]) => <option key={key} value={key}>{zone.name}</option>)}</SelectField>
+          <SelectField label="Spot" value={drill.zoneId} onChange={(event) => updateCustomDrill(index, { zoneId: event.target.value })}><ZoneOptions /></SelectField>
+          <ShotZoneCourtPicker
+            zonesById={ZONES}
+            selectedZoneId={drill.zoneId}
+            onSelectZone={(zoneId) => updateCustomDrill(index, { zoneId })}
+          />
           <div style={{ display: "flex", gap: 8 }}>
             <SelectField label="Shot" value={drill.type} onChange={(event) => updateCustomDrill(index, { type: event.target.value })}>{SHOT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</SelectField>
             <label style={{ display: "grid", gap: 6, flex: 1 }}><span style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase" }}>Makes</span><input type="number" min="1" value={drill.targetMakes} onChange={(event) => updateCustomDrill(index, { targetMakes: event.target.value })} style={{ width: "100%", padding: 12, borderRadius: radii.md, border: `1px solid ${colors.border}`, background: colors.surfaceElevated, color: colors.textPrimary, fontWeight: 800 }} /></label>
           </div>
         </div>
       ))}
-      <button onClick={() => setCustomDrills((previous) => [...previous, { name: `Drill ${previous.length + 1}`, zoneId: "PAINT", type: "Layup", targetMakes: 10 }])} style={{ padding: 14, borderRadius: radii.lg, border: `2px dashed ${colors.borderStrong}`, background: "transparent", color: colors.textSecondary, fontWeight: 900, cursor: "pointer" }}>+ Add Drill</button>
+      <button onClick={() => setCustomDrills((previous) => [...previous, { name: `Drill ${previous.length + 1}`, zoneId: "under_basket", type: "Layup", targetMakes: 10 }])} style={{ padding: 14, borderRadius: radii.lg, border: `2px dashed ${colors.borderStrong}`, background: "transparent", color: colors.textSecondary, fontWeight: 900, cursor: "pointer" }}>+ Add Drill</button>
       <button onClick={saveCustomTemplate} style={{ padding: 16, borderRadius: radii.lg, border: 0, background: "#FF7A1A", color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE PROGRAMME</button>
     </div>
   );
@@ -482,9 +534,16 @@ export function BasketballScreen({ onExit }) {
             {drillMakes >= currentDrill.targetMakes && <button onClick={advanceDrill} style={{ marginTop: 18, border: 0, borderRadius: radii.pill, padding: "14px 20px", background: colors.success, color: "#04140D", fontWeight: 950, cursor: "pointer" }}>DRILL COMPLETE ›</button>}
           </div>
         ) : (
-          <div style={{ display: "flex", gap: 10, padding: 14, borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
-            <SelectField label="Spot" value={activeSession.currentZone} onChange={(event) => setActiveSession({ ...activeSession, currentZone: event.target.value })}>{Object.entries(ZONES).map(([key, zone]) => <option key={key} value={key}>{zone.name}</option>)}</SelectField>
-            <SelectField label="Shot" value={activeSession.currentType} onChange={(event) => setActiveSession({ ...activeSession, currentType: event.target.value })}>{SHOT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</SelectField>
+          <div style={{ display: "grid", gap: 12, padding: 14, borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
+            <div style={{ display: "flex", gap: 10 }}>
+              <SelectField label="Spot" value={activeSession.currentZone} onChange={(event) => setActiveSession({ ...activeSession, currentZone: event.target.value })}><ZoneOptions /></SelectField>
+              <SelectField label="Shot" value={activeSession.currentType} onChange={(event) => setActiveSession({ ...activeSession, currentType: event.target.value })}>{SHOT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</SelectField>
+            </div>
+            <ShotZoneCourtPicker
+              zonesById={ZONES}
+              selectedZoneId={activeSession.currentZone}
+              onSelectZone={(zoneId) => setActiveSession({ ...activeSession, currentZone: zoneId })}
+            />
           </div>
         )}
 

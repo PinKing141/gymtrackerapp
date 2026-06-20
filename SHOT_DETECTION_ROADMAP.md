@@ -17,14 +17,20 @@
 - ✅ Camera feed integration via `navigator.mediaDevices.getUserMedia()`
 - ✅ Canvas overlay loop with FPS/frame-size diagnostics
 - ✅ Phase 1 baseline ball detection using TensorFlow.js COCO-SSD (`sports ball`) with temporal smoothing
-- ✅ Rim calibration UI and persistence
+- ✅ Basketball-specific Phase 1 post-filters for confidence, size, shape, orange-color bias, and motion continuity
+- ✅ Manual rim calibration UI and persistence
 - ✅ Browser-side trajectory heuristic that auto-logs make/miss events into the existing `recordShot()` path
+- ✅ Mobile calibration interaction updated to use a single press-drag gesture with long-press highlight suppression
+- ✅ Hybrid rim re-lock around the saved hoop calibration
+- ✅ In-app QA metrics and export path for real phone testing
 
 ### Missing / Not Yet Production-Ready
 - ⚠️ Ball detection needs real-device tuning, lighting tests, and false-positive filtering
+- ⚠️ Rim position still starts from manual calibration, not full automatic rim detection from the camera feed
 - ⚠️ Trajectory classification is heuristic-based and still needs on-court tuning
 - ⚠️ Missed detections and edge cases still need device validation
 - ❌ Custom basketball-specific model upgrade (YOLO/ONNX or equivalent)
+- ❌ Full automatic rim detection without an initial manual lock
 - ❌ Fully validated production-ready accuracy across different courts and angles
 
 ### Architecture
@@ -39,7 +45,7 @@ Frame Processing (TensorFlow.js / ONNX)           ✅ TensorFlow.js baseline imp
     ↓
 Ball Detection (COCO-SSD now → YOLO later)        ✅ baseline implemented in ballDetector.js
     ↓
-Rim Calibration (user marks once)                 ✅ implemented in rimCalibration.js + RimCalibrationScreen.jsx
+Rim Calibration (user marks once)                 ✅ manual calibration implemented in rimCalibration.js + RimCalibrationScreen.jsx
     ↓
 Trajectory Tracking (state machine + smoothing)   ✅ baseline implemented in shotTracker.js
     ↓
@@ -97,7 +103,7 @@ npm install --save onnxruntime-web opencv.js
 ### **PHASE 1: Ball Detection** (In progress — baseline implemented)
 **Objective:** Reliably detect the basketball in every frame.
 
-**Implementation status (2026-06-12):** ⚠️ Baseline complete, production tuning pending. `src/lib/ballDetector.js` lazy-loads TensorFlow.js + COCO-SSD, filters predictions to `sports ball`, smooths position over recent detections, and exposes inference timing. `useAutoShotMode.js` runs throttled live inference and draws bounding boxes/center markers.
+**Implementation status (2026-06-20):** ⚠️ Strong baseline complete, production tuning pending. `src/lib/ballDetector.js` now lazy-loads TensorFlow.js + COCO-SSD, filters predictions to `sports ball`, applies basketball-specific post-filters (score, size, shape, color bias, motion continuity), smooths position over recent detections, and exposes inference timing/debug info. `useAutoShotMode.js` runs throttled live inference and Auto Mode now exposes detector and shot-log confidence controls.
 
 #### 1.1 Choose detection model
 **Option A: YOLOv8-nano** (recommended for web)
@@ -130,7 +136,7 @@ npm install --save onnxruntime-web opencv.js
 #### 1.4 Implement temporal smoothing
 - [x] Simple moving average implemented as the first pass
 - [ ] Upgrade to Kalman filter if jitter remains high during real-device testing
-- [ ] Add basketball color/size gating to reduce false positives
+- [x] Add basketball color/size gating to reduce false positives
 
 #### 1.5 Test checklist
 - [x] Ball detector code path implemented
@@ -149,6 +155,8 @@ npm install --save onnxruntime-web opencv.js
 
 ### **PHASE 2: Rim Calibration** (2–3 days)
 **Objective:** Let user mark the rim once, use it for all shots.
+
+**Implementation status (2026-06-20):** ✅ Baseline complete. The app now provides a full-screen calibration flow in `RimCalibrationScreen.jsx`, stores the selected rim center/radius in local storage, reuses it in Auto Mode, and supports a mobile-friendly single press-drag gesture. This is manual calibration only; automatic rim detection is still out of scope for this phase.
 
 #### 2.1 Rim calibration UI
 - **File:** `src/screens/RimCalibrationScreen.jsx`
@@ -177,10 +185,12 @@ useEffect(() => {
 - Show calibration confidence warning if stale (>30 days)
 
 #### 2.4 Test checklist
-- [ ] User can tap to mark rim
-- [ ] Calibration persists across sessions
-- [ ] Rim position drawn accurately on video
-- [ ] Can recalibrate without breaking existing sessions
+- [x] User can mark rim center and drag to set radius
+- [x] Calibration persists across sessions
+- [x] Rim position is drawn back onto the video overlay
+- [x] Can recalibrate without breaking existing sessions
+- [x] Long-press highlight/callout suppressed for phone interaction
+- [ ] Real-device validation across different phones/orientations
 
 **Estimated effort:** 2–3 days  
 **Success metric:** Rim marked once, reused for 50+ shots without drift
@@ -190,8 +200,12 @@ useEffect(() => {
 ### **PHASE 3: Trajectory Tracking** (4–6 days)
 **Objective:** Track ball movement frame-by-frame and detect shot phases.
 
+**Implementation status (2026-06-20):** ⚠️ Baseline complete, tuning pending. The production tracker currently lives in `src/lib/shotTracker.js` and uses a lightweight heuristic state machine (`idle` → `armed` → event) rather than the fuller class sketch below.
+
 #### 3.1 Ball trajectory state machine
-- **File:** `src/lib/trajectoryTracker.js`
+- **Current file:** `src/lib/shotTracker.js`
+- **Current live states:** `idle` and `armed`
+- **Note:** The design sketch below is still useful as a future refinement path, but it does not exactly match the code currently shipped in the app.
 
 States:
 ```
@@ -301,9 +315,9 @@ export class TrajectoryTracker {
 ```
 
 #### 3.3 Visualization
-- Draw ball trajectory on canvas (last 10 frames as a fading trail)
-- Highlight rim zone with circle
-- Show state indicator: "IDLE", "DESCENDING", "MAKE!", "MISS!"
+- [x] Draw ball trajectory on canvas (last 10 frames as a fading trail)
+- [x] Highlight rim zone with calibrated overlay
+- [x] Show live diagnostics for tracker readiness / last shot result
 
 #### 3.4 Fine-tune thresholds
 - Rim zone size (currently 1.5x radius)
@@ -312,9 +326,9 @@ export class TrajectoryTracker {
 - Test with various shooting styles
 
 #### 3.5 Test checklist
-- [ ] State machine transitions correctly
-- [ ] Correctly identifies start of shot
-- [ ] Detects rim entry
+- [x] State machine emits real make/miss events into the app
+- [ ] Correctly identifies start of shot under real play conditions
+- [ ] Detects rim crossing consistently on real video
 - [ ] Classifies make/miss with ≥80% accuracy
 - [ ] No false positives (accidental makes/misses)
 
@@ -326,7 +340,7 @@ export class TrajectoryTracker {
 ### **PHASE 4: Integration with Existing App** (Partially complete)
 **Objective:** Wire automatic detection results into the existing basketball screen.
 
-**Implementation status (2026-06-12):** ⚠️ UI/callback plumbing is in place, but real automatic shot events are pending Phase 2/3. Basketball sessions now support Manual/Auto mode switching, `AutoShotMode` receives the active logging target, and `recordShot()` accepts payload objects with optional `source`/`confidence` metadata.
+**Implementation status (2026-06-20):** ✅ Baseline complete. Basketball sessions support Manual/Auto mode switching, `AutoShotMode` receives the active logging target, `useAutoShotMode` emits real automatic shot events from `shotTracker.js`, and `recordShot()` now logs those events with `source`/`confidence` metadata.
 
 #### 4.1 Add callback to AutoShotMode
 ```js
@@ -352,16 +366,18 @@ export function AutoShotMode({ onRecordShot, currentZone, currentType }) {
 - [x] Keep existing manual mode intact
 - [x] Add mode toggle: "Manual" / "Auto"
 - [x] Pass `onRecordShot` callback to AutoShotMode
-- [x] Use same `recordShot()` path for manual shots and auto/test payloads
-- [ ] Wire real trajectory outcomes into `onRecordShot` once Phase 3 is complete
+- [x] Use same `recordShot()` path for manual shots and auto payloads
+- [x] Wire real trajectory outcomes into `onRecordShot`
 
 #### 4.3 Add UI elements
 - [x] **Mode toggle button** (top of active workout screen)
-- [ ] **Rim calibration button** (settings / Auto Mode panel)
+- [x] **Rim calibration button** (settings / Auto Mode panel)
 - [x] **FPS counter** (Auto Mode diagnostics)
 - [x] **Ball detection confidence + inference time** (Auto Mode diagnostics)
-- [ ] **Shot confidence score** on each auto-detected shot
-- [ ] **Confidence threshold slider** (allow user to filter low-confidence shots)
+- [x] **Shot confidence score** in Auto Mode feedback card
+- [x] **Confidence threshold slider** (allow user to filter low-confidence shots)
+- [x] **QA report export** for real-device testing
+- [x] **Auto rim re-lock status/toggle** in Auto Mode panel
 
 #### 4.4 Add confirmations
 - Optional: show make/miss popup before logging
@@ -369,11 +385,11 @@ export function AutoShotMode({ onRecordShot, currentZone, currentType }) {
 - Show confidence level: "High", "Medium", "Low"
 
 #### 4.5 Test checklist
-- [x] Auto Mode test buttons call `recordShot()` correctly
+- [x] Auto Mode sends real detected events into `recordShot()`
 - [x] Manual selected zone/type still flows into the logging target
 - [x] Can switch between manual and auto modes
-- [ ] Real auto mode records trajectory-derived shots correctly
-- [ ] Stats update in real-time from trajectory-derived shots
+- [x] Real auto mode records trajectory-derived shots through the normal logging path
+- [x] Stats update in real-time from trajectory-derived shots
 - [ ] Zone/type auto-detection or manual selection works under real shot flow
 - [ ] Undo functionality works for auto-detected shots
 
@@ -517,8 +533,16 @@ src/
 ├── screens/
 │   ├── BasketballScreen.jsx          ← MODIFIED (manual/auto toggle + payload-aware recordShot)
 │   ├── AutoShotMode.jsx              ← ADDED (Phase 0/1 camera + detector UI)
-│   └── RimCalibrationScreen.jsx      ← TODO (Phase 2)
+│   └── RimCalibrationScreen.jsx      ← ADDED (manual rim calibration flow)
+├── hooks/
+│   └── useAutoShotMode.js            ← ADDED (camera, inference, tracker orchestration)
+└── lib/
+  ├── ballDetector.js               ← ADDED (COCO-SSD basketball detection baseline)
+  ├── rimCalibration.js             ← ADDED (save/load/scale/draw rim calibration)
+  └── shotTracker.js                ← ADDED (heuristic make/miss tracker)
 │
+
+Legacy reference assets were moved out of the repo root into `ai/reference-python-detector/`.
 ├── lib/
 │   ├── ballDetector.js               ← ADDED (Phase 1 COCO-SSD baseline)
 │   ├── trajectoryTracker.js          ← TODO (Phase 3)
@@ -665,11 +689,11 @@ Structured workouts still derive `zoneId` and `type` from the active drill. Free
 
 ## 10. Next Immediate Steps
 
-1. **Real-device QA:** Open Auto Mode on an actual phone and record FPS, inference time, and ball-lock reliability for indoor/outdoor lighting.
-2. **Tune Phase 1:** Add confidence threshold controls and basketball-specific post-filters (orange color, size range, motion continuity) to reduce false positives.
-3. **Begin Phase 2:** Add rim calibration persistence (`rimCalibration.js`) and an in-camera tap/drag calibration UI.
-4. **Overlay Phase 2:** Draw the saved rim center/radius over the existing video canvas.
-5. **Prepare Phase 3:** Feed smoothed ball centers plus rim calibration into a `trajectoryTracker.js` state machine.
+1. **Run real phone QA:** Use the in-app QA panel and Export QA Report button after indoor and outdoor sessions.
+2. **Tune Phase 3:** Adjust shot-event thresholds using real make/miss samples to reduce false positives and missed logs.
+3. **Stress-test hybrid re-lock:** Confirm the rim stays centered after small camera bumps and recalibrate after larger camera moves.
+4. **Performance pass:** Reduce bundle/runtime cost and test sustained sessions on actual devices.
+5. **Model upgrade decision:** Decide whether the next step is more heuristic tuning or a basketball-specific YOLO/ONNX model.
 
 ---
 
@@ -684,5 +708,5 @@ Structured workouts still derive `zoneId` and `type` from the active drill. Free
 
 ---
 
-**Status:** Phase 0 complete; Phase 1 baseline implemented; Phase 1 real-device tuning and Phase 2 rim calibration are next.
-**Last updated:** 2026-06-12
+**Status:** Phases 0, 2, and 4 baseline-complete; Phase 1 stronger baseline implemented; Phase 3 baseline implemented; real-device QA, tuning, and performance work remain.
+**Last updated:** 2026-06-20

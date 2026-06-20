@@ -22,6 +22,8 @@ Notes:
 
 1. Auto logging depends on good lighting, a stable phone angle, and a correct rim calibration.
 2. If auto detection misses a rep, the manual make/miss buttons still work as an override.
+3. Full usage guide: [AUTO_SHOT_INSTRUCTION_MANUAL.md](AUTO_SHOT_INSTRUCTION_MANUAL.md)
+4. System overview and AI internals: [AI_INFORMATION_MANUAL.md](AI_INFORMATION_MANUAL.md)
 
 ## Local setup
 
