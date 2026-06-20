@@ -9,18 +9,20 @@ The basketball tracker now has a browser-based auto mode that runs entirely insi
 1. Open a basketball workout.
 2. Switch to `Auto Mode`.
 3. Start the camera.
-4. Calibrate the rim once.
+4. Let the app auto-detect the rim, or manually calibrate it if needed.
 5. The app will log detected makes and misses into the active workout automatically.
 
 Current implementation layout:
 
 1. Live browser detector and tracking logic: `src/hooks/useAutoShotMode.js`, `src/lib/ballDetector.js`, `src/lib/shotTracker.js`, `src/lib/rimCalibration.js`
+1.5. Automatic rim finding and re-lock: `src/lib/rimDetector.js`, `src/lib/rimRelock.js`
 2. Auto mode UI: `src/screens/AutoShotMode.jsx`, `src/screens/RimCalibrationScreen.jsx`
 3. Legacy Python YOLO prototype and training assets: `ai/reference-python-detector/`
 
 Notes:
 
 1. Auto logging depends on good lighting, a stable phone angle, and a correct rim calibration.
+1. Auto logging now attempts automatic rim detection first, but manual calibration is still the fallback if the hoop is not found reliably.
 2. If auto detection misses a rep, the manual make/miss buttons still work as an override.
 3. Full usage guide: [AUTO_SHOT_INSTRUCTION_MANUAL.md](AUTO_SHOT_INSTRUCTION_MANUAL.md)
 4. System overview and AI internals: [AI_INFORMATION_MANUAL.md](AI_INFORMATION_MANUAL.md)

@@ -39,9 +39,11 @@ The live browser path is:
 1. `src/screens/AutoShotMode.jsx`
 2. `src/hooks/useAutoShotMode.js`
 3. `src/lib/ballDetector.js`
-4. `src/lib/rimCalibration.js`
-5. `src/lib/rimRelock.js`
-6. `src/lib/shotTracker.js`
+4. `src/lib/rimDetector.js`
+5. `src/lib/rimCalibration.js`
+6. `src/lib/rimRelock.js`
+7. `src/lib/shotTracker.js`
+8. `src/lib/autoShotPresets.js`
 
 The older Python reference prototype lives in:
 
@@ -69,13 +71,18 @@ These filters reduce false positives from unrelated round objects.
 
 ### 3. Rim reference
 
-The hoop is not fully auto-detected from scratch yet.
+The app now has two rim-entry paths:
+
+1. automatic rim detection from the live frame,
+2. manual calibration fallback.
 
 Current rim flow:
 
-1. user manually calibrates the rim,
-2. the app stores rim center and radius,
-3. optional hybrid re-lock nudges that saved rim position after small camera drift.
+1. the app tries to detect a stable hoop candidate automatically,
+2. if a hoop is locked, that becomes the live rim reference,
+3. if needed, the user can still calibrate the rim manually,
+4. optional hybrid re-lock nudges the saved or detected rim position after small camera drift,
+5. the user can force manual-only behavior through the Rim Source setting.
 
 ### 4. Shot tracking
 
@@ -83,7 +90,8 @@ The tracker stores recent ball samples and watches for:
 
 1. upward motion into the shot zone,
 2. downward crossing near the rim,
-3. path geometry that suggests make or miss.
+3. short sequence features like exit depth, apex height, descent continuity, and below-rim follow-through,
+4. path geometry that suggests make or miss.
 
 ### 5. Shot logging
 
@@ -110,6 +118,14 @@ Responsible for:
 3. scaling calibration to current video size,
 4. drawing the rim overlay.
 
+### `src/lib/rimDetector.js`
+
+Responsible for:
+
+1. scanning the full frame for a hoop-like orange structure,
+2. stabilizing detections across frames,
+3. creating a usable rim calibration without manual input.
+
 ### `src/lib/rimRelock.js`
 
 Responsible for:
@@ -118,7 +134,7 @@ Responsible for:
 2. using orange rim pixels to correct small drift,
 3. returning a refined rim position with confidence.
 
-This is a hybrid assist, not full hoop detection.
+This is a hybrid assist layered on top of full automatic rim finding.
 
 ### `src/lib/shotTracker.js`
 
@@ -126,7 +142,7 @@ Responsible for:
 
 1. storing recent ball positions,
 2. tracking a shot attempt state,
-3. estimating whether the shot was a make or miss,
+3. classifying whether the shot was a make or miss from a short motion sequence,
 4. returning confidence for the event.
 
 ### `src/hooks/useAutoShotMode.js`
@@ -136,9 +152,10 @@ Responsible for:
 1. coordinating the camera,
 2. running the detector at intervals,
 3. drawing overlays,
-4. running hybrid rim re-lock,
-5. collecting QA metrics,
-6. suppressing low-confidence shot logs.
+4. running automatic rim detection,
+5. running hybrid rim re-lock,
+6. collecting QA metrics,
+7. suppressing low-confidence shot logs.
 
 ### `src/screens/AutoShotMode.jsx`
 
@@ -147,8 +164,17 @@ Responsible for:
 1. the user-facing Auto Mode UI,
 2. detector tuning controls,
 3. rim calibration entry points,
-4. QA report export,
-5. displaying tracker and logging status.
+4. preset selection and recommendation,
+5. QA report export,
+6. displaying tracker and logging status.
+
+### `src/lib/autoShotPresets.js`
+
+Responsible for:
+
+1. defining indoor, outdoor, low-light, and older-phone presets,
+2. recommending a preset from brightness and live performance,
+3. centralizing device/environment tuning settings.
 
 ## Current User Controls
 
@@ -160,6 +186,8 @@ The app currently exposes these controls in Auto Mode:
 4. rim calibration,
 5. hybrid rim re-lock toggle,
 6. QA report export.
+7. full-rim AI status,
+8. environment/device presets.
 
 ## QA Metrics
 
@@ -171,7 +199,8 @@ The built-in QA panel tracks:
 4. logged shots,
 5. suppressed shots,
 6. rim re-lock count,
-7. test duration.
+7. automatic rim locks,
+8. test duration.
 
 The exported JSON report is intended for real phone testing and threshold tuning.
 
@@ -180,14 +209,15 @@ The exported JSON report is intended for real phone testing and threshold tuning
 1. runs fully in-browser,
 2. supports manual rim calibration,
 3. supports live ball overlays,
-4. logs make/miss events into the existing workout flow,
-5. gives phone QA data without extra tooling,
-6. allows confidence tuning for detection and logging.
+4. can automatically find the rim without manual setup in many cases,
+5. logs make/miss events into the existing workout flow,
+6. gives phone QA data without extra tooling,
+7. allows confidence tuning and preset-based tuning for detection and logging.
 
 ## Current Limitations
 
-1. No full automatic rim detection from a cold start.
-2. Make/miss logic is still heuristic-based.
+1. Full automatic rim detection is now implemented, but still needs more field validation.
+2. Make/miss logic is stronger but still partly heuristic-based.
 3. Performance and accuracy still depend heavily on lighting and framing.
 4. Zone auto-detection is not implemented.
 5. Shot type classification is not implemented.
@@ -205,18 +235,31 @@ The app uses the saved rim and slightly corrects it after small camera drift.
 
 ### Full rim detection
 
-The app would find the hoop automatically without any saved manual reference.
+The app finds the hoop automatically without requiring a saved manual reference first.
 
-That third stage is not implemented yet.
+That stage is now implemented, but it still needs more real-court validation.
+
+## Rim Source Modes
+
+The app now exposes three rim source behaviors:
+
+1. `Hybrid`
+	Auto rim finding can create a lock, but manual calibration remains available as fallback.
+2. `Manual`
+	Manual calibration becomes the authoritative rim source and the auto rim detector will not replace it.
+3. `Auto`
+	The system relies on automatic rim finding as the primary rim source.
 
 ## Recommended Testing Workflow
 
-1. Calibrate the rim.
-2. Start with stationary phone placement.
-3. Test 10 to 15 shots from one spot.
-4. Export a QA report.
-5. Adjust detector and shot-log thresholds.
-6. Repeat under different lighting conditions.
+1. Start with the `Auto` preset.
+2. Let the app attempt automatic rim detection.
+3. If needed, calibrate the rim manually.
+4. Start with stationary phone placement.
+5. Test 10 to 15 shots from one spot.
+6. Export a QA report.
+7. Adjust detector and shot-log thresholds or switch presets.
+8. Repeat under different lighting conditions.
 
 ## Roadmap Status Summary
 
@@ -224,8 +267,8 @@ Current practical status:
 
 1. Phase 0 is complete.
 2. Phase 1 has a strong baseline implementation.
-3. Phase 2 is complete as manual calibration.
-4. Phase 3 has a baseline heuristic implementation.
+3. Phase 2 now includes both manual calibration and automatic rim finding.
+4. Phase 3 has a stronger sequence-based baseline implementation.
 5. Phase 4 integration is complete.
 6. Phase 5 and Phase 6 are not complete.
 

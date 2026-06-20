@@ -2,6 +2,7 @@ const MAX_HISTORY = 20;
 const SAMPLE_EXPIRY_MS = 2200;
 const SHOT_COOLDOWN_MS = 1400;
 const MIN_TRACKING_SAMPLES = 6;
+const MIN_SEQUENCE_SAMPLES = 8;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -64,6 +65,80 @@ function getNearestApproach(samples, rimCenter) {
     }
     return best;
   }, null);
+}
+
+function getCrossingIndex(samples, rimY) {
+  for (let index = 1; index < samples.length; index += 1) {
+    if (samples[index - 1].y <= rimY && samples[index].y >= rimY) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function countDescendingSamples(samples) {
+  let count = 0;
+  for (let index = 1; index < samples.length; index += 1) {
+    if (samples[index].y > samples[index - 1].y) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function getSequenceStats(samples, rimCenter, rimRadius) {
+  const crossingIndex = getCrossingIndex(samples, rimCenter.y);
+  const afterCrossing = crossingIndex >= 0 ? samples.slice(crossingIndex) : [];
+  const beforeCrossing = crossingIndex >= 0 ? samples.slice(0, crossingIndex) : samples;
+  const minY = Math.min(...samples.map((sample) => sample.y));
+  const maxY = Math.max(...samples.map((sample) => sample.y));
+
+  return {
+    crossingIndex,
+    apexHeight: rimCenter.y - minY,
+    exitDepth: maxY - rimCenter.y,
+    aboveSamples: beforeCrossing.filter((sample) => sample.y < rimCenter.y - (rimRadius * 0.35)).length,
+    belowSamples: afterCrossing.filter((sample) => sample.y > rimCenter.y + (rimRadius * 0.55)).length,
+    descendingSamples: countDescendingSamples(afterCrossing),
+  };
+}
+
+function classifyShotSequence({ crossingPoint, nearestApproach, sequenceStats, rimCenter, rimRadius, averageRadius }) {
+  const horizontalOffset = Math.abs(crossingPoint.x - rimCenter.x);
+  const crossingScore = 1 - clamp(horizontalOffset / (rimRadius * 1.45), 0, 1);
+  const approachScore = 1 - clamp(nearestApproach.distance / (rimRadius * 2.15), 0, 1);
+  const exitScore = clamp(sequenceStats.exitDepth / (rimRadius * 1.6), 0, 1);
+  const apexScore = clamp(sequenceStats.apexHeight / (rimRadius * 2.8), 0, 1);
+  const descentScore = clamp(sequenceStats.descendingSamples / 3, 0, 1);
+  const belowScore = clamp(sequenceStats.belowSamples / 3, 0, 1);
+  const sizeScore = clamp(averageRadius / Math.max(1, rimRadius * 0.35), 0.3, 1);
+
+  const makeEvidence = (
+    (crossingScore * 0.28) +
+    (approachScore * 0.2) +
+    (exitScore * 0.2) +
+    (descentScore * 0.14) +
+    (belowScore * 0.1) +
+    (apexScore * 0.04) +
+    (sizeScore * 0.04)
+  );
+
+  const missEvidence = (
+    (clamp(horizontalOffset / (rimRadius * 1.1), 0, 1) * 0.42) +
+    ((1 - exitScore) * 0.18) +
+    ((1 - descentScore) * 0.18) +
+    ((sequenceStats.belowSamples < 2 ? 1 : 0) * 0.12) +
+    ((sequenceStats.aboveSamples < 2 ? 1 : 0) * 0.1)
+  );
+
+  const isMake = makeEvidence >= missEvidence;
+  return {
+    result: isMake ? "make" : "miss",
+    confidence: Number((isMake ? makeEvidence : missEvidence).toFixed(2)),
+    makeEvidence: Number(makeEvidence.toFixed(2)),
+    missEvidence: Number(missEvidence.toFixed(2)),
+    horizontalOffset,
+  };
 }
 
 function getConfidence({ crossingPoint, nearestApproach, rimRadius, averageRadius }) {
@@ -183,8 +258,9 @@ export function createShotTracker() {
 
       const crossingPoint = getCrossingPoint(state.samples, rimCenter.y);
       const nearestApproach = getNearestApproach(state.samples, rimCenter);
+      const sequenceStats = getSequenceStats(state.samples, rimCenter, rimRadius);
 
-      if (!crossingPoint || !nearestApproach) {
+      if (!crossingPoint || !nearestApproach || sequenceStats.crossingIndex < 0 || state.samples.length < MIN_SEQUENCE_SAMPLES) {
         resetAttempt();
         return null;
       }
@@ -194,27 +270,38 @@ export function createShotTracker() {
         rimCenter,
       };
       const averageRadius = getAverageRadius(state.samples);
-      const horizontalOffset = Math.abs(crossingPoint.x - rimCenter.x);
-      const makeWindow = rimRadius * 0.95;
-      const softWindow = rimRadius * 1.25;
-      const isMake = horizontalOffset <= makeWindow || (
-        horizontalOffset <= softWindow && nearestApproach.distance <= rimRadius * 1.15
-      );
+      const classification = classifyShotSequence({
+        crossingPoint,
+        nearestApproach,
+        sequenceStats,
+        rimCenter,
+        rimRadius,
+        averageRadius,
+      });
 
       const event = {
-        result: isMake ? "make" : "miss",
-        confidence: getConfidence({
-          crossingPoint,
-          nearestApproach: nearestWithCenter,
-          rimRadius,
-          averageRadius,
-        }),
+        result: classification.result,
+        confidence: Math.max(
+          classification.confidence,
+          getConfidence({
+            crossingPoint,
+            nearestApproach: nearestWithCenter,
+            rimRadius,
+            averageRadius,
+          }),
+        ),
         timestamp: latest.timestamp,
         details: {
           crossingX: Math.round(crossingPoint.x),
           rimX: Math.round(rimCenter.x),
           nearestDistance: Math.round(nearestApproach.distance),
           averageRadius: Number(averageRadius.toFixed(1)),
+          exitDepth: Math.round(sequenceStats.exitDepth),
+          apexHeight: Math.round(sequenceStats.apexHeight),
+          aboveSamples: sequenceStats.aboveSamples,
+          belowSamples: sequenceStats.belowSamples,
+          makeEvidence: classification.makeEvidence,
+          missEvidence: classification.missEvidence,
         },
       };
 

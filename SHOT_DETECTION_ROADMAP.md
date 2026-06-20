@@ -18,19 +18,21 @@
 - ✅ Canvas overlay loop with FPS/frame-size diagnostics
 - ✅ Phase 1 baseline ball detection using TensorFlow.js COCO-SSD (`sports ball`) with temporal smoothing
 - ✅ Basketball-specific Phase 1 post-filters for confidence, size, shape, orange-color bias, and motion continuity
+- ✅ Automatic rim detection from the live camera feed
 - ✅ Manual rim calibration UI and persistence
-- ✅ Browser-side trajectory heuristic that auto-logs make/miss events into the existing `recordShot()` path
+- ✅ Rim source mode allows manual-only, hybrid, or auto-only rim locking
+- ✅ Stronger short-sequence make/miss classification that auto-logs into the existing `recordShot()` path
 - ✅ Mobile calibration interaction updated to use a single press-drag gesture with long-press highlight suppression
 - ✅ Hybrid rim re-lock around the saved hoop calibration
 - ✅ In-app QA metrics and export path for real phone testing
+- ✅ Indoor, outdoor, low-light, and older-phone tuning presets with auto recommendation
 
 ### Missing / Not Yet Production-Ready
 - ⚠️ Ball detection needs real-device tuning, lighting tests, and false-positive filtering
-- ⚠️ Rim position still starts from manual calibration, not full automatic rim detection from the camera feed
-- ⚠️ Trajectory classification is heuristic-based and still needs on-court tuning
+- ⚠️ Automatic rim detection still needs real-court validation and fallback tuning
+- ⚠️ Make/miss classification is stronger but still needs on-court tuning
 - ⚠️ Missed detections and edge cases still need device validation
 - ❌ Custom basketball-specific model upgrade (YOLO/ONNX or equivalent)
-- ❌ Full automatic rim detection without an initial manual lock
 - ❌ Fully validated production-ready accuracy across different courts and angles
 
 ### Architecture
@@ -45,11 +47,13 @@ Frame Processing (TensorFlow.js / ONNX)           ✅ TensorFlow.js baseline imp
     ↓
 Ball Detection (COCO-SSD now → YOLO later)        ✅ baseline implemented in ballDetector.js
     ↓
-Rim Calibration (user marks once)                 ✅ manual calibration implemented in rimCalibration.js + RimCalibrationScreen.jsx
+Automatic Rim Detection                           ✅ baseline implemented in rimDetector.js
+  ↓
+Rim Calibration (manual fallback)                ✅ manual calibration implemented in rimCalibration.js + RimCalibrationScreen.jsx
     ↓
-Trajectory Tracking (state machine + smoothing)   ✅ baseline implemented in shotTracker.js
+Trajectory Tracking (state machine + smoothing)   ✅ stronger baseline implemented in shotTracker.js
     ↓
-Shot Event Detection (make/miss classifier)       ✅ heuristic baseline implemented in shotTracker.js
+Shot Event Detection (make/miss classifier)       ✅ stronger sequence-based baseline implemented in shotTracker.js
     ↓
 recordShot() → Existing BasketballScreen logic    ✅ live auto events wired through AutoShotMode/useAutoShotMode
     ↓
@@ -156,7 +160,7 @@ npm install --save onnxruntime-web opencv.js
 ### **PHASE 2: Rim Calibration** (2–3 days)
 **Objective:** Let user mark the rim once, use it for all shots.
 
-**Implementation status (2026-06-20):** ✅ Baseline complete. The app now provides a full-screen calibration flow in `RimCalibrationScreen.jsx`, stores the selected rim center/radius in local storage, reuses it in Auto Mode, and supports a mobile-friendly single press-drag gesture. This is manual calibration only; automatic rim detection is still out of scope for this phase.
+**Implementation status (2026-06-20):** ✅ Baseline complete. The app now provides full automatic rim detection in `rimDetector.js`, keeps manual calibration in `RimCalibrationScreen.jsx` as the fallback path, stores rim center/radius in local storage, supports a mobile-friendly single press-drag gesture, and lets the user choose manual-only, hybrid, or auto-only rim sourcing.
 
 #### 2.1 Rim calibration UI
 - **File:** `src/screens/RimCalibrationScreen.jsx`
@@ -201,6 +205,7 @@ useEffect(() => {
 **Objective:** Track ball movement frame-by-frame and detect shot phases.
 
 **Implementation status (2026-06-20):** ⚠️ Baseline complete, tuning pending. The production tracker currently lives in `src/lib/shotTracker.js` and uses a lightweight heuristic state machine (`idle` → `armed` → event) rather than the fuller class sketch below.
+**Implementation update:** The shipped tracker now also scores a short shot sequence using crossing position, apex height, exit depth, below-rim follow-through, and descent continuity before logging makes and misses.
 
 #### 3.1 Ball trajectory state machine
 - **Current file:** `src/lib/shotTracker.js`
@@ -378,6 +383,8 @@ export function AutoShotMode({ onRecordShot, currentZone, currentType }) {
 - [x] **Confidence threshold slider** (allow user to filter low-confidence shots)
 - [x] **QA report export** for real-device testing
 - [x] **Auto rim re-lock status/toggle** in Auto Mode panel
+- [x] **Preset selector and recommendation** for indoor/outdoor/low-light/older-phone conditions
+- [x] **Automatic rim-detection status** in Auto Mode panel
 
 #### 4.4 Add confirmations
 - Optional: show make/miss popup before logging
@@ -690,8 +697,8 @@ Structured workouts still derive `zoneId` and `type` from the active drill. Free
 ## 10. Next Immediate Steps
 
 1. **Run real phone QA:** Use the in-app QA panel and Export QA Report button after indoor and outdoor sessions.
-2. **Tune Phase 3:** Adjust shot-event thresholds using real make/miss samples to reduce false positives and missed logs.
-3. **Stress-test hybrid re-lock:** Confirm the rim stays centered after small camera bumps and recalibrate after larger camera moves.
+2. **Validate auto rim detection:** Measure how often the hoop auto-locks without manual calibration across different courts.
+3. **Tune Phase 3:** Adjust shot-event thresholds using real make/miss samples to reduce false positives and missed logs.
 4. **Performance pass:** Reduce bundle/runtime cost and test sustained sessions on actual devices.
 5. **Model upgrade decision:** Decide whether the next step is more heuristic tuning or a basketball-specific YOLO/ONNX model.
 
@@ -708,5 +715,5 @@ Structured workouts still derive `zoneId` and `type` from the active drill. Free
 
 ---
 
-**Status:** Phases 0, 2, and 4 baseline-complete; Phase 1 stronger baseline implemented; Phase 3 baseline implemented; real-device QA, tuning, and performance work remain.
+**Status:** Phases 0, 2, and 4 baseline-complete; Phase 1 stronger baseline implemented; Phase 3 stronger sequence-based baseline implemented; automatic rim detection and device presets are now in place; real-device QA, tuning, and performance work remain.
 **Last updated:** 2026-06-20

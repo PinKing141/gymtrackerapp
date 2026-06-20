@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAutoShotMode } from "../hooks/useAutoShotMode.js";
+import { AUTO_SHOT_PRESET_OPTIONS, getPresetSettings, recommendAutoShotPreset } from "../lib/autoShotPresets.js";
 import {
   clearRimCalibration,
   isStaleCalibration,
@@ -13,9 +14,12 @@ import { colors, radii, typeScale } from "../theme.js";
 
 const DETECTOR_SETTINGS_KEY = "basketball_detector_settings_v1";
 const DEFAULT_DETECTOR_SETTINGS = {
+  presetKey: "auto",
   minScore: 0.52,
   minShotConfidence: 0.64,
+  rimDetectionMode: "hybrid",
   autoRelockEnabled: true,
+  detectionIntervalMs: 140,
 };
 
 function loadDetectorSettings() {
@@ -60,7 +64,14 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
   const [detectorSettings, setDetectorSettings] = useState(() => loadDetectorSettings());
   const [showCalibration, setShowCalibration] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [autoRecommendedPresetKey, setAutoRecommendedPresetKey] = useState("indoor");
   const lastCalibrationPersistAtRef = useRef(0);
+
+  const activePresetKey = detectorSettings.presetKey === "auto" ? autoRecommendedPresetKey : detectorSettings.presetKey;
+  const activePresetSettings = getPresetSettings(activePresetKey) || {};
+  const effectiveSettings = detectorSettings.presetKey === "auto"
+    ? { ...detectorSettings, ...activePresetSettings }
+    : detectorSettings;
 
   const handleDetectedShot = useCallback((shotEvent) => {
     if (disabled) return;
@@ -79,16 +90,20 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     detection,
     trackingState,
     lastShotEvent,
+    rimDetectionState,
     relockState,
+    sceneState,
     qaMetrics,
     startCamera,
     stopCamera,
     isStreaming,
   } = useAutoShotMode({
     rimCalibration,
-    detectorConfig: detectorSettings,
-    autoRelockEnabled: detectorSettings.autoRelockEnabled !== false,
-    minShotConfidence: detectorSettings.minShotConfidence,
+    detectorConfig: effectiveSettings,
+    detectionIntervalMs: effectiveSettings.detectionIntervalMs,
+    rimDetectionMode: effectiveSettings.rimDetectionMode,
+    autoRelockEnabled: effectiveSettings.autoRelockEnabled !== false,
+    minShotConfidence: effectiveSettings.minShotConfidence,
     onRimCalibrationUpdate: (calibration) => {
       setRimCalibration(calibration);
       const now = Date.now();
@@ -99,6 +114,14 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     },
     onShotDetected: handleDetectedShot,
   });
+
+  useEffect(() => {
+    setAutoRecommendedPresetKey(recommendAutoShotPreset({
+      brightness: sceneState.brightness,
+      avgFps: qaMetrics.avgFps,
+      avgInferenceMs: qaMetrics.avgInferenceMs,
+    }));
+  }, [qaMetrics.avgFps, qaMetrics.avgInferenceMs, sceneState.brightness]);
 
   const ball = detection?.ball;
   const rimValid = isValidCalibration(rimCalibration);
@@ -119,6 +142,18 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
       ? colors.success
       : colors.textMuted;
   const filterDebug = detection?.debug || null;
+  const rimDetectLabel = rimDetectionState.status === "locked"
+    ? `${Math.round((rimDetectionState.confidence || 0) * 100)}%`
+    : rimDetectionState.status === "searching"
+      ? "Search"
+      : rimDetectionState.status === "manual"
+        ? "Manual"
+        : "Idle";
+  const rimDetectAccent = rimDetectionState.status === "locked"
+    ? colors.success
+    : rimDetectionState.status === "searching"
+      ? "#FF9F1C"
+      : colors.textMuted;
   const relockLabel = !rimValid
     ? "Needs Rim"
     : detectorSettings.autoRelockEnabled === false
@@ -132,8 +167,14 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
 
   const handleCalibrationSave = useCallback((calibration) => {
     setRimCalibration(calibration);
+    const nextSettings = {
+      ...detectorSettings,
+      rimDetectionMode: "manual",
+    };
+    setDetectorSettings(nextSettings);
+    saveDetectorSettings(nextSettings);
     setShowCalibration(false);
-  }, []);
+  }, [detectorSettings]);
 
   const handleCalibrationCancel = useCallback(() => {
     setShowCalibration(false);
@@ -148,6 +189,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     const minScore = Number(event.target.value);
     const nextSettings = {
       ...detectorSettings,
+      presetKey: "custom",
       minScore,
     };
     setDetectorSettings(nextSettings);
@@ -158,6 +200,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     const minShotConfidence = Number(event.target.value);
     const nextSettings = {
       ...detectorSettings,
+      presetKey: "custom",
       minShotConfidence,
     };
     setDetectorSettings(nextSettings);
@@ -167,7 +210,40 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
   const handleToggleRelock = useCallback(() => {
     const nextSettings = {
       ...detectorSettings,
+      presetKey: detectorSettings.presetKey === "auto" ? "custom" : detectorSettings.presetKey,
       autoRelockEnabled: detectorSettings.autoRelockEnabled === false,
+    };
+    setDetectorSettings(nextSettings);
+    saveDetectorSettings(nextSettings);
+  }, [detectorSettings]);
+
+  const handleRimDetectionModeChange = useCallback((event) => {
+    const rimDetectionMode = event.target.value;
+    const nextSettings = {
+      ...detectorSettings,
+      rimDetectionMode,
+    };
+    setDetectorSettings(nextSettings);
+    saveDetectorSettings(nextSettings);
+  }, [detectorSettings]);
+
+  const handlePresetChange = useCallback((event) => {
+    const presetKey = event.target.value;
+    if (presetKey === "auto") {
+      const nextSettings = {
+        ...detectorSettings,
+        presetKey,
+      };
+      setDetectorSettings(nextSettings);
+      saveDetectorSettings(nextSettings);
+      return;
+    }
+
+    const presetSettings = getPresetSettings(presetKey);
+    const nextSettings = {
+      ...detectorSettings,
+      ...presetSettings,
+      presetKey,
     };
     setDetectorSettings(nextSettings);
     saveDetectorSettings(nextSettings);
@@ -179,6 +255,9 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
       zone: currentZoneName,
       shotType: currentType,
       detectorSettings,
+      activePresetKey,
+      sceneState,
+      rimDetectionState,
       qaMetrics,
       relockState,
       lastShotEvent,
@@ -195,7 +274,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     link.download = `auto-shot-qa-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [ball, currentType, currentZoneName, detectorSettings, lastShotEvent, qaMetrics, relockState]);
+  }, [activePresetKey, ball, currentType, currentZoneName, detectorSettings, lastShotEvent, qaMetrics, relockState, rimDetectionState, sceneState]);
 
   // ── Rim calibration overlay ───────────────────────────────────────────────
   if (showCalibration) {
@@ -380,6 +459,11 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <StatusPill
+          label="Rim AI"
+          value={rimDetectLabel}
+          accent={rimDetectAccent}
+        />
+        <StatusPill
           label="Re-Lock"
           value={relockLabel}
           accent={relockAccent}
@@ -394,6 +478,35 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           value={qaMetrics.suppressedShots || "—"}
           accent={colors.danger}
         />
+      </div>
+
+      <div style={{
+        padding: 12,
+        borderRadius: radii.lg,
+        background: "rgba(255,255,255,0.05)",
+        border: `1px solid ${colors.border}`,
+      }}>
+        <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 6px" }}>
+          Device Preset
+        </p>
+        <select
+          value={detectorSettings.presetKey}
+          onChange={handlePresetChange}
+          style={{ width: "100%", padding: 12, borderRadius: radii.md, border: `1px solid ${colors.border}`, background: colors.surfaceElevated, color: colors.textPrimary, fontWeight: 800 }}
+        >
+          {AUTO_SHOT_PRESET_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+          <option value="custom">Custom</option>
+        </select>
+        <p style={{ margin: "8px 0 0", color: colors.textSecondary, fontSize: 12 }}>
+          Active preset: {AUTO_SHOT_PRESET_OPTIONS.find((option) => option.value === activePresetKey)?.label || "Custom"} · Brightness {Math.round((sceneState.brightness || 0) * 100)}% · Avg {qaMetrics.avgFps || 0} FPS
+        </p>
+        {detectorSettings.presetKey === "auto" && (
+          <p style={{ margin: "6px 0 0", color: colors.textMuted, fontSize: 11 }}>
+            Auto mode is currently recommending {AUTO_SHOT_PRESET_OPTIONS.find((option) => option.value === autoRecommendedPresetKey)?.label || autoRecommendedPresetKey}.
+          </p>
+        )}
       </div>
 
       <div style={{
@@ -435,6 +548,29 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         border: `1px solid ${colors.border}`,
       }}>
         <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 6px" }}>
+          Rim Source
+        </p>
+        <select
+          value={effectiveSettings.rimDetectionMode}
+          onChange={handleRimDetectionModeChange}
+          style={{ width: "100%", padding: 12, borderRadius: radii.md, border: `1px solid ${colors.border}`, background: colors.surfaceElevated, color: colors.textPrimary, fontWeight: 800 }}
+        >
+          <option value="hybrid">Hybrid: Auto first, manual fallback</option>
+          <option value="manual">Manual lock only</option>
+          <option value="auto">Auto detect only</option>
+        </select>
+        <p style={{ margin: "8px 0 0", color: colors.textSecondary, fontSize: 12 }}>
+          Manual calibration is still available. Saving a manual rim lock switches this setting to Manual lock only so auto detection does not overwrite it.
+        </p>
+      </div>
+
+      <div style={{
+        padding: 12,
+        borderRadius: radii.lg,
+        background: "rgba(255,255,255,0.05)",
+        border: `1px solid ${colors.border}`,
+      }}>
+        <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 6px" }}>
           Detection Tuning
         </p>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -444,15 +580,16 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
               Higher values reduce false locks. Lower values help the model find the ball sooner.
             </p>
           </div>
-          <p style={{ margin: 0, color: "#FF9F1C", fontWeight: 950 }}>{Math.round(detectorSettings.minScore * 100)}%</p>
+          <p style={{ margin: 0, color: "#FF9F1C", fontWeight: 950 }}>{Math.round(effectiveSettings.minScore * 100)}%</p>
         </div>
         <input
           type="range"
           min="0.45"
           max="0.8"
           step="0.01"
-          value={detectorSettings.minScore}
+          value={effectiveSettings.minScore}
           onChange={handleMinScoreChange}
+          disabled={detectorSettings.presetKey === "auto"}
           style={{ width: "100%", marginTop: 10, accentColor: "#FF7A1A" }}
         />
         <p style={{ margin: "8px 0 0", color: colors.textSecondary, fontSize: 12 }}>
@@ -465,15 +602,16 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
               Low-confidence make or miss events are shown but not logged below this score.
             </p>
           </div>
-          <p style={{ margin: 0, color: "#FF9F1C", fontWeight: 950 }}>{Math.round(detectorSettings.minShotConfidence * 100)}%</p>
+          <p style={{ margin: 0, color: "#FF9F1C", fontWeight: 950 }}>{Math.round(effectiveSettings.minShotConfidence * 100)}%</p>
         </div>
         <input
           type="range"
           min="0.45"
           max="0.9"
           step="0.01"
-          value={detectorSettings.minShotConfidence}
+          value={effectiveSettings.minShotConfidence}
           onChange={handleMinShotConfidenceChange}
+          disabled={detectorSettings.presetKey === "auto"}
           style={{ width: "100%", marginTop: 10, accentColor: "#FF7A1A" }}
         />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 12 }}>
@@ -512,6 +650,11 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         {rimValid && detectorSettings.autoRelockEnabled !== false && (
           <p style={{ margin: "6px 0 0", color: colors.textMuted, fontSize: 11 }}>
             Re-lock {relockState.status} · Confidence {Math.round((relockState.confidence || 0) * 100)}% · Shift {Math.round(relockState.shiftPx || 0)}px
+          </p>
+        )}
+        {!rimValid && (
+          <p style={{ margin: "6px 0 0", color: colors.textMuted, fontSize: 11 }}>
+            Rim AI {rimDetectionState.status} · Confidence {Math.round((rimDetectionState.confidence || 0) * 100)}% · Candidates {rimDetectionState.candidateCount || 0}
           </p>
         )}
       </div>

@@ -13,9 +13,10 @@ Auto Mode uses your phone camera to:
 
 Important limits:
 
-1. The hoop is not auto-detected yet. You must calibrate it manually.
+1. The app can now try to detect the hoop automatically, but manual calibration is still the fallback when detection is weak.
 2. Accuracy still depends on lighting, camera angle, and how clearly the ball is visible.
 3. Manual MAKE and MISS buttons remain the fallback if Auto Mode misses a rep.
+4. You can choose whether the app uses Auto, Hybrid, or Manual rim locking.
 
 ## Before You Start
 
@@ -34,10 +35,13 @@ For best results:
 3. Switch from Manual Mode to Auto Mode.
 4. Tap Start Camera.
 5. Allow camera access if your phone asks.
+6. Wait for the app to auto-lock the rim, or open manual calibration if needed.
 
 ## How To Calibrate The Rim
 
-This step is required before reliable shot tracking.
+This step is the fallback when automatic rim detection is not enough.
+
+If you want your own saved hoop lock to stay in control, set `Rim Source` to `Manual lock only` or just save a manual calibration once. Saving a manual rim lock now switches the mode to Manual automatically.
 
 1. Tap Calibrate Rim.
 2. Point the camera at the hoop.
@@ -120,6 +124,33 @@ Use it when:
 1. detections look visually correct but low-confidence logs are creating false positives,
 2. you want the tracker to show borderline events without saving them into the workout.
 
+## Auto Rim Detection
+
+The app now includes automatic rim detection.
+
+What it does:
+
+1. scans the live frame for a stable orange hoop candidate,
+2. creates a rim lock when the same hoop location stays stable across frames,
+3. feeds that lock into the shot tracker automatically.
+
+When to use manual calibration instead:
+
+1. if the hoop is not locking reliably,
+2. if the court lighting is poor,
+3. if the camera is too far or the rim is too small in frame.
+
+## Rim Source Modes
+
+Auto Mode now supports three rim source modes:
+
+1. `Hybrid: Auto first, manual fallback`
+	The app tries to detect the rim automatically, but you can still calibrate manually if needed.
+2. `Manual lock only`
+	The app uses your saved manual calibration and will not let the full auto rim detector replace it.
+3. `Auto detect only`
+	The app depends on the rim AI instead of a manual lock.
+
 ## Auto Rim Re-Lock
 
 Auto rim re-lock is a hybrid feature.
@@ -132,9 +163,9 @@ What it does:
 
 What it does not do:
 
-1. It does not replace manual calibration.
-2. It is not a full hoop detector.
-3. It will not recover from large camera moves or a completely wrong starting calibration.
+1. It is not perfect after large camera moves.
+2. It can still fail in weak lighting or visually noisy scenes.
+3. It will not always recover from a completely wrong starting lock.
 
 If the phone position changes a lot, recalibrate the rim manually.
 
@@ -150,6 +181,7 @@ Use it after testing on your phone to capture:
 4. number of logged shots,
 5. number of suppressed shots,
 6. number of rim re-locks.
+7. number of automatic rim locks.
 
 This report is useful when tuning the detector on different courts and lighting setups.
 
@@ -165,7 +197,7 @@ This report is useful when tuning the detector on different courts and lighting 
 
 Try these fixes in order:
 
-1. Recalibrate the rim.
+1. Check whether the rim AI is locked. If not, recalibrate the rim.
 2. Increase brightness or change your camera angle.
 3. Raise the confidence threshold if the app is seeing the wrong thing.
 4. Lower the confidence threshold slightly if it never locks the ball.
@@ -189,17 +221,31 @@ Try these fixes in order:
 
 ## Current Limitations
 
-1. The rim is manual-calibration only.
+1. Full rim detection is now present, but it still needs real-court validation.
 2. Zone auto-detection is not implemented.
 3. Shot type auto-classification is not implemented.
-4. The make/miss logic is heuristic-based and still needs more real-court tuning.
+4. The make/miss logic is stronger than before but still needs more real-court tuning.
+5. Manual rim lock is still the safer option when automatic detection is unstable on a given court.
+
+## Device Presets
+
+Auto Mode now includes these presets:
+
+1. `Auto`
+2. `Indoor Gym`
+3. `Outdoor Court`
+4. `Low Light`
+5. `Older Phone`
+
+Use `Auto` first. If the app is struggling, switch manually to the preset that best matches your environment.
 
 ## Recommended Workflow For First Use
 
 1. Start a free basketball session.
 2. Switch to Auto Mode.
-3. Calibrate the rim.
-4. Shoot 10 to 15 easy reps from one spot.
-5. Watch whether the app logs each rep correctly.
-6. Adjust the confidence threshold if needed.
-7. Once stable, start using it in longer sessions.
+3. Let the app try to auto-detect the rim.
+4. If needed, manually calibrate the rim.
+5. Shoot 10 to 15 easy reps from one spot.
+6. Watch whether the app logs each rep correctly.
+7. Adjust the preset and thresholds if needed.
+8. Once stable, start using it in longer sessions.

@@ -20,7 +20,8 @@ const SECTIONS = [
       "Open a basketball workout and switch to Auto Mode.",
       "Tap Start Camera.",
       "Allow camera access on your phone.",
-      "Tap Calibrate Rim before serious testing.",
+      "Let the app try to auto-lock the rim first.",
+      "If the rim AI does not lock well, open manual calibration.",
     ],
   },
   {
@@ -31,6 +32,16 @@ const SECTIONS = [
       "Drag outward to the rim edge.",
       "Release and save the circle if it matches the hoop.",
       "Recalibrate any time the phone position changes a lot.",
+    ],
+  },
+  {
+    title: "Presets",
+    items: [
+      "Start with the Auto preset first.",
+      "Use Indoor Gym for normal bright gyms.",
+      "Use Outdoor Court when background clutter or sunlight makes false positives worse.",
+      "Use Low Light for darker gyms or evening conditions.",
+      "Use Older Phone if FPS or inference speed stays low.",
     ],
   },
   {
@@ -108,9 +119,9 @@ export function AutoShotInstructionScreen({ onClose }) {
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px calc(env(safe-area-inset-bottom, 0px) + 20px)", display: "grid", gap: 12 }}>
         <div style={{ padding: 16, borderRadius: radii.xl, background: "linear-gradient(135deg, rgba(255,122,26,0.18), rgba(88,80,236,0.14))", border: `1px solid ${colors.border}` }}>
           <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: "0 0 6px" }}>Read This First</p>
-          <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 900, fontSize: 18 }}>Manual rim calibration is still required.</p>
+          <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 900, fontSize: 18 }}>The app can now auto-detect the rim.</p>
           <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: "8px 0 0" }}>
-            The current system can automatically detect the ball and track shots, but it still starts from a saved hoop calibration.
+            Start with automatic rim detection first. Use manual calibration as the fallback if the hoop does not lock reliably.
           </p>
         </div>
 
