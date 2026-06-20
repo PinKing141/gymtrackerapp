@@ -17,14 +17,15 @@
 - ✅ Camera feed integration via `navigator.mediaDevices.getUserMedia()`
 - ✅ Canvas overlay loop with FPS/frame-size diagnostics
 - ✅ Phase 1 baseline ball detection using TensorFlow.js COCO-SSD (`sports ball`) with temporal smoothing
-- ✅ Auto-mode test make/miss callbacks wired into the existing `recordShot()` path
+- ✅ Rim calibration UI and persistence
+- ✅ Browser-side trajectory heuristic that auto-logs make/miss events into the existing `recordShot()` path
 
 ### Missing / Not Yet Production-Ready
 - ⚠️ Ball detection needs real-device tuning, lighting tests, and false-positive filtering
-- ❌ Rim detection & calibration
-- ❌ Trajectory tracking
-- ❌ Shot event classification (make/miss)
-- ❌ Fully automatic result logging from real trajectory outcomes
+- ⚠️ Trajectory classification is heuristic-based and still needs on-court tuning
+- ⚠️ Missed detections and edge cases still need device validation
+- ❌ Custom basketball-specific model upgrade (YOLO/ONNX or equivalent)
+- ❌ Fully validated production-ready accuracy across different courts and angles
 
 ### Architecture
 ```
@@ -38,15 +39,15 @@ Frame Processing (TensorFlow.js / ONNX)           ✅ TensorFlow.js baseline imp
     ↓
 Ball Detection (COCO-SSD now → YOLO later)        ✅ baseline implemented in ballDetector.js
     ↓
-Rim Calibration (user marks once)                 ❌ next phase
+Rim Calibration (user marks once)                 ✅ implemented in rimCalibration.js + RimCalibrationScreen.jsx
     ↓
-Trajectory Tracking (state machine + smoothing)   ❌ planned
+Trajectory Tracking (state machine + smoothing)   ✅ baseline implemented in shotTracker.js
     ↓
-Shot Event Detection (make/miss classifier)       ❌ planned
+Shot Event Detection (make/miss classifier)       ✅ heuristic baseline implemented in shotTracker.js
     ↓
-recordShot() → Existing BasketballScreen logic    ⚠️ test callbacks wired; real trajectory events pending
+recordShot() → Existing BasketballScreen logic    ✅ live auto events wired through AutoShotMode/useAutoShotMode
     ↓
-Automatic session update + stats                  ❌ pending real shot events
+Automatic session update + stats                  ✅ baseline implemented; tuning still pending
 ```
 
 ---

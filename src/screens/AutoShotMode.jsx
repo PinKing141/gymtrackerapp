@@ -28,6 +28,11 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
   const [rimCalibration, setRimCalibration] = useState(() => loadRimCalibration());
   const [showCalibration, setShowCalibration] = useState(false);
 
+  const handleDetectedShot = useCallback((shotEvent) => {
+    if (disabled) return;
+    onRecordShot?.(shotEvent);
+  }, [disabled, onRecordShot]);
+
   const {
     videoRef,
     canvasRef,
@@ -38,14 +43,31 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     modelStatus,
     modelError,
     detection,
+    trackingState,
+    lastShotEvent,
     startCamera,
     stopCamera,
     isStreaming,
-  } = useAutoShotMode({ rimCalibration });
+  } = useAutoShotMode({ rimCalibration, onShotDetected: handleDetectedShot });
 
   const ball = detection?.ball;
   const rimValid = isValidCalibration(rimCalibration);
   const rimStale = isStaleCalibration(rimCalibration);
+  const trackerReady = rimValid && modelStatus === "ready";
+  const trackerLabel = !rimValid
+    ? "Needs Rim"
+    : trackingState.phase === "armed"
+      ? "Tracking"
+      : trackerReady
+        ? "Ready"
+        : modelStatus === "loading"
+          ? "Loading"
+          : "Idle";
+  const trackerAccent = trackingState.phase === "armed"
+    ? "#FF9F1C"
+    : trackerReady
+      ? colors.success
+      : colors.textMuted;
 
   const handleCalibrationSave = useCallback((calibration) => {
     setRimCalibration(calibration);
@@ -60,10 +82,6 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     clearRimCalibration();
     setRimCalibration(null);
   }, []);
-
-  const logTestShot = (result) => {
-    onRecordShot?.({ result, source: "auto-test", confidence: 1 });
-  };
 
   // ── Rim calibration overlay ───────────────────────────────────────────────
   if (showCalibration) {
@@ -210,6 +228,23 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         />
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <StatusPill
+          label="Tracker"
+          value={trackerLabel}
+          accent={trackerAccent}
+        />
+        <StatusPill
+          label="Samples"
+          value={trackingState.sampleCount || "—"}
+        />
+        <StatusPill
+          label="Last Shot"
+          value={lastShotEvent ? lastShotEvent.result.toUpperCase() : "—"}
+          accent={lastShotEvent?.result === "make" ? colors.success : lastShotEvent?.result === "miss" ? colors.danger : "#FF9F1C"}
+        />
+      </div>
+
       {/* Rim calibration status card */}
       <div style={{
         padding: 12,
@@ -293,15 +328,36 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 900 }}>
           {currentZoneName || "Selected zone"} • {currentType || "Selected shot"}
         </p>
+        <p style={{ margin: "6px 0 0", color: colors.textSecondary, fontSize: 12 }}>
+          Auto detections log straight into this target. Manual override buttons below still work if you need them.
+        </p>
       </div>
 
-      {/* Camera toggle + test buttons */}
+      {lastShotEvent && (
+        <div style={{
+          padding: 12,
+          borderRadius: radii.lg,
+          background: lastShotEvent.result === "make" ? "rgba(61,220,151,0.12)" : "rgba(244,63,94,0.12)",
+          border: `1px solid ${lastShotEvent.result === "make" ? "rgba(61,220,151,0.3)" : "rgba(244,63,94,0.28)"}`,
+        }}>
+          <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 4px" }}>
+            Last Auto Detection
+          </p>
+          <p style={{ margin: 0, fontWeight: 950, color: lastShotEvent.result === "make" ? colors.success : colors.danger }}>
+            {lastShotEvent.result === "make" ? "MAKE logged" : "MISS logged"}
+          </p>
+          <p style={{ margin: "4px 0 0", color: colors.textSecondary, fontSize: 12 }}>
+            Confidence {Math.round((lastShotEvent.confidence || 0) * 100)}%
+          </p>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8 }}>
         <button
           onClick={isStreaming ? stopCamera : startCamera}
           disabled={disabled || status === "requesting"}
           style={{
-            flex: 1,
+            width: "100%",
             border: `1px solid ${colors.border}`,
             borderRadius: radii.pill,
             padding: "11px 12px",
@@ -313,38 +369,6 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           }}
         >
           {isStreaming ? "STOP CAMERA" : "START CAMERA"}
-        </button>
-        <button
-          onClick={() => logTestShot("make")}
-          disabled={disabled}
-          style={{
-            border: 0,
-            borderRadius: radii.pill,
-            padding: "11px 12px",
-            background: "rgba(61,220,151,0.16)",
-            color: colors.success,
-            fontWeight: 950,
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.45 : 1,
-          }}
-        >
-          TEST MAKE
-        </button>
-        <button
-          onClick={() => logTestShot("miss")}
-          disabled={disabled}
-          style={{
-            border: 0,
-            borderRadius: radii.pill,
-            padding: "11px 12px",
-            background: "rgba(244,63,94,0.16)",
-            color: "#FF9A9A",
-            fontWeight: 950,
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.45 : 1,
-          }}
-        >
-          TEST MISS
         </button>
       </div>
     </div>

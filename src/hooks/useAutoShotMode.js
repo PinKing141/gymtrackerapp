@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBallDetector } from "../lib/ballDetector.js";
+import { createShotTracker } from "../lib/shotTracker.js";
 import { drawRimOverlay, scaleCalibration } from "../lib/rimCalibration.js";
 
 const CAMERA_CONSTRAINTS = {
@@ -62,20 +63,25 @@ function drawBallOverlay(context, ball) {
 }
 
 /**
- * @param {{ rimCalibration?: import('../lib/rimCalibration.js').RimCalibration | null }} options
+ * @param {{
+ *   rimCalibration?: import('../lib/rimCalibration.js').RimCalibration | null,
+ *   onShotDetected?: ((event: { result: 'make' | 'miss', confidence: number, timestamp: number, details?: Record<string, number> }) => void) | null,
+ * }} options
  */
-export function useAutoShotMode({ rimCalibration = null } = {}) {
+export function useAutoShotMode({ rimCalibration = null, onShotDetected = null } = {}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const animationFrameRef = useRef(null);
   const fpsSampleRef = useRef({ lastTime: 0, frames: 0 });
   const detectorRef = useRef(createBallDetector());
+  const trackerRef = useRef(createShotTracker());
   const detectionInFlightRef = useRef(false);
   const lastDetectionTimeRef = useRef(0);
   const latestDetectionRef = useRef(null);
   // Keep a ref so the animation loop always sees the latest calibration without needing to re-bind
   const rimCalibrationRef = useRef(rimCalibration);
+  const onShotDetectedRef = useRef(onShotDetected);
 
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -84,11 +90,20 @@ export function useAutoShotMode({ rimCalibration = null } = {}) {
   const [modelStatus, setModelStatus] = useState("idle");
   const [modelError, setModelError] = useState("");
   const [detection, setDetection] = useState(null);
+  const [trackingState, setTrackingState] = useState({ phase: "idle", sampleCount: 0, lastOutcome: null, lastShotAt: 0 });
+  const [lastShotEvent, setLastShotEvent] = useState(null);
 
   // Keep ref in sync
   useEffect(() => {
     rimCalibrationRef.current = rimCalibration;
+    trackerRef.current.reset();
+    setTrackingState(trackerRef.current.getSnapshot());
+    setLastShotEvent(null);
   }, [rimCalibration]);
+
+  useEffect(() => {
+    onShotDetectedRef.current = onShotDetected;
+  }, [onShotDetected]);
 
   const initDetector = useCallback(async () => {
     if (detectorRef.current.ready || modelStatus === "loading" || modelStatus === "ready") return;
@@ -121,10 +136,13 @@ export function useAutoShotMode({ rimCalibration = null } = {}) {
     }
 
     detectorRef.current.reset();
+    trackerRef.current.reset();
     detectionInFlightRef.current = false;
     lastDetectionTimeRef.current = 0;
     latestDetectionRef.current = null;
     setDetection(null);
+    setTrackingState(trackerRef.current.getSnapshot());
+    setLastShotEvent(null);
     setStatus("idle");
     setFps(0);
   }, []);
@@ -143,6 +161,22 @@ export function useAutoShotMode({ rimCalibration = null } = {}) {
       .then((result) => {
         latestDetectionRef.current = result;
         setDetection(result);
+
+        const scaledCalibration = rimCalibrationRef.current
+          ? scaleCalibration(rimCalibrationRef.current, video.videoWidth || video.clientWidth || 0, video.videoHeight || video.clientHeight || 0)
+          : null;
+        const shotEvent = trackerRef.current.update(result?.ball, scaledCalibration);
+        const trackerSnapshot = trackerRef.current.getSnapshot();
+        setTrackingState(trackerSnapshot);
+
+        if (shotEvent) {
+          const resolvedEvent = {
+            ...shotEvent,
+            source: "auto",
+          };
+          setLastShotEvent(resolvedEvent);
+          onShotDetectedRef.current?.(resolvedEvent);
+        }
       })
       .catch((detectorError) => {
         setModelStatus("error");
@@ -275,6 +309,8 @@ export function useAutoShotMode({ rimCalibration = null } = {}) {
     modelStatus,
     modelError,
     detection,
+    trackingState,
+    lastShotEvent,
     startCamera,
     stopCamera,
     isStreaming: status === "streaming",

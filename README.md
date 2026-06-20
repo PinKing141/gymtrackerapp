@@ -2,6 +2,27 @@
 
 Single-page gym tracking app built with React, Vite, and a mobile-first layout for GitHub Pages.
 
+## Auto shot tracking
+
+The basketball tracker now has a browser-based auto mode that runs entirely inside the app:
+
+1. Open a basketball workout.
+2. Switch to `Auto Mode`.
+3. Start the camera.
+4. Calibrate the rim once.
+5. The app will log detected makes and misses into the active workout automatically.
+
+Current implementation layout:
+
+1. Live browser detector and tracking logic: `src/hooks/useAutoShotMode.js`, `src/lib/ballDetector.js`, `src/lib/shotTracker.js`, `src/lib/rimCalibration.js`
+2. Auto mode UI: `src/screens/AutoShotMode.jsx`, `src/screens/RimCalibrationScreen.jsx`
+3. Legacy Python YOLO prototype and training assets: `ai/reference-python-detector/`
+
+Notes:
+
+1. Auto logging depends on good lighting, a stable phone angle, and a correct rim calibration.
+2. If auto detection misses a rep, the manual make/miss buttons still work as an override.
+
 ## Local setup
 
 1. Open a terminal in this folder.
