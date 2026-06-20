@@ -247,6 +247,10 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
       background: "#050507",
       display: "flex",
       flexDirection: "column",
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      WebkitTouchCallout: "none",
+      WebkitTapHighlightColor: "transparent",
     }}>
       {/* Header */}
       <div style={{
@@ -286,9 +290,11 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
           onTouchStart={handlePointerDown}
           onTouchMove={handlePointerMove}
           onTouchEnd={handlePointerUp}
+          onContextMenu={(event) => event.preventDefault()}
           style={{
             position: "absolute",
             inset: 0,
@@ -296,6 +302,10 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
             height: "100%",
             objectFit: "contain",
             touchAction: "none",
+            userSelect: "none",
+            WebkitUserSelect: "none",
+            WebkitTouchCallout: "none",
+            WebkitTapHighlightColor: "transparent",
             cursor: phase === "tap-center" ? "crosshair" : phase === "drag-radius" ? "cell" : "default",
             display: isStreaming ? "block" : "none",
           }}
