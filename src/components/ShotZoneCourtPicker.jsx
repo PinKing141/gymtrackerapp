@@ -1,5 +1,4 @@
-import { HotZoneMapCourtLines, SC_VW, SC_VH, SC_ZPATHS, SHOT_ZONES } from "../../Athlete System/athlete-app/src/modules/shotChart.jsx";
-import { C } from "../../Athlete System/athlete-app/src/modules/constants.js";
+import { HotZoneMapCourtLines, SC_VW, SC_VH, SC_ZPATHS, SHOT_ZONES } from "../lib/shotChartGeometry.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
 function CourtZone({ zoneId, label, selected, onSelect }) {
@@ -92,7 +91,7 @@ export function ShotZoneCourtPicker({ zonesById, selectedZoneId, onSelectZone })
             type="button"
             onClick={() => onSelectZone("FREE_THROW")}
             style={{
-              border: `1px solid ${selectedZoneId === "FREE_THROW" ? "rgba(255,255,255,0.92)" : C.border}`,
+              border: `1px solid ${selectedZoneId === "FREE_THROW" ? "rgba(255,255,255,0.92)" : colors.border}`,
               borderRadius: radii.pill,
               padding: "8px 12px",
               background: selectedZoneId === "FREE_THROW" ? "rgba(232, 93, 4, 0.86)" : "rgba(255,255,255,0.05)",
