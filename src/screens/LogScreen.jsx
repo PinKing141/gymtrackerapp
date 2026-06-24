@@ -1,15 +1,19 @@
 import { ExerciseCard, LiveTimer } from "../components/WorkoutComponents.jsx";
 import { Icon } from "../components/icons.jsx";
-import { PREHAB, WORKOUTS } from "../data.js";
+import { PREHAB } from "../data.js";
 import { BB, C, L, fd } from "../storage.js";
 import { ActionButton, BackButton, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
+import { getWorkoutById } from "../workouts.js";
 
 export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, sessionNotice, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout }) {
   if (!session || !workoutId) {
     return null;
   }
 
-  const workout = session.workoutSnapshot || WORKOUTS[workoutId];
+  const workout = session.workoutSnapshot || getWorkoutById(workoutId, app.workoutPresets);
+  if (!workout) {
+    return null;
+  }
   const previousSession = [...app.sessions].reverse().find((entry) => entry.workoutId === workoutId);
 
   return (
@@ -112,24 +116,28 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
           );
         })}
 
-        <p style={L}>Aesthetic Finisher</p>
-        {workout.finisher.map((exercise, index) => {
-          const exerciseIndex = workout.performance.length + index;
-          const exerciseKey = `${exerciseIndex}-${exercise.name}`;
-          return (
-            <ExerciseCard
-              key={exerciseKey}
-              exercise={exercise}
-              exerciseKey={exerciseKey}
-              sets={session.sets[exerciseKey] || []}
-              isOpen={expandedExercise === exerciseKey}
-              onToggle={(key) => onToggleExercise(expandedExercise === key ? null : key)}
-              onSet={onUpdateSet}
-              color={workout.color}
-              previousSets={previousSession?.sets?.[exerciseKey]}
-            />
-          );
-        })}
+        {workout.finisher.length > 0 && (
+          <>
+            <p style={L}>Aesthetic Finisher</p>
+            {workout.finisher.map((exercise, index) => {
+              const exerciseIndex = workout.performance.length + index;
+              const exerciseKey = `${exerciseIndex}-${exercise.name}`;
+              return (
+                <ExerciseCard
+                  key={exerciseKey}
+                  exercise={exercise}
+                  exerciseKey={exerciseKey}
+                  sets={session.sets[exerciseKey] || []}
+                  isOpen={expandedExercise === exerciseKey}
+                  onToggle={(key) => onToggleExercise(expandedExercise === key ? null : key)}
+                  onSet={onUpdateSet}
+                  color={workout.color}
+                  previousSets={previousSession?.sets?.[exerciseKey]}
+                />
+              );
+            })}
+          </>
+        )}
 
         {workout.core && (
           <>

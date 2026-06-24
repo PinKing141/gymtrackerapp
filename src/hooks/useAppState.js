@@ -29,13 +29,14 @@ import {
   getExerciseRecordCandidate,
   getExercisesForWorkout,
   getWorkoutById,
+  normalizeWorkoutPreset,
 } from "../workouts.js";
 
 const CLOUD_SYNC_DELAY_MS = 1200;
 const CLOUD_SYNC_TIMEOUT_MS = 15000;
 
-function createWorkoutSession(workoutId) {
-  const workout = getWorkoutById(workoutId);
+function createWorkoutSession(workoutId, workoutPresets) {
+  const workout = getWorkoutById(workoutId, workoutPresets);
   if (!workout) {
     return null;
   }
@@ -57,6 +58,15 @@ function createWorkoutSession(workoutId) {
     painFlags: { shoulder: 1, ankle: 1, hip: 1 },
     timer: { running: false, startedAt: null, lastResumedAt: null, accumulated: 0 },
   };
+}
+
+function createPresetId(title) {
+  const slug = String(title || "custom")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 28) || "custom";
+  return `custom-${slug}-${Date.now().toString(36)}`;
 }
 
 function getSessionStamp(app) {
@@ -596,7 +606,7 @@ export function useAppState() {
 
       const sessionRows = sessions.map((session) => ({
         Date: session.date || "",
-        Workout: session.workoutSnapshot?.name || session.workoutId || "",
+        Workout: session.workoutSnapshot?.title || session.workoutSnapshot?.shortTitle || session.workoutId || "",
         Energy: session.energy ?? "",
         Duration_Min: Math.round((session.timer?.accumulated || 0) / 60000),
         Prehab_Done: session.prehabDone ? "Yes" : "No",
@@ -680,7 +690,7 @@ export function useAppState() {
   }, []);
 
   const startWorkout = useCallback((nextWorkoutId) => {
-    const nextSession = createWorkoutSession(nextWorkoutId);
+    const nextSession = createWorkoutSession(nextWorkoutId, appRef.current.workoutPresets);
     if (!nextSession) {
       return;
     }
@@ -694,25 +704,62 @@ export function useAppState() {
     setSessionNotice("Draft autosaves on this device while you log.");
   }, []);
 
+  const saveWorkoutPreset = useCallback((draft) => {
+    const timestamp = Date.now();
+    const preset = normalizeWorkoutPreset({
+      ...draft,
+      id: draft.id || createPresetId(draft.title || draft.shortTitle),
+      source: "custom",
+      day: "Custom",
+      createdAt: draft.createdAt || timestamp,
+      updatedAt: timestamp,
+    }, appRef.current.workoutPresets?.length || 0);
+
+    applyApp((current) => {
+      const currentPresets = Array.isArray(current.workoutPresets) ? current.workoutPresets : [];
+      const existingIndex = currentPresets.findIndex((item) => item.id === preset.id);
+      const nextPresets = existingIndex >= 0
+        ? currentPresets.map((item, index) => (index === existingIndex ? preset : item))
+        : [...currentPresets, preset];
+      return { ...current, workoutPresets: nextPresets };
+    });
+
+    return preset;
+  }, [applyApp]);
+
+  const deleteWorkoutPreset = useCallback((presetId) => {
+    const preset = (appRef.current.workoutPresets || []).find((item) => item.id === presetId);
+    if (!preset || preset.source !== "custom") {
+      return;
+    }
+    if (!window.confirm(`Delete ${preset.shortTitle || preset.title}?`)) {
+      return;
+    }
+    applyApp((current) => ({
+      ...current,
+      workoutPresets: (current.workoutPresets || []).filter((item) => item.id !== presetId),
+    }));
+  }, [applyApp]);
+
   const finishWorkout = useCallback(() => {
     if (!session) {
       return;
     }
 
+    const currentApp = appRef.current;
     const timer = session.timer;
     const currentSeconds = timer.running && timer.lastResumedAt ? Math.floor((Date.now() - timer.lastResumedAt) / 1000) : 0;
     const duration = Math.round((timer.accumulated + currentSeconds) / 60);
     const finishedSession = {
       ...session,
-      workoutSnapshot: session.workoutSnapshot || createWorkoutSnapshot(getWorkoutById(session.workoutId)),
+      workoutSnapshot: session.workoutSnapshot || createWorkoutSnapshot(getWorkoutById(session.workoutId, currentApp.workoutPresets)),
       duration,
       startedAt: timer.startedAt,
       finishedAt: Date.now(),
     };
     delete finishedSession.timer;
 
-    const workout = finishedSession.workoutSnapshot || getWorkoutById(finishedSession.workoutId);
-    const currentApp = appRef.current;
+    const workout = finishedSession.workoutSnapshot || getWorkoutById(finishedSession.workoutId, currentApp.workoutPresets);
     const personalBests = { ...currentApp.personalBests };
     const earnedRecords = new Map();
 
@@ -1043,12 +1090,14 @@ export function useAppState() {
       exportData,
       finishWorkout,
       importData,
+      deleteWorkoutPreset,
       openRecoveryFromHome,
       openReviewFromHome,
       requestReminderPermission,
       resetAllData,
       restoreBackup,
       sendTestReminder,
+      saveWorkoutPreset,
       startWorkout,
       updateSet,
       useCurrentWeekFreeze,

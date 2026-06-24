@@ -1,7 +1,15 @@
-import { createWorkoutSnapshot, getExercisesForWorkout, getResolvedSet, getWorkoutById, migrateSessionSetData } from "./workouts.js";
+import {
+  createWorkoutSnapshot,
+  getDefaultWorkoutPresets,
+  getExercisesForWorkout,
+  getResolvedSet,
+  getWorkoutById,
+  migrateSessionSetData,
+  normalizeWorkoutPresetList,
+} from "./workouts.js";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const DATA_VERSION = 5;
+const DATA_VERSION = 6;
 const DEFAULT_STREAK_STATE = {
   weeklyTarget: 3,
   freezeCredits: 1,
@@ -56,6 +64,7 @@ export const IS = { background:"rgba(255,255,255,0.06)",border:"1px solid rgba(2
 export const DD = () => ({
   sessions: [],
   personalBests: {},
+  workoutPresets: getDefaultWorkoutPresets(),
   recovery: [],
   bodyStats: [],
   weeklyReviews: [],
@@ -71,10 +80,12 @@ export const DEVICE_PREFS_DB = "orion-gym-v4-device";
 
 export const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
 export const isArr = (v) => Array.isArray(v);
-export const isValidData = (d) => isObj(d) && isArr(d.sessions) && isObj(d.personalBests) && isArr(d.recovery) && isArr(d.bodyStats) && isArr(d.weeklyReviews);
+export const isValidData = (d) => isObj(d) && isArr(d.sessions) && isObj(d.personalBests) && isArr(d.recovery) && isArr(d.bodyStats) && isArr(d.weeklyReviews) && (!d.workoutPresets || isArr(d.workoutPresets));
+const hasCustomWorkoutPresets = (app) => (app?.workoutPresets || []).some((preset) => preset?.source === "custom");
 export const hasAnyUserData = (app) => Boolean(
   app?.sessions?.length ||
   Object.keys(app?.personalBests || {}).length ||
+  hasCustomWorkoutPresets(app) ||
   app?.recovery?.length ||
   app?.bodyStats?.length ||
   app?.weeklyReviews?.length ||
@@ -191,11 +202,16 @@ export const withDefaults = (d) => {
     dataVersion = 5;
   }
 
+  if (dataVersion < 6) {
+    dataVersion = 6;
+  }
+
   return {
     ...b,
     ...d,
     sessions,
     personalBests: normalizePersonalBests(d?.personalBests),
+    workoutPresets: normalizeWorkoutPresetList(isArr(d?.workoutPresets) ? d.workoutPresets : b.workoutPresets),
     recovery: isArr(d?.recovery) ? d.recovery : b.recovery,
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,

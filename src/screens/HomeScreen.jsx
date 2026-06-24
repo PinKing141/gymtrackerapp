@@ -1,8 +1,11 @@
-import { PHASES, WORKOUTS } from "../data.js";
+import { useState } from "react";
+import { PHASES } from "../data.js";
 import { C, L, fd, fdu, today } from "../storage.js";
 import { Icon } from "../components/icons.jsx";
-import { Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
+import { WorkoutPresetBuilder } from "../components/WorkoutPresetBuilder.jsx";
+import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { getWorkoutSuggestion } from "../progression.js";
+import { getWorkoutPresets } from "../workouts.js";
 
 export function HomeScreen({
   app,
@@ -11,11 +14,15 @@ export function HomeScreen({
   getPhaseProgress,
   onOpenRecovery,
   onOpenReview,
+  onSaveWorkoutPreset,
+  onDeleteWorkoutPreset,
   onStartWorkout,
 }) {
+  const [builderOpen, setBuilderOpen] = useState(false);
   const { phase, week, deload } = getPhaseProgress();
   const todayRecovery = app.recovery.find((entry) => entry.date === today());
   const athleteName = (app.profile?.name || "").trim();
+  const workoutPresets = getWorkoutPresets(app);
 
   return (
     <Screen>
@@ -79,21 +86,76 @@ export function HomeScreen({
         </SurfaceButton>
       )}
 
-      <p style={L}>Start a Workout</p>
-      {Object.values(WORKOUTS).map((workout) => {
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, margin: "20px 0 10px" }}>
+        <p style={{ ...L, margin: 0 }}>Workout Presets</p>
+        <ActionButton
+          type="button"
+          compact
+          fullWidth={false}
+          tone={builderOpen ? "tinted" : "secondary"}
+          color="#4EA1FF"
+          onClick={() => setBuilderOpen((open) => !open)}
+          style={{ width: "auto", padding: "9px 11px", display: "inline-flex", alignItems: "center", gap: 6 }}
+        >
+          <Icon name={builderOpen ? "x" : "plus"} size={14} />
+          {builderOpen ? "Close" : "New"}
+        </ActionButton>
+      </div>
+
+      {builderOpen && (
+        <WorkoutPresetBuilder
+          onCancel={() => setBuilderOpen(false)}
+          onSave={(preset) => {
+            onSaveWorkoutPreset(preset);
+            setBuilderOpen(false);
+          }}
+        />
+      )}
+
+      {workoutPresets.map((workout) => {
         const lastSession = [...app.sessions].reverse().find((session) => session.workoutId === workout.id);
         const latestRecovery = [...(app.recovery || [])].slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
         const suggestion = getWorkoutSuggestion({ ...app, readiness: latestRecovery }, workout);
+        const isCustom = workout.source === "custom";
+        const exerciseCount = (workout.performance?.length || 0) + (workout.finisher?.length || 0);
         return (
           <SurfaceButton key={workout.id} onClick={() => onStartWorkout(workout.id)} style={{ position: "relative", overflow: "hidden", paddingLeft: 22 }}>
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: workout.color }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <p style={{ fontSize: 10, color: workout.color, fontWeight: 700, margin: 0, letterSpacing: "0.08em", textTransform: "uppercase" }}>{workout.id} · {workout.day}</p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 10, color: workout.color, fontWeight: 700, margin: 0, letterSpacing: "0.08em", textTransform: "uppercase" }}>{isCustom ? "Custom" : "Orion"} · {exerciseCount} exercises</p>
                 <p style={{ fontSize: 16, fontWeight: 600, margin: "3px 0 0", color: "#fff" }}>{workout.shortTitle}</p>
                 <p style={{ fontSize: 11, color: "#555", margin: "2px 0 0" }}>{workout.goal}</p>
               </div>
-              <span style={{ fontSize: 22, color: workout.color, fontWeight: 300 }}>→</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {isCustom && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteWorkoutPreset(workout.id);
+                    }}
+                    title="Delete custom preset"
+                    style={{
+                      appearance: "none",
+                      WebkitAppearance: "none",
+                      width: 32,
+                      height: 32,
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,93,93,0.25)",
+                      background: "rgba(255,93,93,0.08)",
+                      color: "#FF5D5D",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Icon name="trash" size={14} />
+                  </button>
+                )}
+                <span style={{ fontSize: 22, color: workout.color, fontWeight: 300 }}>→</span>
+              </div>
             </div>
             {lastSession && <p style={{ fontSize: 10, color: "#444", marginTop: 6, marginBottom: 0 }}>Last: {fd(lastSession.date)} · {fdu(lastSession.duration)}</p>}
             {suggestion && (

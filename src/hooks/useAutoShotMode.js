@@ -140,7 +140,7 @@ function buildQaSnapshot(metrics) {
  *   rimDetectionMode?: 'auto' | 'hybrid' | 'manual',
  *   autoRelockEnabled?: boolean,
  *   minShotConfidence?: number,
- *   onRimCalibrationUpdate?: ((calibration: import('../lib/rimCalibration.js').RimCalibration, info: { confidence: number, shiftPx?: number, orangePixels?: number }) => void) | null,
+ *   onRimCalibrationUpdate?: ((calibration: import('../lib/rimCalibration.js').RimCalibration, info: { confidence: number, shiftPx?: number, orangePixels?: number, source?: 'auto-detect' | 'manual' | 'relock' }) => void) | null,
  *   onShotDetected?: ((event: { result: 'make' | 'miss', confidence: number, timestamp: number, details?: Record<string, number> }) => void) | null,
  * }} options
  */
@@ -159,6 +159,7 @@ export function useAutoShotMode({
   const streamRef = useRef(null);
   const animationFrameRef = useRef(null);
   const fpsSampleRef = useRef({ lastTime: 0, frames: 0 });
+  const previousCalibrationRef = useRef(rimCalibration);
   const detectorRef = useRef(createBallDetector());
   const rimDetectorRef = useRef(createRimDetector());
   const rimRelockRef = useRef(createRimRelock());
@@ -173,6 +174,11 @@ export function useAutoShotMode({
   const rimCalibrationRef = useRef(rimCalibration);
   const onRimCalibrationUpdateRef = useRef(onRimCalibrationUpdate);
   const onShotDetectedRef = useRef(onShotDetected);
+  const detectionIntervalRef = useRef(detectionIntervalMs);
+  const autoRelockEnabledRef = useRef(autoRelockEnabled);
+  const minShotConfidenceRef = useRef(minShotConfidence);
+  const rimDetectionModeRef = useRef(rimDetectionMode);
+  const relockStateRef = useRef({ enabled: autoRelockEnabled, confidence: 0, shiftPx: 0, status: "idle" });
   const qaMetricsRef = useRef({
     startedAt: 0,
     fpsSamples: 0,
@@ -204,12 +210,23 @@ export function useAutoShotMode({
 
   // Keep ref in sync
   useEffect(() => {
+    const previousCalibration = previousCalibrationRef.current;
     rimCalibrationRef.current = rimCalibration;
-    rimDetectorRef.current.reset();
-    trackerRef.current.reset();
-    setTrackingState(trackerRef.current.getSnapshot());
-    setLastShotEvent(null);
+    const shouldHardReset = !previousCalibration || !rimCalibration || (
+      Math.abs((previousCalibration.rimCenter?.x || 0) - (rimCalibration.rimCenter?.x || 0)) > Math.max(previousCalibration?.rimRadius || 0, rimCalibration?.rimRadius || 0) * 0.75 ||
+      Math.abs((previousCalibration.rimCenter?.y || 0) - (rimCalibration.rimCenter?.y || 0)) > Math.max(previousCalibration?.rimRadius || 0, rimCalibration?.rimRadius || 0) * 0.5 ||
+      Math.abs((previousCalibration?.rimRadius || 0) - (rimCalibration?.rimRadius || 0)) > Math.max(previousCalibration?.rimRadius || 0, rimCalibration?.rimRadius || 0) * 0.35
+    );
+
+    if (shouldHardReset) {
+      rimDetectorRef.current.reset();
+      trackerRef.current.reset();
+      setTrackingState(trackerRef.current.getSnapshot());
+      setLastShotEvent(null);
+    }
+
     setRimDetectionState({ status: rimCalibration ? "manual" : "searching", confidence: rimCalibration ? 1 : 0, mode: rimCalibration ? "manual" : "auto", candidateCount: 0 });
+    previousCalibrationRef.current = rimCalibration;
   }, [rimCalibration]);
 
   useEffect(() => {
@@ -225,6 +242,23 @@ export function useAutoShotMode({
   }, [detectorConfig]);
 
   useEffect(() => {
+    detectionIntervalRef.current = detectionIntervalMs;
+  }, [detectionIntervalMs]);
+
+  useEffect(() => {
+    autoRelockEnabledRef.current = autoRelockEnabled;
+  }, [autoRelockEnabled]);
+
+  useEffect(() => {
+    minShotConfidenceRef.current = minShotConfidence;
+  }, [minShotConfidence]);
+
+  useEffect(() => {
+    rimDetectionModeRef.current = rimDetectionMode;
+  }, [rimDetectionMode]);
+
+  useEffect(() => {
+    relockStateRef.current = relockState;
     setRelockState((current) => ({
       ...current,
       enabled: autoRelockEnabled,
@@ -282,7 +316,7 @@ export function useAutoShotMode({
   const runDetection = useCallback((timestamp) => {
     const video = videoRef.current;
     const detector = detectorRef.current;
-    if (!video || !detector.ready || detectionInFlightRef.current || timestamp - lastDetectionTimeRef.current < detectionIntervalMs) return;
+    if (!video || !detector.ready || detectionInFlightRef.current || timestamp - lastDetectionTimeRef.current < detectionIntervalRef.current) return;
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
     detectionInFlightRef.current = true;
@@ -321,10 +355,12 @@ export function useAutoShotMode({
           ? scaleCalibration(rimCalibrationRef.current, video.videoWidth || video.clientWidth || 0, video.videoHeight || video.clientHeight || 0)
           : null;
 
-        const shouldRunAutoRimSearch = rimDetectionMode !== "manual" && (
-          rimDetectionMode === "auto"
+        const currentRimDetectionMode = rimDetectionModeRef.current;
+        const currentRelockState = relockStateRef.current;
+        const shouldRunAutoRimSearch = currentRimDetectionMode !== "manual" && (
+          currentRimDetectionMode === "auto"
             ? (!scaledCalibration || rimDetectionState.status !== "locked")
-            : (!scaledCalibration || (relockState.status === "searching" && relockState.confidence < 0.34))
+            : (!scaledCalibration || (currentRelockState.status === "searching" && currentRelockState.confidence < 0.34))
         );
         if (shouldRunAutoRimSearch) {
           const rimDetection = rimDetectorRef.current.detect(video);
@@ -359,7 +395,7 @@ export function useAutoShotMode({
           });
         }
 
-        if (autoRelockEnabled && scaledCalibration) {
+        if (autoRelockEnabledRef.current && scaledCalibration) {
           const relockResult = rimRelockRef.current.update(video, scaledCalibration);
           if (relockResult?.calibration) {
             qaMetricsRef.current.relocks += 1;
@@ -375,6 +411,7 @@ export function useAutoShotMode({
               confidence: relockResult.confidence,
               shiftPx: relockResult.shiftPx,
               orangePixels: relockResult.orangePixels,
+              source: "relock",
             });
           } else if (relockResult) {
             setRelockState({
@@ -394,7 +431,7 @@ export function useAutoShotMode({
           const resolvedEvent = {
             ...shotEvent,
             source: "auto",
-            suppressed: shotEvent.confidence < minShotConfidence,
+            suppressed: shotEvent.confidence < minShotConfidenceRef.current,
           };
           setLastShotEvent(resolvedEvent);
           if (resolvedEvent.suppressed) {

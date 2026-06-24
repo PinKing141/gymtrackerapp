@@ -66,6 +66,8 @@ export function App() {
         getPhaseProgress={getPhaseProgress}
         onOpenRecovery={actions.openRecoveryFromHome}
         onOpenReview={actions.openReviewFromHome}
+        onSaveWorkoutPreset={actions.saveWorkoutPreset}
+        onDeleteWorkoutPreset={actions.deleteWorkoutPreset}
         onStartWorkout={actions.startWorkout}
         onUseWeekFreeze={actions.useCurrentWeekFreeze}
         streakSummary={streakSummary}

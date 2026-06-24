@@ -1,10 +1,11 @@
 import { Spark } from "../components/WorkoutComponents.jsx";
-import { KEY_LIFTS, WORKOUTS } from "../data.js";
+import { KEY_LIFTS } from "../data.js";
 import { C, L } from "../storage.js";
-import { getExercisesForWorkout, getWorkoutForSession } from "../workouts.js";
+import { getExercisesForWorkout, getWorkoutForSession, getWorkoutPresets } from "../workouts.js";
 import { Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
 
 export function ProgressScreen({ app }) {
+  const workoutPresets = getWorkoutPresets(app);
   const weeklySessionTrend = (() => {
     const buckets = new Map();
     app.sessions.forEach((session) => {
@@ -81,11 +82,11 @@ export function ProgressScreen({ app }) {
       })}
 
       <p style={L}>Sessions per Workout</p>
-      {Object.values(WORKOUTS).map((workout) => {
+      {workoutPresets.map((workout) => {
         const count = app.sessions.filter((session) => session.workoutId === workout.id).length;
         return (
           <div key={workout.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
-            <span style={{ fontSize: 11, color: workout.color, fontWeight: 600, width: 22 }}>{workout.id}</span>
+            <span style={{ fontSize: 11, color: workout.color, fontWeight: 600, width: 70, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{workout.shortTitle}</span>
             <div style={{ flex: 1, height: 5, background: "rgba(255,255,255,0.04)", borderRadius: 3, overflow: "hidden" }}>
               <div style={{ width: `${Math.min(100, count * 8)}%`, height: "100%", background: workout.color, borderRadius: 3 }} />
             </div>

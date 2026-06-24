@@ -1,6 +1,16 @@
 import { WORKOUTS } from "./data.js";
 
-const cloneExercises = (exercises = []) => exercises.map((exercise) => ({ ...exercise }));
+const PRESET_RENAMES = {
+  W1: { title: "Orion Preset - Upper Strength + Power", shortTitle: "Orion Upper Power" },
+  W2: { title: "Orion Preset - Lower Force + Braking", shortTitle: "Orion Lower Force" },
+  W3: { title: "Orion Preset - Upper Structure + Aesthetics", shortTitle: "Orion Upper Structure" },
+  W4: { title: "Orion Preset - Lower Elasticity + Reactivity", shortTitle: "Orion Lower Elasticity" },
+};
+const PRESET_COLORS = ["#E84545", "#2D7DD2", "#F5A623", "#45B649", "#8B5CF6", "#14B8A6"];
+const cloneExercises = (exercises = []) => exercises.map((exercise) => ({
+  ...exercise,
+  libraryMeta: exercise.libraryMeta ? { ...exercise.libraryMeta } : undefined,
+}));
 const SIDE_PATTERN = /(?:\/\s*|\bper\s+)(side|leg|arm)\b/i;
 const DURATION_PATTERN = /\b(sec|min|seconds?|minutes?)\b/i;
 const DISTANCE_PATTERN = /^\s*\d+(\.\d+)?\s*(m|meters?)\s*$/i;
@@ -11,6 +21,90 @@ function hasValue(value) {
 
 function isDumbbellType(type = "") {
   return /dumbbell/i.test(type);
+}
+
+function toPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function formatRestLabel(seconds) {
+  const normalized = Math.max(0, toPositiveInteger(seconds, 0));
+  if (!normalized) {
+    return "Full";
+  }
+  if (normalized % 60 === 0) {
+    return `${normalized / 60} min`;
+  }
+  return `${normalized} sec`;
+}
+
+export function normalizeWorkoutExercise(exercise = {}) {
+  const rest = Math.max(0, toPositiveInteger(exercise.rest, 60));
+  return {
+    exerciseId: exercise.exerciseId || exercise.id || null,
+    name: String(exercise.name || "Untitled Exercise").trim(),
+    type: String(exercise.type || "Exercise").trim(),
+    sets: toPositiveInteger(exercise.sets, 3),
+    reps: String(exercise.reps || "10").trim(),
+    rest,
+    restLabel: exercise.restLabel || formatRestLabel(rest),
+    tracked: Boolean(exercise.tracked),
+    libraryMeta: exercise.libraryMeta ? { ...exercise.libraryMeta } : undefined,
+  };
+}
+
+export function normalizeWorkoutPreset(workout = {}, index = 0) {
+  const id = String(workout.id || `P${index + 1}`).trim();
+  const title = String(workout.title || workout.shortTitle || "Custom Workout").trim();
+  const performance = Array.isArray(workout.performance) ? workout.performance.map(normalizeWorkoutExercise) : [];
+  const finisher = Array.isArray(workout.finisher) ? workout.finisher.map(normalizeWorkoutExercise) : [];
+  const coreExercises = Array.isArray(workout.core?.exercises) ? workout.core.exercises.map(normalizeWorkoutExercise) : [];
+
+  return {
+    id,
+    title,
+    shortTitle: String(workout.shortTitle || title).trim(),
+    day: String(workout.day || (workout.source === "custom" ? "Custom" : "Preset")).trim(),
+    goal: String(workout.goal || "Personal preset").trim(),
+    color: workout.color || PRESET_COLORS[index % PRESET_COLORS.length],
+    source: workout.source || "custom",
+    createdAt: workout.createdAt || null,
+    updatedAt: workout.updatedAt || null,
+    performance,
+    finisher,
+    core: coreExercises.length
+      ? {
+          title: workout.core?.title || "Core Block",
+          exercises: coreExercises,
+        }
+      : null,
+  };
+}
+
+export function getDefaultWorkoutPresets() {
+  return Object.values(WORKOUTS).map((workout, index) => normalizeWorkoutPreset({
+    ...workout,
+    ...PRESET_RENAMES[workout.id],
+    day: "Preset",
+    source: "builtin",
+  }, index));
+}
+
+export function normalizeWorkoutPresetList(presets) {
+  const defaults = getDefaultWorkoutPresets();
+  const list = Array.isArray(presets) && presets.length ? presets : defaults;
+  const normalized = list.map((preset, index) => normalizeWorkoutPreset(preset, index));
+  const existingIds = new Set(normalized.map((preset) => preset.id));
+  return [
+    ...defaults.filter((preset) => !existingIds.has(preset.id)),
+    ...normalized,
+  ];
+}
+
+export function getWorkoutPresets(appOrPresets) {
+  const presets = Array.isArray(appOrPresets) ? appOrPresets : appOrPresets?.workoutPresets;
+  return normalizeWorkoutPresetList(presets);
 }
 
 function isPairedLoadExercise(exercise) {
@@ -250,26 +344,29 @@ export function createWorkoutSnapshot(workout) {
     return null;
   }
 
+  const normalized = normalizeWorkoutPreset(workout);
   return {
-    id: workout.id,
-    title: workout.title,
-    shortTitle: workout.shortTitle,
-    day: workout.day,
-    goal: workout.goal,
-    color: workout.color,
-    performance: cloneExercises(workout.performance),
-    finisher: cloneExercises(workout.finisher),
-    core: workout.core
+    id: normalized.id,
+    title: normalized.title,
+    shortTitle: normalized.shortTitle,
+    day: normalized.day,
+    goal: normalized.goal,
+    color: normalized.color,
+    source: normalized.source,
+    performance: cloneExercises(normalized.performance),
+    finisher: cloneExercises(normalized.finisher),
+    core: normalized.core
       ? {
-          title: workout.core.title,
-          exercises: cloneExercises(workout.core.exercises),
+          title: normalized.core.title,
+          exercises: cloneExercises(normalized.core.exercises),
         }
       : null,
   };
 }
 
-export function getWorkoutById(workoutId) {
-  return WORKOUTS[workoutId] || null;
+export function getWorkoutById(workoutId, workoutPresets = null) {
+  const savedPreset = Array.isArray(workoutPresets) ? workoutPresets.find((workout) => workout.id === workoutId) : null;
+  return savedPreset || WORKOUTS[workoutId] || null;
 }
 
 export function getWorkoutForSession(session) {

@@ -104,10 +104,12 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     rimDetectionMode: effectiveSettings.rimDetectionMode,
     autoRelockEnabled: effectiveSettings.autoRelockEnabled !== false,
     minShotConfidence: effectiveSettings.minShotConfidence,
-    onRimCalibrationUpdate: (calibration) => {
-      setRimCalibration(calibration);
+    onRimCalibrationUpdate: (calibration, info) => {
+      if (info?.source !== "relock") {
+        setRimCalibration(calibration);
+      }
       const now = Date.now();
-      if (now - lastCalibrationPersistAtRef.current > 1400) {
+      if (info?.source !== "relock" && now - lastCalibrationPersistAtRef.current > 1400) {
         saveRimCalibration(calibration);
         lastCalibrationPersistAtRef.current = now;
       }
