@@ -1,5 +1,6 @@
 import { NI } from "./components/WorkoutComponents.jsx";
 import { CelebrationOverlay } from "./components/ui.jsx";
+import { AuthScreen } from "./screens/AuthScreen.jsx";
 import { BasketballScreen } from "./screens/BasketballScreen.jsx";
 import { BikeRoutineScreen } from "./screens/BikeRoutineScreen.jsx";
 import { HistoryScreen } from "./screens/HistoryScreen.jsx";
@@ -9,9 +10,12 @@ import { MoreScreen } from "./screens/MoreScreen.jsx";
 import { PersonalBestsScreen } from "./screens/PersonalBestsScreen.jsx";
 import { ProgressScreen } from "./screens/ProgressScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
+import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
+import { signOutUser } from "./services/firebaseAuth.js";
 import { colors, radii, typeScale } from "./theme.js";
 
 export function App() {
+  const { user: firebaseUser, authLoading, isLoggedIn } = useFirebaseAuth();
   const {
     app,
     bodyStatsForm,
@@ -56,6 +60,42 @@ export function App() {
     workoutId,
     actions,
   } = useAppState();
+
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: colors.background,
+          color: colors.textMuted,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+          fontSize: 13,
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div
+        style={{
+          maxWidth: 430,
+          margin: "0 auto",
+          minHeight: "100dvh",
+          background: colors.background,
+          color: colors.textPrimary,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+        }}
+      >
+        <AuthScreen />
+      </div>
+    );
+  }
 
   let content = null;
   if (view === "home") {
@@ -137,6 +177,8 @@ export function App() {
         onExportData={actions.exportData}
         onImportData={actions.importData}
         onOpenSection={openMoreSection}
+        firebaseUser={firebaseUser}
+        onFirebaseSignOut={signOutUser}
         onResetAllData={actions.resetAllData}
         onRestoreBackup={actions.restoreBackup}
         recoveryForm={recoveryForm}

@@ -139,6 +139,8 @@ export function MoreScreen({
   onExportData,
   onImportData,
   onOpenSection,
+  firebaseUser,
+  onFirebaseSignOut,
   onResetAllData,
   onRestoreBackup,
   recoveryForm,
@@ -331,6 +333,18 @@ export function MoreScreen({
   return (
     <Screen>
       <ScreenHeader title="More" />
+
+      {firebaseUser && (
+        <SurfaceCard style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 10, color: "#555", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Signed in</p>
+            <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>
+          </div>
+          <ActionButton tone="secondary" compact fullWidth={false} onClick={() => { onFirebaseSignOut?.(); }} style={{ flexShrink: 0 }}>
+            Sign out
+          </ActionButton>
+        </SurfaceCard>
+      )}
 
       {[
         { key: "recovery", icon: "pulse", title: "Recovery Log", description: "Sleep, hydration, mobility" },
