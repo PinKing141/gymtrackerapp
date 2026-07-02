@@ -22,6 +22,7 @@ import {
   today,
   withDefaults,
 } from "../storage.js";
+import { loadUserAppData, saveUserAppData } from "../services/firestoreSync.js";
 import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
 import {
   createEmptySet,
@@ -34,6 +35,13 @@ import {
 
 const CLOUD_SYNC_DELAY_MS = 1200;
 const CLOUD_SYNC_TIMEOUT_MS = 15000;
+const FIRESTORE_SYNC_DELAY_MS = 1200;
+
+// Firestore rejects `undefined` values and non-plain types; a JSON round-trip
+// yields a clean, serializable snapshot of the app state.
+function toPlainAppData(app) {
+  return JSON.parse(JSON.stringify(app));
+}
 
 function createWorkoutSession(workoutId, workoutPresets) {
   const workout = getWorkoutById(workoutId, workoutPresets);
@@ -85,7 +93,8 @@ function buildReminderBody(daysSinceLastSession, streakSummary) {
   return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. Complete ${sessionsRemaining} more session${sessionsRemaining === 1 ? "" : "s"} to hit this week's goal.`;
 }
 
-export function useAppState() {
+export function useAppState(firebaseUser) {
+  const firebaseUid = firebaseUser?.uid || null;
   const initialDraftRef = useRef(undefined);
   if (initialDraftRef.current === undefined) {
     initialDraftRef.current = draftLoad();
@@ -121,10 +130,15 @@ export function useAppState() {
     message: isCloudConfigured ? null : getCloudMessage("Cloud sync is optional. Add Supabase keys to turn it on."),
   });
 
+  const [firestoreSync, setFirestoreSync] = useState({ status: "idle", lastSyncedAt: null, error: null });
+
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const localSaveTimeoutRef = useRef(null);
   const cloudSaveTimeoutRef = useRef(null);
+  const firestoreSaveTimeoutRef = useRef(null);
+  const firestoreSkipSaveRef = useRef(false);
+  const firestoreReadyRef = useRef(false);
   const draftSaveTimeoutRef = useRef(null);
   const skipNextCloudPushRef = useRef(false);
   const syncRequestRef = useRef(null);
@@ -547,6 +561,92 @@ export function useAppState() {
 
     return () => clearTimeout(cloudSaveTimeoutRef.current);
   }, [app, cloud.syncEnabled, cloud.user, cloudClient, syncCloudNow]);
+
+  // Firestore: on login, load the user's cloud document and reconcile it with
+  // local data (most recently saved wins), then mark sync ready so local edits
+  // start pushing up. The ready-gate prevents an early empty local snapshot
+  // from overwriting good cloud data while the initial load is still in flight.
+  useEffect(() => {
+    if (!firebaseUid) {
+      firestoreReadyRef.current = false;
+      clearTimeout(firestoreSaveTimeoutRef.current);
+      setFirestoreSync({ status: "idle", lastSyncedAt: null, error: null });
+      return undefined;
+    }
+
+    let active = true;
+    firestoreReadyRef.current = false;
+    setFirestoreSync((current) => ({ ...current, status: "loading", error: null }));
+
+    (async () => {
+      try {
+        const remote = await loadUserAppData(firebaseUid);
+        if (!active) {
+          return;
+        }
+
+        const local = appRef.current;
+        const remoteApp = remote?.appData && isValidData(remote.appData) ? remote.appData : null;
+
+        if (!remoteApp) {
+          if (hasAnyUserData(local)) {
+            await saveUserAppData(firebaseUid, toPlainAppData(local));
+          }
+        } else {
+          const remoteStamp = getSessionStamp(remoteApp);
+          const localStamp = getSessionStamp(local);
+
+          if (remoteStamp > localStamp) {
+            firestoreSkipSaveRef.current = true;
+            const merged = withDefaults(remoteApp);
+            applyApp(merged, { stamp: false });
+            dbSave(merged);
+          } else if (localStamp > remoteStamp || hasAnyUserData(local)) {
+            await saveUserAppData(firebaseUid, toPlainAppData(local));
+          }
+        }
+
+        if (active) {
+          firestoreReadyRef.current = true;
+          setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
+        }
+      } catch (error) {
+        if (active) {
+          firestoreReadyRef.current = true;
+          setFirestoreSync({ status: "error", lastSyncedAt: null, error: error?.message || "Cloud sync failed." });
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [applyApp, firebaseUid]);
+
+  // Firestore: push local changes up (debounced) once the initial load is done.
+  useEffect(() => {
+    if (!firebaseUid || !firestoreReadyRef.current) {
+      return undefined;
+    }
+
+    if (firestoreSkipSaveRef.current) {
+      firestoreSkipSaveRef.current = false;
+      return undefined;
+    }
+
+    clearTimeout(firestoreSaveTimeoutRef.current);
+    firestoreSaveTimeoutRef.current = setTimeout(async () => {
+      setFirestoreSync((current) => ({ ...current, status: "saving", error: null }));
+      try {
+        await saveUserAppData(firebaseUid, toPlainAppData(appRef.current));
+        setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
+      } catch (error) {
+        setFirestoreSync({ status: "error", lastSyncedAt: null, error: error?.message || "Cloud sync failed." });
+      }
+    }, FIRESTORE_SYNC_DELAY_MS);
+
+    return () => clearTimeout(firestoreSaveTimeoutRef.current);
+  }, [app, firebaseUid]);
 
   const toggleCloudSync = useCallback(() => {
     const nextEnabled = !cloud.syncEnabled;
@@ -1050,6 +1150,7 @@ export function useAppState() {
     devicePrefs,
     expandedExercise,
     fileInputRef,
+    firestoreSync,
     getPhaseProgress,
     historyDetailIndex,
     navigate,

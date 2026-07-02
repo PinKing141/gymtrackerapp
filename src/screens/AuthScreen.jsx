@@ -2,7 +2,7 @@ import { useState } from "react";
 import { IS } from "../storage.js";
 import { ActionButton } from "../components/ui.jsx";
 import { colors } from "../theme.js";
-import { signInWithEmail, signUpWithEmail } from "../services/firebaseAuth.js";
+import { signInWithEmail, signInWithGoogle, signUpWithEmail } from "../services/firebaseAuth.js";
 
 const ERROR_MESSAGES = {
   "auth/invalid-email": "That email address doesn't look right.",
@@ -57,6 +57,21 @@ export function AuthScreen() {
   const switchMode = (next) => {
     setMode(next);
     setError(null);
+  };
+
+  const handleGoogle = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      // A user closing the popup isn't an error worth shouting about.
+      if (err?.code !== "auth/popup-closed-by-user" && err?.code !== "auth/cancelled-popup-request") {
+        setError(messageForError(err));
+      }
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -161,6 +176,43 @@ export function AuthScreen() {
           {submitting ? "Working…" : isSignup ? "Create Account" : "Sign In"}
         </ActionButton>
       </form>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 2px" }}>
+        <span style={{ flex: 1, height: 1, background: colors.border }} />
+        <span style={{ fontSize: 10, color: colors.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>or</span>
+        <span style={{ flex: 1, height: 1, background: colors.border }} />
+      </div>
+
+      <button
+        type="button"
+        onClick={handleGoogle}
+        disabled={submitting}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          padding: "13px",
+          borderRadius: 12,
+          border: `1px solid ${colors.borderStrong}`,
+          background: "rgba(255,255,255,0.04)",
+          color: colors.textPrimary,
+          fontFamily: "inherit",
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: submitting ? "not-allowed" : "pointer",
+          opacity: submitting ? 0.5 : 1,
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+          <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+          <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z" />
+          <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
+          <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
+        </svg>
+        Continue with Google
+      </button>
 
       <p style={{ fontSize: 11, color: colors.textMuted, textAlign: "center", margin: "20px 0 0" }}>
         {isSignup ? "Already have an account? " : "New here? "}

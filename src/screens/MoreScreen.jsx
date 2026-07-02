@@ -140,6 +140,7 @@ export function MoreScreen({
   onImportData,
   onOpenSection,
   firebaseUser,
+  firestoreSync,
   onFirebaseSignOut,
   onResetAllData,
   onRestoreBackup,
@@ -334,17 +335,27 @@ export function MoreScreen({
     <Screen>
       <ScreenHeader title="More" />
 
-      {firebaseUser && (
-        <SurfaceCard style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 10, color: "#555", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Signed in</p>
-            <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>
-          </div>
-          <ActionButton tone="secondary" compact fullWidth={false} onClick={() => { onFirebaseSignOut?.(); }} style={{ flexShrink: 0 }}>
-            Sign out
-          </ActionButton>
-        </SurfaceCard>
-      )}
+      {firebaseUser && (() => {
+        const syncLabels = {
+          loading: { text: "Syncing…", color: "#4EA1FF" },
+          saving: { text: "Saving…", color: "#4EA1FF" },
+          synced: { text: "Synced to cloud", color: "#3DDC97" },
+          error: { text: firestoreSync?.error || "Sync error", color: "#FF5D5D" },
+        };
+        const sync = syncLabels[firestoreSync?.status];
+        return (
+          <SurfaceCard style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 10, color: "#555", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Signed in</p>
+              <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email || firebaseUser.displayName || "Account"}</p>
+              {sync && <p style={{ fontSize: 11, color: sync.color, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sync.text}</p>}
+            </div>
+            <ActionButton tone="secondary" compact fullWidth={false} onClick={() => { onFirebaseSignOut?.(); }} style={{ flexShrink: 0 }}>
+              Sign out
+            </ActionButton>
+          </SurfaceCard>
+        );
+      })()}
 
       {[
         { key: "recovery", icon: "pulse", title: "Recovery Log", description: "Sleep, hydration, mobility" },

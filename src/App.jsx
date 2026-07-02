@@ -25,6 +25,7 @@ export function App() {
     devicePrefs,
     expandedExercise,
     fileInputRef,
+    firestoreSync,
     getPhaseProgress,
     historyDetailIndex,
     navItems,
@@ -59,7 +60,7 @@ export function App() {
     view,
     workoutId,
     actions,
-  } = useAppState();
+  } = useAppState(firebaseUser);
 
   if (authLoading) {
     return (
@@ -178,6 +179,7 @@ export function App() {
         onImportData={actions.importData}
         onOpenSection={openMoreSection}
         firebaseUser={firebaseUser}
+        firestoreSync={firestoreSync}
         onFirebaseSignOut={signOutUser}
         onResetAllData={actions.resetAllData}
         onRestoreBackup={actions.restoreBackup}
