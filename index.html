@@ -21,10 +21,24 @@ html,body,#root{height:100%;width:100%;background:#0A0A0F;overflow:hidden;}
 body{font-family:'SF Pro Display',-apple-system,system-ui,sans-serif;}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 input[type=number]{appearance:textfield;-moz-appearance:textfield;}
+.app-boot-fallback{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;color:#F7F8FA;font-family:'SF Pro Display',-apple-system,system-ui,sans-serif;}
+.app-boot-card{width:100%;max-width:360px;padding:22px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:rgba(255,255,255,.04);text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.35);}
+.app-boot-card h1{font-size:20px;margin:12px 0 6px;}
+.app-boot-card p{font-size:13px;line-height:1.4;color:#A7ABB8;margin:0;}
+.app-boot-spinner{width:32px;height:32px;margin:0 auto;border-radius:50%;border:3px solid rgba(255,255,255,.16);border-top-color:#4EA1FF;animation:app-boot-spin .9s linear infinite;}
+@keyframes app-boot-spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root">
+  <div class="app-boot-fallback" role="status" aria-live="polite">
+    <div class="app-boot-card">
+      <div class="app-boot-spinner" aria-hidden="true"></div>
+      <h1>Loading Orion Gym…</h1>
+      <p>If this stays here, refresh the page to download the latest app files.</p>
+    </div>
+  </div>
+</div>
 <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
