@@ -1,5 +1,6 @@
 import { NI } from "./components/WorkoutComponents.jsx";
 import { CelebrationOverlay } from "./components/ui.jsx";
+import { AuthScreen } from "./screens/AuthScreen.jsx";
 import { BasketballScreen } from "./screens/BasketballScreen.jsx";
 import { BikeRoutineScreen } from "./screens/BikeRoutineScreen.jsx";
 import { HistoryScreen } from "./screens/HistoryScreen.jsx";
@@ -9,18 +10,21 @@ import { MoreScreen } from "./screens/MoreScreen.jsx";
 import { PersonalBestsScreen } from "./screens/PersonalBestsScreen.jsx";
 import { ProgressScreen } from "./screens/ProgressScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
+import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
+import { signOutUser } from "./services/firebaseAuth.js";
 import { colors, radii, typeScale } from "./theme.js";
 
 export function App() {
+  const { user: firebaseUser, authLoading, isLoggedIn } = useFirebaseAuth();
   const {
     app,
     bodyStatsForm,
     celebration,
-    cloud,
     coreOpen,
     devicePrefs,
     expandedExercise,
     fileInputRef,
+    firestoreSync,
     getPhaseProgress,
     historyDetailIndex,
     navItems,
@@ -39,7 +43,6 @@ export function App() {
     sessionsThisWeek,
     setApp,
     setBodyStatsForm,
-    setCloud,
     setCoreOpen,
     setDevicePrefs,
     setExpandedExercise,
@@ -48,14 +51,47 @@ export function App() {
     setRecoveryForm,
     setReviewForm,
     setSession,
-    submitCloudAuth,
     streakSummary,
-    signOutCloud,
-    toggleCloudSync,
     view,
     workoutId,
     actions,
-  } = useAppState();
+  } = useAppState(firebaseUser);
+
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: colors.background,
+          color: colors.textMuted,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+          fontSize: 13,
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div
+        style={{
+          maxWidth: 430,
+          margin: "0 auto",
+          minHeight: "100dvh",
+          background: colors.background,
+          color: colors.textPrimary,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+        }}
+      >
+        <AuthScreen />
+      </div>
+    );
+  }
 
   let content = null;
   if (view === "home") {
@@ -127,16 +163,15 @@ export function App() {
       <MoreScreen
         app={app}
         bodyStatsForm={bodyStatsForm}
-        cloud={cloud}
         closeSection={actions.closeMoreSection}
         fileInputRef={fileInputRef}
         getPhaseProgress={getPhaseProgress}
-        onCloudSignOut={signOutCloud}
-        onCloudSubmit={submitCloudAuth}
-        onToggleCloudSync={toggleCloudSync}
         onExportData={actions.exportData}
         onImportData={actions.importData}
         onOpenSection={openMoreSection}
+        firebaseUser={firebaseUser}
+        firestoreSync={firestoreSync}
+        onFirebaseSignOut={signOutUser}
         onResetAllData={actions.resetAllData}
         onRestoreBackup={actions.restoreBackup}
         recoveryForm={recoveryForm}
@@ -148,7 +183,6 @@ export function App() {
         serviceWorkerSupported={serviceWorkerSupported}
         setApp={setApp}
         setBodyStatsForm={setBodyStatsForm}
-        setCloud={setCloud}
         setDevicePrefs={setDevicePrefs}
         setRecoveryForm={setRecoveryForm}
         setReviewForm={setReviewForm}
