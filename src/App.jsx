@@ -20,7 +20,6 @@ export function App() {
     app,
     bodyStatsForm,
     celebration,
-    cloud,
     coreOpen,
     devicePrefs,
     expandedExercise,
@@ -44,7 +43,6 @@ export function App() {
     sessionsThisWeek,
     setApp,
     setBodyStatsForm,
-    setCloud,
     setCoreOpen,
     setDevicePrefs,
     setExpandedExercise,
@@ -53,10 +51,7 @@ export function App() {
     setRecoveryForm,
     setReviewForm,
     setSession,
-    submitCloudAuth,
     streakSummary,
-    signOutCloud,
-    toggleCloudSync,
     view,
     workoutId,
     actions,
@@ -168,13 +163,9 @@ export function App() {
       <MoreScreen
         app={app}
         bodyStatsForm={bodyStatsForm}
-        cloud={cloud}
         closeSection={actions.closeMoreSection}
         fileInputRef={fileInputRef}
         getPhaseProgress={getPhaseProgress}
-        onCloudSignOut={signOutCloud}
-        onCloudSubmit={submitCloudAuth}
-        onToggleCloudSync={toggleCloudSync}
         onExportData={actions.exportData}
         onImportData={actions.importData}
         onOpenSection={openMoreSection}
@@ -192,7 +183,6 @@ export function App() {
         serviceWorkerSupported={serviceWorkerSupported}
         setApp={setApp}
         setBodyStatsForm={setBodyStatsForm}
-        setCloud={setCloud}
         setDevicePrefs={setDevicePrefs}
         setRecoveryForm={setRecoveryForm}
         setReviewForm={setReviewForm}

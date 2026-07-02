@@ -4,30 +4,6 @@ import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceC
 import { PHASES, WQ } from "../data.js";
 import { DD, IS, fd, today } from "../storage.js";
 
-const cloudMessageColors = {
-  error: "#E84545",
-  success: "#45B649",
-  neutral: "#888",
-};
-
-function formatSyncTime(value) {
-  if (!value) {
-    return "Not synced yet";
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "Not synced yet";
-  }
-
-  return date.toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 const ACTIVITY_OPTIONS = [
   { value: "sedentary", label: "Sedentary", factor: 1.2 },
   { value: "light", label: "Lightly active", factor: 1.375 },
@@ -129,13 +105,9 @@ const SCORE_COLORS = ["#45B649", "#74D27F", "#F5A623", "#FF8A3D", "#E84545"];
 export function MoreScreen({
   app,
   bodyStatsForm,
-  cloud,
   closeSection,
   fileInputRef,
   getPhaseProgress,
-  onCloudSignOut,
-  onCloudSubmit,
-  onToggleCloudSync,
   onExportData,
   onImportData,
   onOpenSection,
@@ -155,7 +127,6 @@ export function MoreScreen({
   onSendTestReminder,
   setApp,
   setBodyStatsForm,
-  setCloud,
   setDevicePrefs,
   setRecoveryForm,
   setReviewForm,
@@ -494,46 +465,6 @@ export function MoreScreen({
       </SurfaceCard>
 
       <SurfaceCard style={{ marginTop: 16 }}>
-        <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Cloud Sync</p>
-        {!cloud.available ? (
-          <>
-            <p style={{ fontSize: 12, color: "#bbb", margin: "0 0 6px" }}>Local storage is active on this device.</p>
-            <p style={{ fontSize: 11, color: "#666", margin: 0 }}>To use the same data across multiple phones or browsers, add Supabase env keys and create the table in `supabase/schema.sql`.</p>
-          </>
-        ) : cloud.user ? (
-          <>
-            <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, margin: "0 0 4px" }}>{cloud.user.email}</p>
-            <p style={{ fontSize: 11, color: "#666", margin: "0 0 10px" }}>Last sync: {formatSyncTime(cloud.lastSyncedAt)}</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <ActionButton
-                onClick={onToggleCloudSync}
-                tone="tinted"
-                color={cloud.syncEnabled ? "#2D7DD2" : "#888"}
-                compact
-              >
-                {cloud.syncing ? "Syncing..." : (cloud.syncEnabled ? "Sync On" : "Sync Off")}
-              </ActionButton>
-              <ActionButton onClick={onCloudSignOut} tone="secondary" compact>Sign Out</ActionButton>
-            </div>
-          </>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <button onClick={() => setCloud((current) => ({ ...current, authMode: "signin", message: null }))} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: cloud.authMode === "signin" ? "rgba(45,125,210,0.2)" : "rgba(255,255,255,0.04)", color: cloud.authMode === "signin" ? "#2D7DD2" : "#666" }}>Sign In</button>
-              <button onClick={() => setCloud((current) => ({ ...current, authMode: "signup", message: null }))} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, background: cloud.authMode === "signup" ? "rgba(245,166,35,0.2)" : "rgba(255,255,255,0.04)", color: cloud.authMode === "signup" ? "#F5A623" : "#666" }}>Create Account</button>
-            </div>
-            <input type="email" autoComplete="email" value={cloud.email} onChange={(event) => setCloud((current) => ({ ...current, email: event.target.value }))} placeholder="Email" style={{ ...IS, marginBottom: 8 }} />
-            <input type="password" autoComplete={cloud.authMode === "signup" ? "new-password" : "current-password"} value={cloud.password} onChange={(event) => setCloud((current) => ({ ...current, password: event.target.value }))} placeholder="Password" style={IS} />
-            <ActionButton onClick={onCloudSubmit} color={cloud.authMode === "signup" ? "#F5A623" : "#2D7DD2"} style={{ marginTop: 10 }}>
-              {cloud.loading ? "Working..." : cloud.authMode === "signup" ? "Create Account" : "Sign In"}
-            </ActionButton>
-          </>
-        )}
-        {cloud.syncing && <p style={{ fontSize: 10, color: "#888", margin: "8px 0 0" }}>Sync in progress. Tap “Syncing...” to turn cloud sync off.</p>}
-        {cloud.message && <p style={{ fontSize: 11, color: cloudMessageColors[cloud.message.tone] || "#888", margin: "10px 0 0" }}>{cloud.message.text}</p>}
-      </SurfaceCard>
-
-      <SurfaceCard style={{ marginTop: 16 }}>
         <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Data</p>
         <div style={{ fontSize: 12, color: "#888" }}>
           <p style={{ margin: "3px 0" }}>{app.sessions.length} sessions · {app.recovery.length} recovery logs</p>
@@ -547,7 +478,7 @@ export function MoreScreen({
       </div>
       <input ref={fileInputRef} type="file" accept="application/json" onChange={onImportData} style={{ display: "none" }} />
       <ActionButton onClick={onRestoreBackup} tone="tinted" color="#45B649" compact style={{ marginTop: 8 }}>Restore Local Backup</ActionButton>
-      <ActionButton onClick={() => { if (cloud.user && !window.confirm("Resetting now will also sync the empty state to your cloud account. Continue?")) { return; } onResetAllData(); }} tone="danger" compact style={{ marginTop: 10 }}>Reset All Data</ActionButton>
+      <ActionButton onClick={() => { if (firebaseUser && !window.confirm("Resetting now will also sync the empty state to your cloud account. Continue?")) { return; } onResetAllData(); }} tone="danger" compact style={{ marginTop: 10 }}>Reset All Data</ActionButton>
     </Screen>
   );
 }

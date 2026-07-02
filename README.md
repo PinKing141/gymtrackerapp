@@ -147,55 +147,19 @@ To install it like an app on iPhone:
 1. Safe-area aware headers and timer so top controls stay tappable on notched iPhones.
 2. Workout snapshots stored inside every logged session so future program edits do not rewrite old history.
 3. App state moved out of `App.jsx` into a controller hook.
-4. Optional Supabase login + cloud sync for cross-device data.
+4. Firebase Authentication (email/password + Google) with Cloud Firestore
+   cross-device sync — see the "Firebase auth / Firestore" section above.
 5. Versioned data migrations for older saved app data.
 
-## Cloud sync setup
+## Cloud sync
 
-The app still works fully offline with local storage. Cloud sync is optional and uses Supabase so it can still run as a static GitHub Pages app.
+The app works fully offline with local storage; when you sign in with Firebase,
+your data syncs to Cloud Firestore and loads on any device. Setup lives in the
+[Firebase auth / Firestore](#firebase-auth--firestore) section above:
 
-### 1. Create a Supabase project
-
-Create a project at `https://supabase.com/`.
-
-### 2. Create the data table
-
-Open the Supabase SQL editor and run the SQL in [supabase/schema.sql](supabase/schema.sql).
-
-### 3. Enable email auth
-
-In Supabase Auth, keep Email enabled. This app uses email + password sign-in.
-
-Note:
-
-1. Hosted Supabase projects usually require email confirmation by default.
-2. For real production email delivery, Supabase recommends configuring custom SMTP.
-
-### 4. Add env vars locally
-
-Create `.env.local`:
-
-```env
-VITE_SUPABASE_URL=your-project-url
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
-
-### 5. Add env vars for GitHub Pages builds
-
-In GitHub, open `Settings -> Secrets and variables -> Actions -> Variables` and add:
-
-1. `VITE_SUPABASE_URL`
-2. `VITE_SUPABASE_ANON_KEY`
-
-The workflow already forwards those values into the Vite build.
-
-### 6. Use the app
-
-Open the `More` tab.
-
-1. Create an account or sign in.
-2. Your local data will sync automatically.
-3. Use `Sync Now` anytime if you want a manual push.
+1. Sign in on the login screen (email/password or Google).
+2. Your local data uploads and future changes sync automatically.
+3. Signing in on another device pulls your latest data down.
 
 ## Backup and recovery
 

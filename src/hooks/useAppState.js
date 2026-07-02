@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { fetchRemoteApp, getCloudClient, isCloudConfigured, saveRemoteApp } from "../cloud.js";
 import { NAV, WQ } from "../data.js";
 import {
   DB,
@@ -33,8 +32,6 @@ import {
   normalizeWorkoutPreset,
 } from "../workouts.js";
 
-const CLOUD_SYNC_DELAY_MS = 1200;
-const CLOUD_SYNC_TIMEOUT_MS = 15000;
 const FIRESTORE_SYNC_DELAY_MS = 1200;
 
 // Firestore rejects `undefined` values and non-plain types; a JSON round-trip
@@ -81,10 +78,6 @@ function getSessionStamp(app) {
   return app?.meta?.lastSavedAt || 0;
 }
 
-function getCloudMessage(text, tone = "neutral") {
-  return text ? { text, tone } : null;
-}
-
 function buildReminderBody(daysSinceLastSession, streakSummary) {
   const sessionsRemaining = Math.max(0, (streakSummary?.weeklyTarget || 0) - (streakSummary?.currentWeekCount || 0));
   if (sessionsRemaining === 0) {
@@ -116,39 +109,21 @@ export function useAppState(firebaseUser) {
   const [sessionNotice, setSessionNotice] = useState(() => initialDraft ? "Draft restored from your last session." : null);
   const [celebration, setCelebration] = useState(null);
   const [devicePrefs, setDevicePrefsState] = useState(() => devicePrefsLoad());
-  const [cloud, setCloud] = useState({
-    available: isCloudConfigured,
-    loading: isCloudConfigured,
-    user: null,
-    authMode: "signin",
-    email: "",
-    password: "",
-    syncing: false,
-    syncEnabled: devicePrefs.cloudSyncEnabled !== false,
-    syncStartedAt: null,
-    lastSyncedAt: null,
-    message: isCloudConfigured ? null : getCloudMessage("Cloud sync is optional. Add Supabase keys to turn it on."),
-  });
-
   const [firestoreSync, setFirestoreSync] = useState({ status: "idle", lastSyncedAt: null, error: null });
 
   const scrollRef = useRef(null);
   const fileInputRef = useRef(null);
   const localSaveTimeoutRef = useRef(null);
-  const cloudSaveTimeoutRef = useRef(null);
   const firestoreSaveTimeoutRef = useRef(null);
   const firestoreSkipSaveRef = useRef(false);
   const firestoreReadyRef = useRef(false);
   const draftSaveTimeoutRef = useRef(null);
-  const skipNextCloudPushRef = useRef(false);
-  const syncRequestRef = useRef(null);
   const appRef = useRef(app);
   const sessionRef = useRef(session);
   const workoutIdRef = useRef(workoutId);
   const expandedExerciseRef = useRef(expandedExercise);
   const prehabOpenRef = useRef(prehabOpen);
   const coreOpenRef = useRef(coreOpen);
-  const cloudClient = getCloudClient();
   const notificationSupported = typeof window !== "undefined" && "Notification" in window;
   const serviceWorkerSupported = typeof navigator !== "undefined" && "serviceWorker" in navigator;
   const notificationPermission = notificationSupported ? Notification.permission : "unsupported";
@@ -380,188 +355,6 @@ export function useAppState(firebaseUser) {
       .catch(() => {});
   }, [devicePrefs.reminderNotifications, notificationPermission, notificationSupported, serviceWorkerSupported]);
 
-  const syncCloudNow = useCallback(async (userOverride, options = {}) => {
-    const { silent = false } = options;
-    const user = userOverride || cloud.user;
-    if (!cloudClient || !user || !cloud.syncEnabled) {
-      return null;
-    }
-
-    if (syncRequestRef.current) {
-      return syncRequestRef.current;
-    }
-
-    const syncStartedAt = Date.now();
-    setCloud((current) => ({
-      ...current,
-      syncing: true,
-      syncStartedAt,
-      message: silent && current.message?.tone === "error" ? current.message : (silent ? current.message : null),
-    }));
-
-    const syncPromise = (async () => {
-      try {
-        const saved = await Promise.race([
-          saveRemoteApp(user.id, appRef.current),
-          new Promise((_, reject) => {
-            setTimeout(() => reject(new Error("Sync is taking longer than expected. Please try again in a moment.")), CLOUD_SYNC_TIMEOUT_MS);
-          }),
-        ]);
-        setCloud((current) => ({
-          ...current,
-          syncing: false,
-          syncStartedAt: null,
-          lastSyncedAt: saved?.updatedAt || new Date().toISOString(),
-          message: silent ? current.message : getCloudMessage("Cloud sync complete.", "success"),
-        }));
-        return saved;
-      } catch (error) {
-        setCloud((current) => ({
-          ...current,
-          syncing: false,
-          syncStartedAt: null,
-          message: getCloudMessage(error.message || "Cloud sync failed.", "error"),
-        }));
-        return null;
-      } finally {
-        syncRequestRef.current = null;
-      }
-    })();
-
-    syncRequestRef.current = syncPromise;
-    return syncPromise;
-  }, [cloud.syncEnabled, cloud.user, cloudClient]);
-
-  const pullCloudState = useCallback(async (user) => {
-    if (!cloudClient || !user || !cloud.syncEnabled) {
-      return;
-    }
-
-    try {
-      setCloud((current) => ({ ...current, syncing: true, syncStartedAt: Date.now() }));
-      const remote = await fetchRemoteApp(user.id);
-      const local = appRef.current;
-
-      if (!remote?.app) {
-        if (hasAnyUserData(local)) {
-          await syncCloudNow(user);
-        } else {
-          setCloud((current) => ({
-            ...current,
-            syncing: false,
-            syncStartedAt: null,
-            message: getCloudMessage("Signed in. Your cloud account is ready.", "success"),
-          }));
-        }
-        return;
-      }
-
-      const remoteStamp = getSessionStamp(remote.app);
-      const localStamp = getSessionStamp(local);
-
-      if (remoteStamp > localStamp) {
-        skipNextCloudPushRef.current = true;
-        applyApp(remote.app, { stamp: false });
-        dbSave(remote.app);
-        setCloud((current) => ({
-          ...current,
-          syncing: false,
-          syncStartedAt: null,
-          lastSyncedAt: remote.updatedAt,
-          message: getCloudMessage("Loaded your latest cloud backup.", "success"),
-        }));
-        return;
-      }
-
-      if (localStamp > remoteStamp || hasAnyUserData(local)) {
-        await syncCloudNow(user);
-        return;
-      }
-
-      setCloud((current) => ({
-        ...current,
-        syncing: false,
-        syncStartedAt: null,
-        lastSyncedAt: remote.updatedAt,
-      }));
-    } catch (error) {
-      setCloud((current) => ({
-        ...current,
-        syncing: false,
-        syncStartedAt: null,
-        message: getCloudMessage(error.message || "Could not load cloud data.", "error"),
-      }));
-    }
-  }, [applyApp, cloud.syncEnabled, cloudClient, syncCloudNow]);
-
-  useEffect(() => {
-    if (!cloudClient) {
-      setCloud((current) => ({ ...current, loading: false }));
-      return undefined;
-    }
-
-    let active = true;
-
-    cloudClient.auth.getSession().then(({ data, error }) => {
-      if (!active) {
-        return;
-      }
-
-      const user = data.session?.user || null;
-      setCloud((current) => ({
-        ...current,
-        loading: false,
-        user,
-        message: error ? getCloudMessage(error.message, "error") : current.message,
-      }));
-
-      if (user && cloud.syncEnabled) {
-        pullCloudState(user);
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = cloudClient.auth.onAuthStateChange((event, nextSession) => {
-      const user = nextSession?.user || null;
-      setCloud((current) => ({
-        ...current,
-        loading: false,
-        user,
-        message: event === "SIGNED_OUT"
-          ? getCloudMessage("Signed out. Local data on this device is still available.")
-          : current.message,
-      }));
-
-      if (user && cloud.syncEnabled && (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED")) {
-        pullCloudState(user);
-      }
-    });
-
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
-  }, [cloud.syncEnabled, cloudClient, pullCloudState]);
-
-  useEffect(() => {
-    if (!cloudClient || !cloud.user || !cloud.syncEnabled) {
-      return undefined;
-    }
-
-    if (skipNextCloudPushRef.current) {
-      skipNextCloudPushRef.current = false;
-      return undefined;
-    }
-
-    clearTimeout(cloudSaveTimeoutRef.current);
-    cloudSaveTimeoutRef.current = setTimeout(() => {
-      syncCloudNow(undefined, { silent: true });
-    }, CLOUD_SYNC_DELAY_MS);
-
-    return () => clearTimeout(cloudSaveTimeoutRef.current);
-  }, [app, cloud.syncEnabled, cloud.user, cloudClient, syncCloudNow]);
-
   // Firestore: on login, load the user's cloud document and reconcile it with
   // local data (most recently saved wins), then mark sync ready so local edits
   // start pushing up. The ready-gate prevents an early empty local snapshot
@@ -647,33 +440,6 @@ export function useAppState(firebaseUser) {
 
     return () => clearTimeout(firestoreSaveTimeoutRef.current);
   }, [app, firebaseUid]);
-
-  const toggleCloudSync = useCallback(() => {
-    const nextEnabled = !cloud.syncEnabled;
-    setDevicePrefs((current) => ({ ...current, cloudSyncEnabled: nextEnabled }));
-
-    if (!nextEnabled) {
-      clearTimeout(cloudSaveTimeoutRef.current);
-      setCloud((current) => ({
-        ...current,
-        syncEnabled: false,
-        syncing: false,
-        syncStartedAt: null,
-        message: getCloudMessage("Cloud sync turned off for this device."),
-      }));
-      return;
-    }
-
-    setCloud((current) => ({
-      ...current,
-      syncEnabled: true,
-      message: getCloudMessage("Cloud sync turned on.", "success"),
-    }));
-
-    if (cloud.user) {
-      syncCloudNow(cloud.user);
-    }
-  }, [cloud.syncEnabled, cloud.user, setDevicePrefs, syncCloudNow]);
 
   const exportData = useCallback(() => {
     try {
@@ -1021,80 +787,6 @@ export function useAppState(firebaseUser) {
     setSession(null);
   }, [applyApp]);
 
-  const submitCloudAuth = useCallback(async () => {
-    if (!cloudClient) {
-      return;
-    }
-
-    const email = cloud.email.trim();
-    const password = cloud.password;
-
-    if (!email || !password) {
-      setCloud((current) => ({ ...current, message: getCloudMessage("Enter both email and password.", "error") }));
-      return;
-    }
-
-    try {
-      setCloud((current) => ({ ...current, loading: true, message: null }));
-
-      if (cloud.authMode === "signup") {
-        const { data, error } = await cloudClient.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
-          },
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        setCloud((current) => ({
-          ...current,
-          loading: false,
-          email: "",
-          password: "",
-          user: data.user || current.user,
-          message: data.session
-            ? getCloudMessage("Account created and signed in.", "success")
-            : getCloudMessage("Account created. Check your email to confirm it, then sign in.", "success"),
-        }));
-        return;
-      }
-
-      const { error } = await cloudClient.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw error;
-      }
-
-      setCloud((current) => ({
-        ...current,
-        loading: false,
-        email: "",
-        password: "",
-        message: getCloudMessage("Signed in successfully.", "success"),
-      }));
-    } catch (error) {
-      setCloud((current) => ({
-        ...current,
-        loading: false,
-        message: getCloudMessage(error.message || "Authentication failed.", "error"),
-      }));
-    }
-  }, [cloud.authMode, cloud.email, cloud.password, cloudClient]);
-
-  const signOutCloud = useCallback(async () => {
-    if (!cloudClient) {
-      return;
-    }
-
-    const { error } = await cloudClient.auth.signOut();
-    if (error) {
-      setCloud((current) => ({ ...current, message: getCloudMessage(error.message, "error") }));
-    }
-  }, [cloudClient]);
-
   const useCurrentWeekFreeze = useCallback(() => {
     const currentApp = appRef.current;
     const nextApp = applyWeeklyFreeze(currentApp, getWeekKey(today()));
@@ -1145,7 +837,6 @@ export function useAppState(firebaseUser) {
     app,
     bodyStatsForm,
     celebration,
-    cloud,
     coreOpen,
     devicePrefs,
     expandedExercise,
@@ -1168,7 +859,6 @@ export function useAppState(firebaseUser) {
     sessionsThisWeek: streakSummary.currentWeekCount,
     setApp,
     setBodyStatsForm,
-    setCloud,
     setCoreOpen,
     setDevicePrefs,
     setExpandedExercise,
@@ -1177,11 +867,7 @@ export function useAppState(firebaseUser) {
     setRecoveryForm,
     setReviewForm,
     setSession,
-    signOutCloud,
     streakSummary,
-    submitCloudAuth,
-    syncCloudNow,
-    toggleCloudSync,
     view,
     workoutId,
     actions: {
