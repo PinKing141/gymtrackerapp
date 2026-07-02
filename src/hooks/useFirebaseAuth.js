@@ -6,12 +6,20 @@ export function useFirebaseAuth() {
   const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
+    // Safety net: if the auth state never resolves (e.g. Firebase unreachable),
+    // stop blocking on "Loading…" and fall through to the login screen.
+    const fallback = setTimeout(() => setAuthLoading(false), 8000);
+
     const unsubscribe = listenToAuth((firebaseUser) => {
+      clearTimeout(fallback);
       setUser(firebaseUser);
       setAuthLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      clearTimeout(fallback);
+      unsubscribe();
+    };
   }, []);
 
   return {
