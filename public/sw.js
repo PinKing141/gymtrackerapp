@@ -1,4 +1,4 @@
-const CACHE_NAME = "orion-gym-v4";
+const CACHE_NAME = "orion-gym-v5";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -38,10 +38,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  const isNavigation = event.request.mode === "navigate";
+  const shouldCache = isNavigation || url.pathname.startsWith(`${new URL(self.registration.scope).pathname}assets/`) || APP_SHELL.some((path) => new URL(path, self.registration.scope).pathname === url.pathname);
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.status === 200) {
+        if (shouldCache && response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
@@ -52,10 +55,10 @@ self.addEventListener("fetch", (event) => {
         if (cached) {
           return cached;
         }
-        if (event.request.mode === "navigate") {
+        if (isNavigation) {
           return caches.match("./index.html");
         }
-        throw new Error("Network request failed and no cached response is available.");
+        return Response.error();
       })
   );
 });
