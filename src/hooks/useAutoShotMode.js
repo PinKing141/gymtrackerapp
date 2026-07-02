@@ -96,6 +96,20 @@ function drawBallTrail(context, trail) {
   }
 }
 
+function drawMinimalRimOutline(context, cal) {
+  if (!cal) return;
+
+  const { rimCenter, rimRadius } = cal;
+  context.save();
+  context.beginPath();
+  context.arc(rimCenter.x, rimCenter.y, rimRadius, 0, Math.PI * 2);
+  context.strokeStyle = "rgba(255, 159, 28, 0.9)";
+  context.lineWidth = 3;
+  context.setLineDash([8, 6]);
+  context.stroke();
+  context.restore();
+}
+
 function sampleFrameBrightness(videoElement, sampleCanvas) {
   const context = sampleCanvas.getContext("2d", { willReadFrequently: true });
   if (!context) return 0.5;
@@ -140,6 +154,7 @@ function buildQaSnapshot(metrics) {
  *   rimDetectionMode?: 'auto' | 'hybrid' | 'manual',
  *   autoRelockEnabled?: boolean,
  *   minShotConfidence?: number,
+ *   debugOverlays?: boolean,
  *   onRimCalibrationUpdate?: ((calibration: import('../lib/rimCalibration.js').RimCalibration, info: { confidence: number, shiftPx?: number, orangePixels?: number, source?: 'auto-detect' | 'manual' | 'relock' }) => void) | null,
  *   onShotDetected?: ((event: { result: 'make' | 'miss', confidence: number, timestamp: number, details?: Record<string, number> }) => void) | null,
  * }} options
@@ -151,6 +166,7 @@ export function useAutoShotMode({
   rimDetectionMode = "hybrid",
   autoRelockEnabled = true,
   minShotConfidence = DEFAULT_MIN_SHOT_CONFIDENCE,
+  debugOverlays = false,
   onRimCalibrationUpdate = null,
   onShotDetected = null,
 } = {}) {
@@ -177,6 +193,7 @@ export function useAutoShotMode({
   const detectionIntervalRef = useRef(detectionIntervalMs);
   const autoRelockEnabledRef = useRef(autoRelockEnabled);
   const minShotConfidenceRef = useRef(minShotConfidence);
+  const debugOverlaysRef = useRef(debugOverlays);
   const rimDetectionModeRef = useRef(rimDetectionMode);
   const relockStateRef = useRef({ enabled: autoRelockEnabled, confidence: 0, shiftPx: 0, status: "idle" });
   const qaMetricsRef = useRef({
@@ -252,6 +269,10 @@ export function useAutoShotMode({
   useEffect(() => {
     minShotConfidenceRef.current = minShotConfidence;
   }, [minShotConfidence]);
+
+  useEffect(() => {
+    debugOverlaysRef.current = debugOverlays;
+  }, [debugOverlays]);
 
   useEffect(() => {
     rimDetectionModeRef.current = rimDetectionMode;
@@ -474,18 +495,24 @@ export function useAutoShotMode({
 
         trajectoryTrailRef.current = trimTrail(trajectoryTrailRef.current);
 
-        // Draw recent ball motion first so the live ball marker stays on top.
-        drawBallTrail(context, trajectoryTrailRef.current);
+        if (debugOverlaysRef.current) {
+          // Draw recent ball motion first so the live ball marker stays on top.
+          drawBallTrail(context, trajectoryTrailRef.current);
 
-        // Draw ball bounding box
-        drawBallOverlay(context, latestDetectionRef.current?.ball);
+          // Draw ball bounding box
+          drawBallOverlay(context, latestDetectionRef.current?.ball);
+        }
 
         // Draw rim calibration overlay
         const cal = rimCalibrationRef.current;
         if (cal) {
           const scaled = scaleCalibration(cal, width, height);
           if (scaled) {
-            drawRimOverlay(context, scaled, { alpha: 0.9 });
+            if (debugOverlaysRef.current) {
+              drawRimOverlay(context, scaled, { alpha: 0.9 });
+            } else {
+              drawMinimalRimOutline(context, scaled);
+            }
           }
         } else {
           // Show hoop guide zone if not yet calibrated
@@ -502,20 +529,21 @@ export function useAutoShotMode({
           context.stroke();
         }
 
-        // Status text
-        const ball = latestDetectionRef.current?.ball;
-        context.fillStyle = "rgba(255, 255, 255, 0.9)";
-        context.font = `${Math.max(14, width * 0.026)}px system-ui, sans-serif`;
-        context.fillText(
-          cal ? "Rim locked · Phase 2 active" : "No rim calibration — tap Calibrate Rim",
-          18,
-          32,
-        );
-        context.fillText(
-          ball ? `Ball locked @ (${Math.round(ball.center.x)}, ${Math.round(ball.center.y)})` : "Searching for basketball…",
-          18,
-          58,
-        );
+        if (debugOverlaysRef.current) {
+          const ball = latestDetectionRef.current?.ball;
+          context.fillStyle = "rgba(255, 255, 255, 0.9)";
+          context.font = `${Math.max(14, width * 0.026)}px system-ui, sans-serif`;
+          context.fillText(
+            cal ? "Rim locked · Phase 2 active" : "No rim calibration - tap Calibrate Rim",
+            18,
+            32,
+          );
+          context.fillText(
+            ball ? `Ball locked @ (${Math.round(ball.center.x)}, ${Math.round(ball.center.y)})` : "Searching for basketball...",
+            18,
+            58,
+          );
+        }
       }
 
       // FPS counter
@@ -542,7 +570,7 @@ export function useAutoShotMode({
     if (!navigator.mediaDevices?.getUserMedia) {
       setError("This browser does not support camera access.");
       setStatus("error");
-      return;
+      return false;
     }
 
     setStatus("requesting");
@@ -575,6 +603,7 @@ export function useAutoShotMode({
       setStatus("streaming");
       initDetector();
       animationFrameRef.current = requestAnimationFrame(drawOverlay);
+      return true;
     } catch (cameraError) {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -582,6 +611,7 @@ export function useAutoShotMode({
       }
       setError(getCameraErrorMessage(cameraError));
       setStatus("error");
+      return false;
     }
   }, [drawOverlay, initDetector]);
 

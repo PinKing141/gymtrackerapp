@@ -331,6 +331,27 @@ export function BasketballScreen({ onExit }) {
     });
   };
 
+  const undoLastShot = () => {
+    setActiveSession((previous) => {
+      if (!previous?.shots?.length) return previous;
+
+      const newShots = previous.shots.slice(0, -1);
+      let consecutiveMisses = previous.consecutiveMisses;
+      const template = getTemplateById(previous.templateId, customTemplates);
+
+      if (template?.specialRule === "pressure" && previous.isStructured) {
+        const currentDrillShots = newShots.filter((shot) => shot.drillIndex === previous.currentDrillIndex);
+        consecutiveMisses = 0;
+        for (let index = currentDrillShots.length - 1; index >= 0; index -= 1) {
+          if (currentDrillShots[index].result !== "miss") break;
+          consecutiveMisses += 1;
+        }
+      }
+
+      return { ...previous, shots: newShots, consecutiveMisses };
+    });
+  };
+
   const advanceDrill = () => {
     setActiveSession((previous) => (previous ? { ...previous, currentDrillIndex: previous.currentDrillIndex + 1, consecutiveMisses: 0 } : previous));
   };
@@ -519,7 +540,7 @@ export function BasketballScreen({ onExit }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
           <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
-          <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Mode</button>
+          <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Shot Tracking</button>
         </div>
 
         {isStructured ? (
@@ -560,9 +581,28 @@ export function BasketballScreen({ onExit }) {
           )}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)", minHeight: "38dvh" }}>
-          <button onClick={() => recordShot("make")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "8px solid #047857", borderRadius: 22, background: colors.success, color: "#062015", fontSize: 35, fontWeight: 950, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>MAKE</button>
-          <button onClick={() => recordShot("miss")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "8px solid #9F1239", borderRadius: 22, background: "#F43F5E", color: "#fff", fontSize: 35, fontWeight: 950, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>MISS</button>
+        <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 8, padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)", minHeight: "38dvh" }}>
+          <button
+            onClick={undoLastShot}
+            disabled={sessionShots.length === 0}
+            style={{
+              width: "100%",
+              border: `1px solid ${colors.border}`,
+              borderRadius: radii.pill,
+              padding: "10px 12px",
+              background: sessionShots.length === 0 ? "rgba(255,255,255,0.03)" : colors.surface,
+              color: sessionShots.length === 0 ? colors.textMuted : colors.textPrimary,
+              fontWeight: 900,
+              cursor: sessionShots.length === 0 ? "not-allowed" : "pointer",
+              opacity: sessionShots.length === 0 ? 0.45 : 1,
+            }}
+          >
+            ↶ Undo last shot
+          </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minHeight: 0 }}>
+            <button onClick={() => recordShot("make")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "8px solid #047857", borderRadius: 22, background: colors.success, color: "#062015", fontSize: 35, fontWeight: 950, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>MAKE</button>
+            <button onClick={() => recordShot("miss")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "8px solid #9F1239", borderRadius: 22, background: "#F43F5E", color: "#fff", fontSize: 35, fontWeight: 950, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>MISS</button>
+          </div>
         </div>
       </div>
     );

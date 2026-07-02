@@ -289,8 +289,8 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
           ✕ Cancel
         </button>
         <div style={{ textAlign: "center" }}>
-          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: 0 }}>Phase 2</p>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>Rim Calibration</h2>
+          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: 0 }}>Rim Setup</p>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>Auto Shot Tracking</h2>
         </div>
         <div style={{ width: 70 }} />
       </div>
@@ -342,9 +342,9 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
             background: "linear-gradient(135deg, rgba(255,122,26,0.12), rgba(45,125,210,0.1))",
           }}>
             <div style={{ fontSize: 52 }}>🏀</div>
-            <h3 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>Calibrate the Rim</h3>
+            <h3 style={{ margin: 0, fontSize: 22, fontWeight: 900 }}>Set the Rim</h3>
             <p style={{ ...typeScale.bodySm, color: colors.textSecondary, maxWidth: 280, margin: 0 }}>
-              Point your camera at the hoop. You'll tap the rim centre, then drag to its edge. This only takes 5 seconds and stays saved across sessions.
+              Place your phone where it will record. Drag the circle until it matches the metal hoop ring. Do not move the phone after this.
             </p>
             {hasExisting && (
               <div style={{
@@ -500,7 +500,7 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
                   transition: "background 0.3s",
                 }}
               >
-                {saved ? "✓ Saved!" : "Save Calibration"}
+                {saved ? "✓ Saved!" : "Confirm Rim"}
               </button>
             </div>
           )}

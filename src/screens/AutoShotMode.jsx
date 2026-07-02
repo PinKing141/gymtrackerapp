@@ -12,12 +12,13 @@ import { AutoShotInstructionScreen } from "./AutoShotInstructionScreen.jsx";
 import { RimCalibrationScreen } from "./RimCalibrationScreen.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
-const DETECTOR_SETTINGS_KEY = "basketball_detector_settings_v1";
+const DETECTOR_SETTINGS_KEY = "basketball_detector_settings_v2";
+const DEV_MODE_KEY = "basketball_dev_mode_v1";
 const DEFAULT_DETECTOR_SETTINGS = {
   presetKey: "auto",
   minScore: 0.52,
   minShotConfidence: 0.64,
-  rimDetectionMode: "hybrid",
+  rimDetectionMode: "manual",
   autoRelockEnabled: true,
   detectionIntervalMs: 140,
 };
@@ -44,6 +45,22 @@ function saveDetectorSettings(settings) {
   }
 }
 
+function loadDevMode() {
+  try {
+    return localStorage.getItem(DEV_MODE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveDevMode(enabled) {
+  try {
+    localStorage.setItem(DEV_MODE_KEY, enabled ? "true" : "false");
+  } catch {
+    // ignore storage failures
+  }
+}
+
 function StatusPill({ label, value, accent = "#FF9F1C" }) {
   return (
     <div style={{
@@ -59,13 +76,18 @@ function StatusPill({ label, value, accent = "#FF9F1C" }) {
 }
 
 export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disabled = false }) {
-  // Rim calibration state — loaded from localStorage, held here so it feeds the hook
   const [rimCalibration, setRimCalibration] = useState(() => loadRimCalibration());
   const [detectorSettings, setDetectorSettings] = useState(() => loadDetectorSettings());
-  const [showCalibration, setShowCalibration] = useState(false);
+  const [flowStep, setFlowStep] = useState("intro");
   const [showGuide, setShowGuide] = useState(false);
+  const [devMode, setDevMode] = useState(() => loadDevMode());
+  const [devToast, setDevToast] = useState("");
+  const [pendingShot, setPendingShot] = useState(null);
+  const [restartAfterCalibration, setRestartAfterCalibration] = useState(false);
   const [autoRecommendedPresetKey, setAutoRecommendedPresetKey] = useState("indoor");
   const lastCalibrationPersistAtRef = useRef(0);
+  const devTapRef = useRef({ count: 0, firstAt: 0 });
+  const devToastTimerRef = useRef(null);
 
   const activePresetKey = detectorSettings.presetKey === "auto" ? autoRecommendedPresetKey : detectorSettings.presetKey;
   const activePresetSettings = getPresetSettings(activePresetKey) || {};
@@ -75,8 +97,9 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
 
   const handleDetectedShot = useCallback((shotEvent) => {
     if (disabled) return;
-    onRecordShot?.(shotEvent);
-  }, [disabled, onRecordShot]);
+    // Latest proposal wins; session Undo and manual buttons remain available in the parent view.
+    setPendingShot(shotEvent);
+  }, [disabled]);
 
   const {
     videoRef,
@@ -104,6 +127,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     rimDetectionMode: effectiveSettings.rimDetectionMode,
     autoRelockEnabled: effectiveSettings.autoRelockEnabled !== false,
     minShotConfidence: effectiveSettings.minShotConfidence,
+    debugOverlays: devMode,
     onRimCalibrationUpdate: (calibration, info) => {
       if (info?.source !== "relock") {
         setRimCalibration(calibration);
@@ -124,6 +148,30 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
       avgInferenceMs: qaMetrics.avgInferenceMs,
     }));
   }, [qaMetrics.avgFps, qaMetrics.avgInferenceMs, sceneState.brightness]);
+
+  useEffect(() => {
+    if (!disabled) return;
+    setPendingShot(null);
+  }, [disabled]);
+
+  useEffect(() => {
+    return () => {
+      if (devToastTimerRef.current) {
+        window.clearTimeout(devToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (flowStep !== "calibrate") return;
+    stopCamera();
+  }, [flowStep, stopCamera]);
+
+  useEffect(() => {
+    if (!restartAfterCalibration || flowStep !== "shooting" || isStreaming || status === "requesting") return;
+    setRestartAfterCalibration(false);
+    startCamera();
+  }, [flowStep, isStreaming, restartAfterCalibration, startCamera, status]);
 
   const ball = detection?.ball;
   const rimValid = isValidCalibration(rimCalibration);
@@ -167,6 +215,68 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           : "Idle";
   const relockAccent = relockState.status === "locked" ? colors.success : relockState.status === "searching" ? "#FF9F1C" : colors.textMuted;
 
+  const minimalStatus = [
+    isStreaming ? "Camera ready" : status === "requesting" ? "Starting camera" : status === "error" ? "Camera blocked" : "Camera off",
+    rimValid ? "Rim calibrated" : "Rim not set",
+    ball ? "Ball found" : isStreaming ? "Finding ball" : "Ball idle",
+    trackingState.phase === "armed" ? "Tracking" : trackerReady ? "Ready" : "Idle",
+  ].join(" · ");
+
+  const showDevToast = useCallback((message) => {
+    setDevToast(message);
+    if (devToastTimerRef.current) {
+      window.clearTimeout(devToastTimerRef.current);
+    }
+    devToastTimerRef.current = window.setTimeout(() => setDevToast(""), 1600);
+  }, []);
+
+  const handleHeaderTap = useCallback(() => {
+    const now = Date.now();
+    const windowMs = 2000;
+    const current = devTapRef.current;
+
+    if (!current.firstAt || now - current.firstAt > windowMs) {
+      current.count = 1;
+      current.firstAt = now;
+    } else {
+      current.count += 1;
+    }
+
+    if (current.count >= 5) {
+      const nextDevMode = !devMode;
+      current.count = 0;
+      current.firstAt = 0;
+      setDevMode(nextDevMode);
+      saveDevMode(nextDevMode);
+      showDevToast(nextDevMode ? "Developer Mode enabled" : "Developer Mode hidden");
+    }
+  }, [devMode, showDevToast]);
+
+  const handleStartTracking = useCallback(async () => {
+    if (disabled || status === "requesting") return;
+    const started = isStreaming ? true : await startCamera();
+    if (!started) return;
+
+    if (!isValidCalibration(rimCalibration)) {
+      stopCamera();
+      setFlowStep("calibrate");
+      return;
+    }
+
+    setFlowStep("shooting");
+  }, [disabled, isStreaming, rimCalibration, startCamera, status, stopCamera]);
+
+  const handleStopTracking = useCallback(() => {
+    setPendingShot(null);
+    stopCamera();
+  }, [stopCamera]);
+
+  const handleOpenCalibration = useCallback(() => {
+    setPendingShot(null);
+    stopCamera();
+    setFlowStep("calibrate");
+  }, [stopCamera]);
+
   const handleCalibrationSave = useCallback((calibration) => {
     setRimCalibration(calibration);
     const nextSettings = {
@@ -175,17 +285,25 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     };
     setDetectorSettings(nextSettings);
     saveDetectorSettings(nextSettings);
-    setShowCalibration(false);
+    setPendingShot(null);
+    setFlowStep("shooting");
+    setRestartAfterCalibration(true);
   }, [detectorSettings]);
 
   const handleCalibrationCancel = useCallback(() => {
-    setShowCalibration(false);
-  }, []);
+    setPendingShot(null);
+    const hasCalibration = isValidCalibration(rimCalibration);
+    setFlowStep(hasCalibration ? "shooting" : "intro");
+    setRestartAfterCalibration(hasCalibration);
+  }, [rimCalibration]);
 
   const handleClearCalibration = useCallback(() => {
     clearRimCalibration();
     setRimCalibration(null);
-  }, []);
+    setPendingShot(null);
+    stopCamera();
+    setFlowStep("intro");
+  }, [stopCamera]);
 
   const handleMinScoreChange = useCallback((event) => {
     const minScore = Number(event.target.value);
@@ -278,8 +396,17 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     URL.revokeObjectURL(url);
   }, [activePresetKey, ball, currentType, currentZoneName, detectorSettings, lastShotEvent, qaMetrics, relockState, rimDetectionState, sceneState]);
 
-  // ── Rim calibration overlay ───────────────────────────────────────────────
-  if (showCalibration) {
+  const handlePendingShot = useCallback((result, source) => {
+    if (!pendingShot || disabled) return;
+    onRecordShot?.({
+      result,
+      source,
+      confidence: pendingShot.confidence,
+    });
+    setPendingShot(null);
+  }, [disabled, onRecordShot, pendingShot]);
+
+  if (flowStep === "calibrate") {
     return (
       <RimCalibrationScreen
         existingCalibration={rimCalibration}
@@ -293,64 +420,161 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     return <AutoShotInstructionScreen onClose={() => setShowGuide(false)} />;
   }
 
-  // ── Main auto mode UI ─────────────────────────────────────────────────────
-  return (
-    <div style={{ width: "100%", maxWidth: 430, display: "grid", gap: 12 }}>
+  const renderAssistedConfirmation = () => {
+    if (!pendingShot) {
+      return (
+        <div style={{
+          padding: 12,
+          borderRadius: radii.lg,
+          background: "rgba(255,255,255,0.05)",
+          border: `1px solid ${colors.border}`,
+          textAlign: "left",
+        }}>
+          <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 4px" }}>
+            Assisted Logging
+          </p>
+          <p style={{ margin: 0, color: colors.textSecondary, fontSize: 13, fontWeight: 750 }}>
+            AI shot proposals will appear here before anything is added to the workout.
+          </p>
+        </div>
+      );
+    }
 
-      {/* Camera viewport */}
+    const proposedResult = pendingShot.result === "make" ? "make" : "miss";
+    const correctionResult = proposedResult === "make" ? "miss" : "make";
+    const proposedAccent = proposedResult === "make" ? colors.success : colors.danger;
+    const correctionAccent = correctionResult === "make" ? colors.success : colors.danger;
+
+    return (
       <div style={{
-        position: "relative",
-        overflow: "hidden",
-        borderRadius: 24,
-        border: `1px solid ${colors.border}`,
-        background: "#050507",
-        boxShadow: "0 18px 55px rgba(0,0,0,0.35)",
-        aspectRatio: "9 / 16",
+        padding: 14,
+        borderRadius: radii.lg,
+        background: "rgba(255,255,255,0.07)",
+        border: `1px solid ${proposedAccent}55`,
+        textAlign: "left",
+        display: "grid",
+        gap: 10,
       }}>
-        <video
-          ref={videoRef}
-          muted
-          playsInline
-          autoPlay
+        <div>
+          <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 5px" }}>
+            Assisted Logging
+          </p>
+          <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 950, fontSize: 18 }}>
+            AI thinks: <span style={{ color: proposedAccent }}>{proposedResult.toUpperCase()}</span>
+          </p>
+          <p style={{ margin: "4px 0 0", color: colors.textSecondary, fontSize: 12 }}>
+            Confidence {Math.round((pendingShot.confidence || 0) * 100)}%
+          </p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <button
+            onClick={() => handlePendingShot(proposedResult, "auto-confirmed")}
+            disabled={disabled}
+            style={{
+              border: 0,
+              borderRadius: radii.md,
+              padding: "12px 10px",
+              background: proposedAccent,
+              color: proposedResult === "make" ? "#062015" : "#fff",
+              fontWeight: 950,
+              cursor: disabled ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.45 : 1,
+            }}
+          >
+            Correct
+          </button>
+          <button
+            onClick={() => handlePendingShot(correctionResult, "auto-corrected")}
+            disabled={disabled}
+            style={{
+              border: 0,
+              borderRadius: radii.md,
+              padding: "12px 10px",
+              background: correctionAccent,
+              color: correctionResult === "make" ? "#062015" : "#fff",
+              fontWeight: 950,
+              cursor: disabled ? "not-allowed" : "pointer",
+              opacity: disabled ? 0.45 : 1,
+            }}
+          >
+            Actually {correctionResult === "make" ? "Make" : "Miss"}
+          </button>
+        </div>
+        <button
+          onClick={() => setPendingShot(null)}
           style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: isStreaming ? "block" : "none",
+            border: `1px solid ${colors.border}`,
+            borderRadius: radii.pill,
+            padding: "8px 10px",
+            background: "transparent",
+            color: colors.textMuted,
+            fontWeight: 850,
+            cursor: "pointer",
           }}
-        />
-        <canvas
-          ref={canvasRef}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            pointerEvents: "none",
-          }}
-        />
+        >
+          Dismiss
+        </button>
+      </div>
+    );
+  };
 
-        {/* Idle / start prompt */}
-        {!isStreaming && (
-          <div style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            placeItems: "center",
-            padding: 24,
-            textAlign: "center",
-            background: "linear-gradient(135deg, rgba(255,122,26,0.16), rgba(88,80,236,0.14))",
-          }}>
+  const renderCameraViewport = () => (
+    <div style={{
+      position: "relative",
+      overflow: "hidden",
+      borderRadius: 24,
+      border: `1px solid ${colors.border}`,
+      background: "#050507",
+      boxShadow: "0 18px 55px rgba(0,0,0,0.35)",
+      aspectRatio: "9 / 16",
+    }}>
+      <video
+        ref={videoRef}
+        muted
+        playsInline
+        autoPlay
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          display: isStreaming ? "block" : "none",
+        }}
+      />
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+        }}
+      />
+
+      {!isStreaming && (
+        <div style={{
+          position: "absolute",
+          inset: 0,
+          display: "grid",
+          placeItems: "center",
+          padding: 24,
+          textAlign: "center",
+          background: "linear-gradient(135deg, rgba(255,122,26,0.16), rgba(88,80,236,0.14))",
+        }}>
+          {flowStep === "intro" ? (
             <div>
               <p style={{ fontSize: 44, margin: "0 0 12px" }}>📷</p>
-              <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 950 }}>Auto Shot Mode</h3>
+              <h3
+                onClick={handleHeaderTap}
+                style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 950, cursor: "default" }}
+              >
+                Auto Shot Tracking
+              </h3>
               <p style={{ ...typeScale.bodySm, margin: "0 0 16px", color: colors.textSecondary }}>
-                {rimValid
-                  ? "Rim calibrated · Start the camera to begin detection."
-                  : "Start the camera, then calibrate the rim to enable shot tracking."}
+                Start with a guided rim setup. AI will ask before logging each detected shot.
               </p>
               <button
-                onClick={startCamera}
+                onClick={handleStartTracking}
                 disabled={disabled || status === "requesting"}
                 style={{
                   border: 0,
@@ -363,7 +587,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
                   opacity: disabled ? 0.45 : 1,
                 }}
               >
-                {status === "requesting" ? "REQUESTING CAMERA…" : "START CAMERA"}
+                {status === "requesting" ? "REQUESTING CAMERA..." : "START CAMERA"}
               </button>
               <button
                 onClick={() => setShowGuide(true)}
@@ -381,29 +605,55 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
                 HOW TO SET IT UP
               </button>
             </div>
-          </div>
-        )}
+          ) : (
+            <div>
+              <p style={{ fontSize: 40, margin: "0 0 12px" }}>📷</p>
+              <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 950 }}>Camera Stopped</h3>
+              <p style={{ ...typeScale.bodySm, margin: "0 0 16px", color: colors.textSecondary }}>
+                Keep the phone in the calibrated position, then restart tracking.
+              </p>
+              <button
+                onClick={handleStartTracking}
+                disabled={disabled || status === "requesting"}
+                style={{
+                  border: 0,
+                  borderRadius: radii.pill,
+                  padding: "12px 16px",
+                  background: "#FF7A1A",
+                  color: "#fff",
+                  fontWeight: 950,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.45 : 1,
+                }}
+              >
+                {status === "requesting" ? "REQUESTING CAMERA..." : "START CAMERA"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Error banner */}
-        {(error || modelError) && (
-          <div style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            bottom: 12,
-            padding: 12,
-            borderRadius: radii.md,
-            background: "rgba(244,63,94,0.16)",
-            border: "1px solid rgba(244,63,94,0.38)",
-            color: "#FFC2CD",
-            fontWeight: 800,
-          }}>
-            {error || modelError}
-          </div>
-        )}
-      </div>
+      {(error || modelError) && (
+        <div style={{
+          position: "absolute",
+          left: 12,
+          right: 12,
+          bottom: 12,
+          padding: 12,
+          borderRadius: radii.md,
+          background: "rgba(244,63,94,0.16)",
+          border: "1px solid rgba(244,63,94,0.38)",
+          color: "#FFC2CD",
+          fontWeight: 800,
+        }}>
+          {error || modelError}
+        </div>
+      )}
+    </div>
+  );
 
-      {/* Status pills */}
+  const renderDeveloperSurface = () => (
+    <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <StatusPill
           label="Camera"
@@ -414,7 +664,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           label="Model"
           value={
             modelStatus === "ready" ? "Loaded"
-            : modelStatus === "loading" ? "Loading…"
+            : modelStatus === "loading" ? "Loading"
             : modelStatus === "error" ? "Error"
             : "Idle"
           }
@@ -422,23 +672,23 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         />
         <StatusPill
           label="FPS"
-          value={isStreaming ? (fps || "…") : "—"}
+          value={isStreaming ? (fps || "...") : "-"}
         />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         <StatusPill
           label="Frame"
-          value={videoSize.width ? `${videoSize.width}p` : "—"}
+          value={videoSize.width ? `${videoSize.width}p` : "-"}
         />
         <StatusPill
           label="Ball"
-          value={ball ? `${Math.round(ball.score * 100)}%` : isStreaming ? "Searching" : "—"}
+          value={ball ? `${Math.round(ball.score * 100)}%` : isStreaming ? "Searching" : "-"}
           accent={ball ? colors.success : "#FF9F1C"}
         />
         <StatusPill
           label="Infer"
-          value={detection?.inferenceMs ? `${detection.inferenceMs}ms` : "—"}
+          value={detection?.inferenceMs ? `${detection.inferenceMs}ms` : "-"}
         />
       </div>
 
@@ -450,11 +700,11 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         />
         <StatusPill
           label="Samples"
-          value={trackingState.sampleCount || "—"}
+          value={trackingState.sampleCount || "-"}
         />
         <StatusPill
           label="Last Shot"
-          value={lastShotEvent ? lastShotEvent.result.toUpperCase() : "—"}
+          value={lastShotEvent ? lastShotEvent.result.toUpperCase() : "-"}
           accent={lastShotEvent?.result === "make" ? colors.success : lastShotEvent?.result === "miss" ? colors.danger : "#FF9F1C"}
         />
       </div>
@@ -472,12 +722,12 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         />
         <StatusPill
           label="Logged"
-          value={qaMetrics.loggedShots || "—"}
+          value={qaMetrics.loggedShots || "-"}
           accent={colors.success}
         />
         <StatusPill
           label="Suppressed"
-          value={qaMetrics.suppressedShots || "—"}
+          value={qaMetrics.suppressedShots || "-"}
           accent={colors.danger}
         />
       </div>
@@ -601,7 +851,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           <div>
             <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 900 }}>Shot log threshold</p>
             <p style={{ margin: "4px 0 0", color: colors.textSecondary, fontSize: 12 }}>
-              Low-confidence make or miss events are shown but not logged below this score.
+              Low-confidence make or miss events are suppressed below this score.
             </p>
           </div>
           <p style={{ margin: 0, color: "#FF9F1C", fontWeight: 950 }}>{Math.round(effectiveSettings.minShotConfidence * 100)}%</p>
@@ -646,7 +896,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         )}
         {ball && filterDebug && (
           <p style={{ margin: "6px 0 0", color: colors.textMuted, fontSize: 11 }}>
-            Orange {Math.round((filterDebug.orangeRatio || 0) * 100)}% · Aspect {filterDebug.aspectRatio || "—"} · Size {Math.round((filterDebug.relativeDiameter || 0) * 100)}%
+            Orange {Math.round((filterDebug.orangeRatio || 0) * 100)}% · Aspect {filterDebug.aspectRatio || "-"} · Size {Math.round((filterDebug.relativeDiameter || 0) * 100)}%
           </p>
         )}
         {rimValid && detectorSettings.autoRelockEnabled !== false && (
@@ -693,7 +943,6 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         </button>
       </div>
 
-      {/* Rim calibration status card */}
       <div style={{
         padding: 12,
         borderRadius: radii.lg,
@@ -710,7 +959,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
             {rimValid ? (
               <>
                 <p style={{ margin: 0, color: rimStale ? colors.danger : "#FF9F1C", fontWeight: 900, fontSize: 13 }}>
-                  {rimStale ? "⚠ Stale — recalibrate recommended" : "✓ Rim locked"}
+                  {rimStale ? "Stale - recalibrate recommended" : "Rim locked"}
                 </p>
                 {ball && (
                   <p style={{ ...typeScale.caption, margin: "4px 0 0", color: colors.textSecondary }}>
@@ -720,13 +969,13 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
               </>
             ) : (
               <p style={{ margin: 0, color: colors.textSecondary, fontSize: 12 }}>
-                No calibration — tap "Calibrate Rim" to mark the hoop.
+                No calibration - use the rim setup flow before shooting.
               </p>
             )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <button
-              onClick={() => setShowCalibration(true)}
+              onClick={handleOpenCalibration}
               style={{
                 border: "1px solid rgba(255,122,26,0.45)",
                 borderRadius: radii.pill,
@@ -762,7 +1011,6 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
         </div>
       </div>
 
-      {/* Current logging target */}
       <div style={{
         padding: 12,
         borderRadius: radii.lg,
@@ -777,7 +1025,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           {currentZoneName || "Selected zone"} • {currentType || "Selected shot"}
         </p>
         <p style={{ margin: "6px 0 0", color: colors.textSecondary, fontSize: 12 }}>
-          Auto detections log straight into this target. Manual override buttons below still work if you need them.
+          Auto detections become pending proposals. Confirm or correct them before they enter this target.
         </p>
       </div>
 
@@ -794,35 +1042,110 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           <p style={{ margin: 0, fontWeight: 950, color: lastShotEvent.suppressed ? "#FF9F1C" : lastShotEvent.result === "make" ? colors.success : colors.danger }}>
             {lastShotEvent.suppressed
               ? `${lastShotEvent.result.toUpperCase()} suppressed`
-              : lastShotEvent.result === "make"
-                ? "MAKE logged"
-                : "MISS logged"}
+              : `${lastShotEvent.result.toUpperCase()} proposal`}
           </p>
           <p style={{ margin: "4px 0 0", color: colors.textSecondary, fontSize: 12 }}>
             Confidence {Math.round((lastShotEvent.confidence || 0) * 100)}%
           </p>
         </div>
       )}
+    </>
+  );
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={isStreaming ? stopCamera : startCamera}
-          disabled={disabled || status === "requesting"}
-          style={{
-            width: "100%",
-            border: `1px solid ${colors.border}`,
-            borderRadius: radii.pill,
-            padding: "11px 12px",
-            background: colors.surface,
-            color: colors.textPrimary,
-            fontWeight: 900,
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.45 : 1,
-          }}
-        >
-          {isStreaming ? "STOP CAMERA" : "START CAMERA"}
-        </button>
-      </div>
+  return (
+    <div style={{ width: "100%", maxWidth: 430, display: "grid", gap: 12 }}>
+      {flowStep !== "intro" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ textAlign: "left" }}>
+            <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: "0 0 2px" }}>
+              AI Shot Tracking
+            </p>
+            <h3
+              onClick={handleHeaderTap}
+              style={{ margin: 0, color: colors.textPrimary, fontSize: 20, fontWeight: 950, cursor: "default" }}
+            >
+              Auto Shot Tracking
+            </h3>
+          </div>
+          {devMode && (
+            <span style={{
+              border: "1px solid rgba(255,159,28,0.38)",
+              borderRadius: radii.pill,
+              padding: "6px 9px",
+              color: "#FF9F1C",
+              background: "rgba(255,159,28,0.1)",
+              fontSize: 11,
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+            }}>
+              DEV
+            </span>
+          )}
+        </div>
+      )}
+
+      {devToast && (
+        <div style={{
+          padding: "9px 11px",
+          borderRadius: radii.md,
+          background: "rgba(255,159,28,0.12)",
+          border: "1px solid rgba(255,159,28,0.34)",
+          color: "#FFB45C",
+          fontSize: 12,
+          fontWeight: 900,
+        }}>
+          {devToast}
+        </div>
+      )}
+
+      {renderCameraViewport()}
+
+      {flowStep === "shooting" && (
+        <>
+          <p style={{ margin: 0, color: colors.textSecondary, fontSize: 13, fontWeight: 850, textAlign: "center" }}>
+            {minimalStatus}
+          </p>
+
+          {renderAssistedConfirmation()}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button
+              onClick={handleOpenCalibration}
+              style={{
+                border: "1px solid rgba(255,122,26,0.45)",
+                borderRadius: radii.pill,
+                padding: "11px 12px",
+                background: "rgba(255,122,26,0.12)",
+                color: "#FF9F1C",
+                fontWeight: 950,
+                cursor: "pointer",
+                minWidth: 0,
+              }}
+            >
+              {rimValid ? "Rim set ✓ · Recalibrate" : "Set rim"}
+            </button>
+            <button
+              onClick={isStreaming ? handleStopTracking : handleStartTracking}
+              disabled={disabled || status === "requesting"}
+              style={{
+                border: `1px solid ${colors.border}`,
+                borderRadius: radii.pill,
+                padding: "11px 12px",
+                background: colors.surface,
+                color: colors.textPrimary,
+                fontWeight: 950,
+                cursor: disabled ? "not-allowed" : "pointer",
+                opacity: disabled ? 0.45 : 1,
+                minWidth: 0,
+              }}
+            >
+              {isStreaming ? "Stop Camera" : status === "requesting" ? "Starting..." : "Start Camera"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {devMode && renderDeveloperSurface()}
     </div>
   );
 }
