@@ -140,7 +140,7 @@ export function App() {
     );
   }
   if (view === "basketball") {
-    content = <BasketballScreen onExit={() => navigate("home")} />;
+    content = <BasketballScreen onExit={() => navigate("home")} firebaseUser={firebaseUser} />;
   }
   if (view === "history") {
     content = (

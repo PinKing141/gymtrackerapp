@@ -1,8 +1,42 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AutoShotMode } from "./AutoShotMode.jsx";
 import { ShotZoneCourtPicker } from "../components/ShotZoneCourtPicker.jsx";
 import { Icon } from "../components/icons.jsx";
+import { loadRimCalibration } from "../lib/rimCalibration.js";
+import { saveBasketballSession } from "../services/basketballSync.js";
 import { colors, radii, typeScale } from "../theme.js";
+
+const AI_SOURCES = ["auto-confirmed", "auto-corrected", "auto"];
+
+/**
+ * Derive the cloud-sync summary fields for a finished session from its shots.
+ */
+function summarizeSession(session) {
+  const shots = Array.isArray(session?.shots) ? session.shots : [];
+  const makes = shots.filter((shot) => shot.result === "make").length;
+  const totalShots = shots.length;
+  const shotTimes = shots
+    .map((shot) => new Date(shot.timestamp).getTime())
+    .filter((time) => !Number.isNaN(time));
+  const startedAt = session?.startedAt
+    || session?.date
+    || (shotTimes.length ? new Date(Math.min(...shotTimes)).toISOString() : new Date().toISOString());
+  const endedAtMs = shotTimes.length ? Math.max(...shotTimes) : Date.now();
+  const endedAt = new Date(endedAtMs).toISOString();
+  const durationSec = Math.max(0, Math.round((endedAtMs - new Date(startedAt).getTime()) / 1000));
+  return {
+    mode: shots.some((shot) => AI_SOURCES.includes(shot.source)) ? "auto-assisted" : "manual",
+    totalShots,
+    makes,
+    misses: totalShots - makes,
+    fgPct: totalShots > 0 ? Math.round((makes / totalShots) * 100) : 0,
+    startedAt,
+    endedAt,
+    durationSec,
+    device: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    calibrationId: loadRimCalibration()?.timestamp ?? null,
+  };
+}
 
 const STORAGE_KEY = "hoopTrackerProData";
 
@@ -134,6 +168,7 @@ const BUILT_IN_TEMPLATES = [
 const viewTabs = [
   { id: "dashboard", label: "Home", icon: "barChart" },
   { id: "setup", label: "Workouts", icon: "target" },
+  { id: "stats", label: "Stats", icon: "pulse" },
   { id: "card", label: "Player Card", icon: "trophy" },
 ];
 
@@ -147,7 +182,7 @@ function getPercent(makes, total) {
 
 function StatPill({ label, value, accent = colors.accent }) {
   return (
-    <div style={{ flex: 1, padding: 12, borderRadius: radii.lg, background: "rgba(255,255,255,0.05)", border: `1px solid ${colors.border}` }}>
+    <div style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: radii.lg, background: "rgba(255,255,255,0.05)", border: `1px solid ${colors.border}` }}>
       <p style={{ ...typeScale.caption, color: colors.textMuted, margin: 0, textTransform: "uppercase", fontWeight: 800 }}>{label}</p>
       <p style={{ fontSize: 22, fontWeight: 900, color: accent, margin: "3px 0 0" }}>{value}</p>
     </div>
@@ -175,7 +210,8 @@ function ZoneOptions() {
   ));
 }
 
-export function BasketballScreen({ onExit }) {
+export function BasketballScreen({ onExit, firebaseUser }) {
+  const uid = firebaseUser?.uid || null;
   const [currentView, setCurrentView] = useState("dashboard");
   const [history, setHistory] = useState([]);
   const [customTemplates, setCustomTemplates] = useState([]);
@@ -278,6 +314,7 @@ export function BasketballScreen({ onExit }) {
     setActiveSession({
       id: Date.now(),
       date: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
       templateId: template.id,
       templateName: template.name,
       isStructured: template.isStructured,
@@ -358,11 +395,40 @@ export function BasketballScreen({ onExit }) {
 
   const endSession = () => {
     if (activeSession?.shots?.length > 0) {
-      setHistory((previous) => [activeSession, ...previous]);
+      const finished = { ...activeSession, ...summarizeSession(activeSession), synced: false };
+      setHistory((previous) => [finished, ...previous]);
     }
     setActiveSession(null);
     setCurrentView("dashboard");
   };
+
+  // Cloud sync (new sessions + one-time backfill of existing local history):
+  // push any session not yet flagged `synced`, then mark it synced. Local-first —
+  // failures simply stay unsynced and are retried on the next change/login.
+  const syncingIdsRef = useRef(new Set());
+  useEffect(() => {
+    if (!uid) return undefined;
+    let cancelled = false;
+
+    history.forEach((session) => {
+      const sid = String(session.id);
+      if (session.synced || !session.shots?.length || syncingIdsRef.current.has(sid)) return;
+      syncingIdsRef.current.add(sid);
+      const enriched = session.mode ? session : { ...session, ...summarizeSession(session) };
+      saveBasketballSession(uid, enriched)
+        .then((ok) => {
+          if (ok && !cancelled) {
+            setHistory((previous) => previous.map((item) => (String(item.id) === sid ? { ...item, synced: true } : item)));
+          }
+        })
+        .catch((error) => console.warn("Basketball cloud sync failed", error))
+        .finally(() => syncingIdsRef.current.delete(sid));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, history]);
 
   const saveCustomTemplate = () => {
     const safeName = customName.trim() || "My Custom Workout";
@@ -471,6 +537,46 @@ export function BasketballScreen({ onExit }) {
         <div style={{ position: "absolute", right: -28, bottom: -34, opacity: 0.07 }}><Icon name="trophy" size={150} color="#fff" /></div>
       </div>
       {stats.weakestSpot && <div style={{ padding: 14, borderRadius: radii.lg, background: "rgba(141,71,225,0.12)", border: "1px solid rgba(141,71,225,0.22)", color: "#DDD6FE" }}><strong>Scouting Report:</strong> defenses will force shots from {stats.weakestSpot.name} ({stats.weakestSpot.percentage}%). Focus training here.</div>}
+    </div>
+  );
+
+  const statsShots = stats.allShots || [];
+  const statsTotal = statsShots.length;
+  const statsMakes = statsShots.filter((shot) => shot.result === "make").length;
+  const manualShots = statsShots.filter((shot) => shot.source === "manual" || !shot.source).length;
+  const aiConfirmedShots = statsShots.filter((shot) => shot.source === "auto-confirmed" || shot.source === "auto").length;
+  const aiCorrectedShots = statsShots.filter((shot) => shot.source === "auto-corrected").length;
+  const pendingSyncCount = history.filter((session) => session.shots?.length && !session.synced).length;
+
+  const statsView = (
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 96px" }}>
+      <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Shot Stats</h1>
+      <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+        <StatPill label="Shots" value={statsTotal} />
+        <StatPill label="Makes" value={statsMakes} accent="#3DDC97" />
+        <StatPill label="Misses" value={statsTotal - statsMakes} accent="#F43F5E" />
+        <StatPill label="FG%" value={`${getPercent(statsMakes, statsTotal)}%`} accent="#FF9F1C" />
+      </div>
+      <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "6px 0 0" }}>Where shots came from</p>
+      <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+        <StatPill label="Manual" value={manualShots} />
+        <StatPill label="AI Confirmed" value={aiConfirmedShots} accent="#3DDC97" />
+        <StatPill label="AI Corrected" value={aiCorrectedShots} accent="#8B5CF6" />
+      </div>
+      <div style={{ padding: 12, borderRadius: radii.lg, background: "rgba(255,255,255,0.05)", border: `1px solid ${colors.border}`, ...typeScale.bodySm, color: colors.textSecondary }}>
+        {!uid
+          ? "Sign in to sync sessions to the cloud."
+          : pendingSyncCount > 0
+            ? `${pendingSyncCount} session${pendingSyncCount === 1 ? "" : "s"} pending sync…`
+            : history.length
+              ? "All sessions synced to cloud."
+              : "No sessions yet. Log some shots to see stats."}
+      </div>
+      {aiCorrectedShots > 0 && (
+        <p style={{ ...typeScale.caption, color: colors.textMuted, margin: 0 }}>
+          AI-corrected shots are the most valuable training signal — {aiCorrectedShots} captured so far.
+        </p>
+      )}
     </div>
   );
 
@@ -612,6 +718,7 @@ export function BasketballScreen({ onExit }) {
     <div style={{ minHeight: "100dvh", background: currentView === "workout" ? "#07070B" : colors.background, color: colors.textPrimary }}>
       {currentView === "dashboard" && dashboard}
       {currentView === "setup" && setup}
+      {currentView === "stats" && statsView}
       {currentView === "builder" && builder}
       {currentView === "card" && playerCard}
       {currentView === "workout" && workout}
