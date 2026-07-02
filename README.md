@@ -72,7 +72,9 @@ updates roll out immediately) and `.firebaserc` (project id).
 ### One-time setup
 
 1. Create a project at `https://console.firebase.google.com/` and enable Hosting.
-2. Put your project id in `.firebaserc` (replace `orion-gym-tracker`).
+2. Set your project id in `.firebaserc` (currently `gymtracker-9eeca`).
+3. In the Firebase console, register a Web app and copy its config into
+   `.env.local` (see the Firebase auth / Firestore section below).
 
 ### Deploy from your machine
 
@@ -97,6 +99,33 @@ it:
 
 Until `FIREBASE_SERVICE_ACCOUNT` is set, the workflow skips the deploy with a
 green check instead of failing.
+
+## Firebase auth / Firestore
+
+The app initializes the Firebase Web SDK in [`src/firebase.js`](src/firebase.js),
+exporting `auth` (Firebase Authentication) and `db` (Cloud Firestore). Auth flows
+(sign up / sign in / sign out) build on top of this in a later step.
+
+### Config
+
+Firebase web config is client-side and safe to expose, but is read from env vars
+so it is not hard-coded. Copy `.env.example` to `.env.local` and fill in the
+`VITE_FIREBASE_*` values from the Firebase console
+(`Project settings -> General -> Your apps -> SDK setup and configuration`):
+
+```env
+VITE_FIREBASE_API_KEY=your_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+```
+
+For CI/production builds, add the same `VITE_FIREBASE_*` keys as repository
+variables under `Settings -> Secrets and variables -> Actions -> Variables`; the
+Firebase Hosting workflow forwards them into the Vite build.
 
 ## iPhone / GitHub Pages
 
