@@ -6,3 +6,9 @@ dist/
 
 # local Python env used for lightweight static checks in this workspace
 .venv/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+.firebaserc.local
