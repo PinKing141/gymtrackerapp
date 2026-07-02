@@ -163,7 +163,7 @@ export function useAutoShotMode({
   rimCalibration = null,
   detectorConfig = null,
   detectionIntervalMs = DEFAULT_DETECTION_INTERVAL_MS,
-  rimDetectionMode = "hybrid",
+  rimDetectionMode = "manual",
   autoRelockEnabled = true,
   minShotConfidence = DEFAULT_MIN_SHOT_CONFIDENCE,
   debugOverlays = false,
