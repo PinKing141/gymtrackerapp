@@ -67,6 +67,7 @@ export function App() {
     notificationPermission,
     notificationSupported,
     openMoreSection,
+    goBackMoreSection,
     prehabOpen,
     recoveryForm,
     reviewForm,
@@ -231,6 +232,7 @@ export function App() {
         app={app}
         bodyStatsForm={bodyStatsForm}
         closeSection={actions.closeMoreSection}
+        goBackSection={goBackMoreSection}
         fileInputRef={fileInputRef}
         getPhaseProgress={getPhaseProgress}
         onExportData={actions.exportData}
