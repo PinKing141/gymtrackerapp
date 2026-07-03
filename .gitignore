@@ -12,3 +12,7 @@ dist/
 firebase-debug.log
 firebase-debug.*.log
 .firebaserc.local
+
+# Push backend secrets — never commit service-account keys
+serviceAccount*.json
+server/*service-account*.json
