@@ -833,6 +833,19 @@ export function useAppState(firebaseUser) {
     setCelebration(null);
   }, []);
 
+  const logCardioSession = useCallback((entry) => {
+    if (!entry?.durationMin) {
+      return;
+    }
+    applyApp((current) => ({
+      ...current,
+      cardioSessions: [
+        { id: Date.now(), date: today(), ...entry },
+        ...(Array.isArray(current.cardioSessions) ? current.cardioSessions : []),
+      ],
+    }));
+  }, [applyApp]);
+
   return {
     app,
     bodyStatsForm,
@@ -877,6 +890,7 @@ export function useAppState(firebaseUser) {
       exportData,
       finishWorkout,
       importData,
+      logCardioSession,
       deleteWorkoutPreset,
       openRecoveryFromHome,
       openReviewFromHome,

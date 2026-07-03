@@ -1,58 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, Pill, Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
-
-const BIKE_ROUTINES = [
-  {
-    id: "bike-w1-intervals",
-    code: "W1",
-    title: "Intervals (Primary Conditioning)",
-    useWhen: "Use after an Upper session",
-    totalTime: "22–25 min",
-    steps: [
-      { label: "Warm-up", seconds: 5 * 60, details: "Resistance 3–4 / 20 · RPM 65–75" },
-      {
-        label: "Main Set",
-        rounds: 10,
-        sequence: [
-          { label: "HARD", seconds: 30, details: "Resistance 9–12 / 20 · RPM 90–100 · Effort 9/10" },
-          { label: "EASY", seconds: 90, details: "Resistance 3–4 / 20 · RPM 60–70" },
-        ],
-      },
-      {
-        label: "Cooldown",
-        options: [3 * 60, 4 * 60, 5 * 60],
-        defaultSeconds: 4 * 60,
-        details: "Easy spin",
-      },
-    ],
-  },
-  {
-    id: "bike-w2-steady",
-    code: "W2",
-    title: "Steady State (Light Aerobic)",
-    useWhen: "Use after Upper OR when legs feel okay",
-    totalTime: "25–30 min",
-    notes: ["✔ Slight sweat", "✔ You can talk comfortably", "❌ No leg burn"],
-    steady: {
-      options: [25 * 60, 30 * 60],
-      defaultSeconds: 25 * 60,
-      details: "Resistance 4–5 / 20 · RPM 65–75 · Effort 5–6/10",
-    },
-  },
-  {
-    id: "bike-w2-long-steady",
-    code: "W2",
-    title: "Long Steady (Fat Loss Focus)",
-    useWhen: "Standalone or on lighter days",
-    totalTime: "45–60 min",
-    notes: ["✔ Consistent pace the whole time", "✔ Feels controlled, not draining", "❌ Do not turn this into a hard ride"],
-    steady: {
-      options: [45 * 60, 60 * 60],
-      defaultSeconds: 45 * 60,
-      details: "Resistance 4–5 / 20 · RPM 65–75 · Effort 5/10",
-    },
-  },
-];
+import { CARDIO_LOG_TYPES, CARDIO_MACHINES, CARDIO_ROUTINES } from "../cardioData.js";
+import { IS, fd, today } from "../storage.js";
+import { colors, radii } from "../theme.js";
 
 function formatDuration(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -154,7 +104,69 @@ function pulseAlarm(audioContextRef) {
   }
 }
 
-export function BikeRoutineScreen({ notificationPermission, notificationSupported, onRequestReminderPermission }) {
+function CardioLog({ app, onLogCardio }) {
+  const [type, setType] = useState(CARDIO_LOG_TYPES[0]);
+  const [duration, setDuration] = useState("");
+  const [effort, setEffort] = useState(6);
+  const [distance, setDistance] = useState("");
+  const recent = [...(app?.cardioSessions || [])].slice(0, 6);
+
+  const save = () => {
+    const durationMin = Number(duration);
+    if (!durationMin) return;
+    onLogCardio?.({ type, durationMin, effort: Number(effort), distance: distance ? Number(distance) : null });
+    setDuration("");
+    setDistance("");
+  };
+
+  return (
+    <>
+      <SurfaceCard style={{ marginBottom: 14 }}>
+        <p style={{ fontSize: 11, color: colors.textMuted, textTransform: "uppercase", fontWeight: 700, margin: "0 0 10px" }}>Log a cardio session</p>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 10, color: colors.textMuted, margin: "0 0 4px", textTransform: "uppercase", fontWeight: 700 }}>Type</p>
+            <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...IS, padding: 11 }}>
+              {CARDIO_LOG_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div style={{ width: 100 }}>
+            <p style={{ fontSize: 10, color: colors.textMuted, margin: "0 0 4px", textTransform: "uppercase", fontWeight: 700 }}>Minutes</p>
+            <input type="number" inputMode="numeric" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="30" style={{ ...IS, padding: 11 }} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 10, color: colors.textMuted, margin: "0 0 4px", textTransform: "uppercase", fontWeight: 700 }}>Effort · {effort}/10</p>
+            <input type="range" min="1" max="10" value={effort} onChange={(e) => setEffort(e.target.value)} style={{ width: "100%", accentColor: colors.accent }} />
+          </div>
+          <div style={{ width: 100 }}>
+            <p style={{ fontSize: 10, color: colors.textMuted, margin: "0 0 4px", textTransform: "uppercase", fontWeight: 700 }}>Distance (km)</p>
+            <input type="number" inputMode="decimal" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="—" style={{ ...IS, padding: 11 }} />
+          </div>
+        </div>
+        <ActionButton onClick={save} disabled={!Number(duration)}>Save session</ActionButton>
+      </SurfaceCard>
+
+      {recent.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, color: colors.textMuted, textTransform: "uppercase", fontWeight: 700, margin: "0 0 10px" }}>Recent cardio</p>
+          {recent.map((entry) => (
+            <SurfaceCard key={entry.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: colors.textPrimary }}>{entry.type} · {entry.durationMin} min</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: colors.textMuted }}>{fd(entry.date)}{entry.distance ? ` · ${entry.distance} km` : ""}{entry.effort ? ` · effort ${entry.effort}/10` : ""}</p>
+              </div>
+            </SurfaceCard>
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+export function CardioScreen({ app, onLogCardio, notificationPermission, notificationSupported, onRequestReminderPermission }) {
+  const [machine, setMachine] = useState("bike");
   const [selectedDurationByRoutine, setSelectedDurationByRoutine] = useState(() => ({}));
   const [activeTimer, setActiveTimer] = useState(null);
   const tickerRef = useRef(null);
@@ -378,18 +390,33 @@ export function BikeRoutineScreen({ notificationPermission, notificationSupporte
 
   return (
     <Screen>
-      <ScreenHeader title="Bike Routine" subtitle="Guided intervals with a full-screen countdown and alarm-style alerts." />
+      <ScreenHeader title="Cardio" subtitle="Guided routines with a full-screen countdown, plus a quick session log." />
 
-      {notificationSupported && notificationPermission !== "granted" && (
-        <SurfaceCard style={{ marginBottom: 12, borderColor: "rgba(245,166,35,0.22)", background: "rgba(245,166,35,0.08)" }}>
-          <p style={{ margin: 0, fontSize: 11, color: "#f7ce82" }}>
+      <div style={{ display: "flex", gap: 6, padding: 4, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, marginBottom: 16 }}>
+        {CARDIO_MACHINES.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => setMachine(option.key)}
+            style={{ flex: 1, minWidth: 0, padding: "9px 4px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: machine === option.key ? "rgba(78,161,255,0.18)" : "transparent", color: machine === option.key ? colors.accent : colors.textMuted }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      {machine === "log" && <CardioLog app={app} onLogCardio={onLogCardio} />}
+
+      {machine !== "log" && notificationSupported && notificationPermission !== "granted" && (
+        <SurfaceCard style={{ marginBottom: 12, borderColor: "rgba(246,183,60,0.22)", background: "rgba(246,183,60,0.08)" }}>
+          <p style={{ margin: 0, fontSize: 11, color: colors.warning }}>
             Turn on notifications so the timer can alert you like a phone alarm.
           </p>
-          <ActionButton tone="tinted" color="#F5A623" compact style={{ marginTop: 8 }} onClick={onRequestReminderPermission}>Enable Bike Alarms</ActionButton>
+          <ActionButton tone="tinted" color={colors.warning} compact style={{ marginTop: 8 }} onClick={onRequestReminderPermission}>Enable cardio alarms</ActionButton>
         </SurfaceCard>
       )}
 
-      {BIKE_ROUTINES.map((routine) => {
+      {machine !== "log" && CARDIO_ROUTINES.filter((routine) => routine.machine === machine).map((routine) => {
         const steadyConfig = routine.steady;
         const cooldownKey = `${routine.id}-cooldown`;
         const cooldownStep = routine.steps?.find((step) => Array.isArray(step.options));

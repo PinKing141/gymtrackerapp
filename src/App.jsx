@@ -4,7 +4,7 @@ import { Icon } from "./components/icons.jsx";
 import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
 import { AuthScreen } from "./screens/AuthScreen.jsx";
 import { BasketballScreen } from "./screens/BasketballScreen.jsx";
-import { BikeRoutineScreen } from "./screens/BikeRoutineScreen.jsx";
+import { CardioScreen } from "./screens/CardioScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
 import { MoreScreen } from "./screens/MoreScreen.jsx";
@@ -177,9 +177,11 @@ export function App() {
       />
     );
   }
-  if (view === "bike") {
+  if (view === "cardio") {
     content = (
-      <BikeRoutineScreen
+      <CardioScreen
+        app={app}
+        onLogCardio={actions.logCardioSession}
         notificationPermission={notificationPermission}
         notificationSupported={notificationSupported}
         onRequestReminderPermission={actions.requestReminderPermission}
@@ -333,7 +335,7 @@ export function App() {
         onClose={() => setQuickAddOpen(false)}
         items={[
           { key: "workout", label: "Start a workout", desc: "Gym session", icon: "dumbbell", onClick: () => navigate("train") },
-          ...(app.profile?.enabledModules?.cardio ? [{ key: "cardio", label: "Cardio session", desc: "Bike, treadmill, run", icon: "pulse", onClick: () => navigate("bike") }] : []),
+          ...(app.profile?.enabledModules?.cardio ? [{ key: "cardio", label: "Cardio session", desc: "Bike, treadmill, run", icon: "pulse", onClick: () => navigate("cardio") }] : []),
           ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => navigate("basketball") }] : []),
           { key: "recovery", label: "Log recovery", desc: "Sleep, hydration, mobility", icon: "pulse", onClick: () => actions.openRecoveryFromHome() },
           { key: "weigh", label: "Weigh in", desc: "Body stats check-in", icon: "scale", onClick: () => { navigate("more"); openMoreSection("bodystats"); } },

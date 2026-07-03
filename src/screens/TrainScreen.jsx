@@ -121,7 +121,7 @@ export function TrainScreen({ app, onStartWorkout, onSaveWorkoutPreset, onDelete
           title="Cardio"
           desc="Guided bike intervals now — treadmill, running & a generic cardio log are coming soon."
           cta="Open cardio routines"
-          onClick={() => onNavigate("bike")}
+          onClick={() => onNavigate("cardio")}
         />
       )}
 
