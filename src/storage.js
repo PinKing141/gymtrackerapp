@@ -39,11 +39,21 @@ const DEFAULT_PROFILE = {
   coachPersona: "none",
   onboardingComplete: false,
 };
+const DEFAULT_SOUND_CATEGORIES = {
+  timers: true,
+  logging: true,
+  celebrations: true,
+  basketball: true,
+};
 const DEFAULT_DEVICE_PREFS = {
   reminderNotifications: false,
   reminderThresholdDays: 2,
   lastReminderKey: null,
   cloudSyncEnabled: true,
+  soundEnabled: true,
+  soundVolume: 0.6,
+  hapticsEnabled: true,
+  soundCategories: { ...DEFAULT_SOUND_CATEGORIES },
 };
 
 const toLocalDateString = (value) => {
@@ -344,9 +354,10 @@ export function devicePrefsLoad() {
     return {
       ...DEFAULT_DEVICE_PREFS,
       ...(isObj(parsed) ? parsed : {}),
+      soundCategories: { ...DEFAULT_SOUND_CATEGORIES, ...(isObj(parsed?.soundCategories) ? parsed.soundCategories : {}) },
     };
   } catch (e) {
-    return { ...DEFAULT_DEVICE_PREFS };
+    return { ...DEFAULT_DEVICE_PREFS, soundCategories: { ...DEFAULT_SOUND_CATEGORIES } };
   }
 }
 

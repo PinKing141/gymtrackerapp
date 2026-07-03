@@ -21,7 +21,7 @@ const NAV_TABS = [
   { id: "home", label: "Home", icon: "home" },
   { id: "train", label: "Train", icon: "dumbbell" },
   { id: "progress", label: "Progress", icon: "barChart" },
-  { id: "more", label: "You", icon: "user" },
+  { id: "more", label: "Profile", icon: "user" },
 ];
 
 function NavTab({ item, active, onClick }) {
