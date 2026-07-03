@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActionButton, Pill, Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
+import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
 import { CARDIO_LOG_TYPES, CARDIO_MACHINES, CARDIO_ROUTINES } from "../cardioData.js";
-import { IS, fd, today } from "../storage.js";
+import { IS, devicePrefsLoad, fd, today } from "../storage.js";
 import { colors, radii } from "../theme.js";
 
 function formatDuration(totalSeconds) {
@@ -66,40 +66,47 @@ function pulseAlarm(audioContextRef) {
     return;
   }
 
-  try {
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContextCtor) {
-      return;
-    }
+  // Respect the user's Sound & Haptics preferences so the settings truly govern
+  // every timer sound (this is the "Timers" category).
+  const prefs = devicePrefsLoad();
+  const soundOn = prefs.soundEnabled !== false && prefs.soundCategories?.timers !== false;
+  const volume = typeof prefs.soundVolume === "number" ? prefs.soundVolume : 0.6;
+  const peak = Math.max(0.02, Math.min(0.3, volume * 0.33));
 
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContextCtor();
-    }
+  if (soundOn) {
+    try {
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextCtor) {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new AudioContextCtor();
+        }
 
-    const context = audioContextRef.current;
-    if (context.state === "suspended") {
-      context.resume();
-    }
+        const context = audioContextRef.current;
+        if (context.state === "suspended") {
+          context.resume();
+        }
 
-    const start = context.currentTime;
-    [0, 0.2, 0.42].forEach((offset) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.value = 880;
-      gain.gain.setValueAtTime(0.0001, start + offset);
-      gain.gain.exponentialRampToValueAtTime(0.2, start + offset + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.16);
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start(start + offset);
-      oscillator.stop(start + offset + 0.18);
-    });
-  } catch {
-    // Best effort; browsers can block sound until a user interaction.
+        const start = context.currentTime;
+        [0, 0.2, 0.42].forEach((offset) => {
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.value = 880;
+          gain.gain.setValueAtTime(0.0001, start + offset);
+          gain.gain.exponentialRampToValueAtTime(peak, start + offset + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.16);
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start(start + offset);
+          oscillator.stop(start + offset + 0.18);
+        });
+      }
+    } catch {
+      // Best effort; browsers can block sound until a user interaction.
+    }
   }
 
-  if (navigator.vibrate) {
+  if (prefs.hapticsEnabled !== false && navigator.vibrate) {
     navigator.vibrate([120, 80, 120, 80, 180]);
   }
 }
@@ -165,7 +172,7 @@ function CardioLog({ app, onLogCardio }) {
   );
 }
 
-export function CardioScreen({ app, onLogCardio, notificationPermission, notificationSupported, onRequestReminderPermission }) {
+export function CardioScreen({ app, onBack, onLogCardio, notificationPermission, notificationSupported, onRequestReminderPermission }) {
   const [machine, setMachine] = useState("bike");
   const [selectedDurationByRoutine, setSelectedDurationByRoutine] = useState(() => ({}));
   const [activeTimer, setActiveTimer] = useState(null);
@@ -390,7 +397,7 @@ export function CardioScreen({ app, onLogCardio, notificationPermission, notific
 
   return (
     <Screen>
-      <ScreenHeader title="Cardio" subtitle="Guided routines with a full-screen countdown, plus a quick session log." />
+      <ScreenHeader action={onBack ? <BackButton onClick={onBack} /> : undefined} title="Cardio" subtitle="Guided routines with a full-screen countdown, plus a quick session log." />
 
       <div style={{ display: "flex", gap: 6, padding: 4, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, marginBottom: 16 }}>
         {CARDIO_MACHINES.map((option) => (

@@ -1,17 +1,17 @@
-import { Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
+import { BackButton, Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
 import { Icon } from "../components/icons.jsx";
 import { calculateCalories } from "../units.js";
 import { colors, radii, typeScale } from "../theme.js";
 
 // Structural shell for future food logging. Shows the calorie/BMR target derived
 // from the user's profile; the food diary + search drops in here later.
-export function NutritionScreen({ app }) {
+export function NutritionScreen({ app, onBack }) {
   const profile = app?.profile || {};
   const calories = calculateCalories(profile);
 
   return (
     <Screen>
-      <ScreenHeader title="Nutrition" titleAs="h1" subtitle="Your daily target now — food logging is coming soon." topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+      <ScreenHeader action={onBack ? <BackButton onClick={onBack} /> : undefined} title="Nutrition" titleAs="h1" subtitle="Your daily target now — food logging is coming soon." topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
 
       <SurfaceCard style={{ textAlign: "center", padding: "22px 16px" }}>
         <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: 0 }}>Daily calorie target</p>

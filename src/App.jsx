@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CelebrationOverlay } from "./components/ui.jsx";
 import { Icon } from "./components/icons.jsx";
 import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
@@ -15,6 +15,7 @@ import { TrainScreen } from "./screens/TrainScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
 import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
 import { signOutUser } from "./services/firebaseAuth.js";
+import { unlockAudio } from "./services/sound.js";
 import { colors, radii, typeScale } from "./theme.js";
 
 const NAV_TABS = [
@@ -64,6 +65,8 @@ export function App() {
     historyDetailIndex,
     navItems,
     navigate,
+    pushView,
+    goBackView,
     notificationPermission,
     notificationSupported,
     openMoreSection,
@@ -93,6 +96,14 @@ export function App() {
     actions,
   } = useAppState(firebaseUser);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+
+  // Unlock the Web Audio context on the first user gesture so cues that fire from
+  // timers/intervals (not directly from a tap) can play on mobile browsers.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
 
   if (authLoading) {
     return (
@@ -175,7 +186,7 @@ export function App() {
         onStartWorkout={actions.startWorkout}
         onSaveWorkoutPreset={actions.saveWorkoutPreset}
         onDeleteWorkoutPreset={actions.deleteWorkoutPreset}
-        onNavigate={navigate}
+        onNavigate={pushView}
       />
     );
   }
@@ -183,6 +194,7 @@ export function App() {
     content = (
       <CardioScreen
         app={app}
+        onBack={goBackView}
         onLogCardio={actions.logCardioSession}
         notificationPermission={notificationPermission}
         notificationSupported={notificationSupported}
@@ -211,10 +223,10 @@ export function App() {
     );
   }
   if (view === "basketball") {
-    content = <BasketballScreen onExit={() => navigate("home")} firebaseUser={firebaseUser} />;
+    content = <BasketballScreen onExit={goBackView} firebaseUser={firebaseUser} />;
   }
   if (view === "nutrition") {
-    content = <NutritionScreen app={app} />;
+    content = <NutritionScreen app={app} onBack={goBackView} />;
   }
   if (view === "progress") {
     content = (
@@ -341,11 +353,11 @@ export function App() {
         onClose={() => setQuickAddOpen(false)}
         items={[
           { key: "workout", label: "Start a workout", desc: "Gym session", icon: "dumbbell", onClick: () => navigate("train") },
-          ...(app.profile?.enabledModules?.cardio ? [{ key: "cardio", label: "Cardio session", desc: "Bike, treadmill, run", icon: "pulse", onClick: () => navigate("cardio") }] : []),
-          ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => navigate("basketball") }] : []),
+          ...(app.profile?.enabledModules?.cardio ? [{ key: "cardio", label: "Cardio session", desc: "Bike, treadmill, run", icon: "pulse", onClick: () => pushView("cardio") }] : []),
+          ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => pushView("basketball") }] : []),
           { key: "recovery", label: "Log recovery", desc: "Sleep, hydration, mobility", icon: "pulse", onClick: () => actions.openRecoveryFromHome() },
           { key: "weigh", label: "Weigh in", desc: "Body stats check-in", icon: "scale", onClick: () => { navigate("more"); openMoreSection("bodystats"); } },
-          ...(app.profile?.enabledModules?.nutrition ? [{ key: "nutrition", label: "Nutrition", desc: "Calorie target", icon: "clipboard", onClick: () => navigate("nutrition") }] : []),
+          ...(app.profile?.enabledModules?.nutrition ? [{ key: "nutrition", label: "Nutrition", desc: "Calorie target", icon: "clipboard", onClick: () => pushView("nutrition") }] : []),
         ]}
       />
       <CelebrationOverlay celebration={celebration} onDismiss={actions.dismissCelebration} />

@@ -276,41 +276,77 @@ export function MoreScreen({
 
   if (sectionView === "phase") {
     const { phase, week, deload } = getPhaseProgress();
+    const started = Boolean(app.phaseStart);
+    const active = PHASES[phase] || PHASES[0];
+    const ringR = 30;
+    const ringC = 2 * Math.PI * ringR;
+    const pct = started ? Math.min(1, week / 12) : 0;
     return (
       <Screen>
-        <ScreenHeader action={<BackButton onClick={closeSection} />} title="12-Week Cycle" subtitle={app.phaseStart ? `Started ${fd(app.phaseStart)}` : "Starts on first session"} topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
+        <Header title="Training cycle" subtitle={started ? `Week ${week} of 12` : "12-week progression"} onBack={goBackSection || closeSection} />
+
+        <SurfaceCard style={{ background: `linear-gradient(150deg, ${active.color}26, rgba(255,255,255,0.02))`, borderColor: `${active.color}55` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ position: "relative", width: 72, height: 72, flexShrink: 0 }}>
+              <svg width={72} height={72} viewBox="0 0 72 72" style={{ transform: "rotate(-90deg)" }}>
+                <circle cx={36} cy={36} r={ringR} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={7} />
+                <circle cx={36} cy={36} r={ringR} fill="none" stroke={active.color} strokeWidth={7} strokeLinecap="round" strokeDasharray={ringC} strokeDashoffset={ringC * (1 - pct)} />
+              </svg>
+              <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 22, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{started ? week : "–"}</span>
+                <span style={{ fontSize: 9, color: "#8A8F9C", textTransform: "uppercase", letterSpacing: "0.08em" }}>of 12</span>
+              </div>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff" }}>Phase {phase + 1} · {active.name}</p>
+                {deload && <span style={{ fontSize: 10, color: "#F5A623", fontWeight: 700, background: "rgba(245,166,35,0.15)", padding: "2px 8px", borderRadius: 6 }}>DELOAD</span>}
+              </div>
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#9AA4B3", fontStyle: "italic" }}>{active.theme}</p>
+              <p style={{ margin: "6px 0 0", fontSize: 11, color: "#6C6F7B" }}>{started ? `Started ${fd(app.phaseStart)}` : "Not started yet"}</p>
+            </div>
+          </div>
+        </SurfaceCard>
 
         <SurfaceCard>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 12, color: "#fff", fontWeight: 600 }}>Week {week}/12</span>
-            {deload && <span style={{ fontSize: 10, color: "#F5A623", fontWeight: 700, background: "rgba(245,166,35,0.15)", padding: "2px 8px", borderRadius: 6 }}>DELOAD</span>}
-          </div>
-          <div style={{ display: "flex", gap: 3 }}>
+          <p style={{ fontSize: 11, color: "#555", margin: "0 0 10px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>12-week map</p>
+          <div style={{ display: "flex", gap: 4, alignItems: "flex-end" }}>
             {Array.from({ length: 12 }, (_, index) => {
-              const currentWeek = index + 1;
-              const phaseIndex = currentWeek <= 4 ? 0 : currentWeek <= 8 ? 1 : 2;
-              return <div key={currentWeek} style={{ flex: 1, height: currentWeek === 4 || currentWeek === 8 || currentWeek === 12 ? 20 : 24, borderRadius: 4, background: currentWeek <= week ? PHASES[phaseIndex].color : "rgba(255,255,255,0.04)", opacity: currentWeek <= week ? 1 : 0.3, border: currentWeek === week ? "2px solid #fff" : "none", boxSizing: "border-box" }} />;
+              const wk = index + 1;
+              const phaseIndex = wk <= 4 ? 0 : wk <= 8 ? 1 : 2;
+              const done = started && wk <= week;
+              const isNow = started && wk === week;
+              const isBoundary = wk === 4 || wk === 8 || wk === 12;
+              return (
+                <div key={wk} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ width: "100%", height: isBoundary ? 20 : 28, borderRadius: 5, background: done ? PHASES[phaseIndex].color : "rgba(255,255,255,0.05)", opacity: done ? 1 : 0.4, border: isNow ? "2px solid #fff" : "none", boxSizing: "border-box" }} />
+                  {isBoundary && <span style={{ fontSize: 8, color: "#6C6F7B" }}>{wk}</span>}
+                </div>
+              );
             })}
           </div>
         </SurfaceCard>
 
-        {PHASES.map((phaseEntry, index) => (
-          <SurfaceCard key={phaseEntry.name} style={{ background: index === phase ? `${phaseEntry.color}10` : "rgba(255,255,255,0.03)", borderColor: index === phase ? `${phaseEntry.color}40` : "rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div>
-                <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: index === phase ? phaseEntry.color : "#fff" }}>Phase {index + 1} — {phaseEntry.name}</p>
-                <p style={{ fontSize: 11, color: "#666", margin: "2px 0 0" }}>Weeks {phaseEntry.weeks}</p>
-                <p style={{ fontSize: 11, color: "#888", margin: "4px 0 0", fontStyle: "italic" }}>{phaseEntry.theme}</p>
+        {PHASES.map((phaseEntry, index) => {
+          const state = index < phase ? "done" : index === phase && started ? "active" : "upcoming";
+          return (
+            <SurfaceCard key={phaseEntry.name} style={{ background: state === "active" ? `${phaseEntry.color}0F` : "rgba(255,255,255,0.02)", borderColor: state === "active" ? `${phaseEntry.color}66` : "rgba(255,255,255,0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 999, background: phaseEntry.color, flexShrink: 0, opacity: state === "upcoming" ? 0.4 : 1 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: state === "upcoming" ? "#9AA4B3" : "#fff" }}>Phase {index + 1} · {phaseEntry.name}</p>
+                  <p style={{ fontSize: 11, color: "#6C6F7B", margin: "2px 0 0" }}>Weeks {phaseEntry.weeks} · {phaseEntry.theme}</p>
+                </div>
+                {state === "done" && <Icon name="check" size={16} color="#45B649" />}
+                {state === "active" && <span style={{ fontSize: 10, color: phaseEntry.color, fontWeight: 700, background: `${phaseEntry.color}22`, padding: "3px 8px", borderRadius: 6 }}>ACTIVE</span>}
               </div>
-              {index < phase && <span style={{ fontSize: 16, color: "#45B649" }}>✓</span>}
-              {index === phase && <span style={{ fontSize: 10, color: phaseEntry.color, fontWeight: 700, background: `${phaseEntry.color}22`, padding: "3px 8px", borderRadius: 6 }}>ACTIVE</span>}
-            </div>
-            {index === phase && deload && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,166,35,0.08)", borderRadius: 8, border: "1px solid rgba(245,166,35,0.15)" }}><p style={{ fontSize: 11, color: "#F5A623", margin: 0, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Icon name="spark" size={13} color="#F5A623" />Deload Active</p><p style={{ fontSize: 10, color: "#888", margin: "3px 0 0" }}>Weights -40% · Conditioning -50% · Keep prehab · Sleep 9hrs</p></div>}
-          </SurfaceCard>
-        ))}
+              {state === "active" && deload && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,166,35,0.08)", borderRadius: 8, border: "1px solid rgba(245,166,35,0.15)" }}><p style={{ fontSize: 11, color: "#F5A623", margin: 0, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Icon name="spark" size={13} color="#F5A623" />Deload week</p><p style={{ fontSize: 10, color: "#8A8F9C", margin: "3px 0 0" }}>Weights −40% · Conditioning −50% · Keep prehab · Sleep 9 hrs</p></div>}
+            </SurfaceCard>
+          );
+        })}
 
-        {!app.phaseStart && <ActionButton onClick={() => setApp((current) => ({ ...current, phaseStart: today() }))} color="#2D7DD2" style={{ marginTop: 10 }}>Start Cycle</ActionButton>}
-        {app.phaseStart && <ActionButton onClick={() => { if (window.confirm("Reset cycle start date?")) { setApp((current) => ({ ...current, phaseStart: today() })); } }} tone="secondary" compact style={{ marginTop: 10 }}>Reset Cycle</ActionButton>}
+        {!started && <ActionButton onClick={() => setApp((current) => ({ ...current, phaseStart: today() }))} color="#2D7DD2" style={{ marginTop: 10 }}>Start cycle</ActionButton>}
+        {started && <ActionButton onClick={() => { if (window.confirm("Reset cycle start date to today?")) { setApp((current) => ({ ...current, phaseStart: today() })); } }} tone="secondary" compact style={{ marginTop: 10 }}>Reset cycle</ActionButton>}
       </Screen>
     );
   }
@@ -396,6 +432,7 @@ export function MoreScreen({
         <ProfileRow icon="user" label="Edit profile" summary={(profile.name || profile.firstName || "").trim() || "Not set"} onClick={()=>onOpenSection("editProfile")} />
         <ProfileRow icon="scale" label="Body & Goals" summary={bodyGoalsSummary} onClick={()=>onOpenSection("bodyGoals")} />
         <ProfileRow icon="clipboard" label="What you track" summary={trackedSummary} onClick={()=>onOpenSection("trackingModules")} />
+        <ProfileRow icon="calendar" label="Training cycle" summary={app.phaseStart ? `Week ${getPhaseProgress().week} of 12` : "Not started"} onClick={()=>onOpenSection("phase")} />
         <ProfileRow icon="spark" label="Preferences" summary={`${unitLabel} · ${devicePrefs.soundEnabled !== false ? "Sound on" : "Sound off"} · ${devicePrefs.hapticsEnabled !== false ? "Haptics on" : "Haptics off"}`} onClick={()=>onOpenSection("preferences")} />
         <ProfileRow icon="bell" label="Notifications" summary={notificationSummary} onClick={()=>onOpenSection("notifications")} />
         <ProfileRow icon="user" label="Account" summary={syncText} onClick={()=>onOpenSection("account")} />

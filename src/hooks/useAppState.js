@@ -97,6 +97,7 @@ export function useAppState(firebaseUser) {
 
   const [app, setAppState] = useState(() => withDefaults(dbLoad()));
   const [view, setView] = useState(() => initialDraft ? "log" : "home");
+  const [viewReturnStack, setViewReturnStack] = useState([]);
   const [workoutId, setWorkoutId] = useState(() => initialDraft?.workoutId || null);
   const [session, setSession] = useState(() => initialDraft?.session || null);
   const [historyDetailIndex, setHistoryDetailIndex] = useState(null);
@@ -122,6 +123,7 @@ export function useAppState(firebaseUser) {
   const firestoreReadyRef = useRef(false);
   const draftSaveTimeoutRef = useRef(null);
   const appRef = useRef(app);
+  const viewRef = useRef(view);
   const sessionRef = useRef(session);
   const workoutIdRef = useRef(workoutId);
   const expandedExerciseRef = useRef(expandedExercise);
@@ -149,6 +151,10 @@ export function useAppState(firebaseUser) {
   useEffect(() => {
     appRef.current = app;
   }, [app]);
+
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   useEffect(() => {
     sessionRef.current = session;
@@ -566,6 +572,11 @@ export function useAppState(firebaseUser) {
 
     setSession(nextSession);
     setWorkoutId(nextWorkoutId);
+    // Remember where the workout was launched from (e.g. the Train presets) so
+    // finishing or cancelling returns there instead of jumping to Home.
+    if (viewRef.current !== "log") {
+      setViewReturnStack((current) => [...current, viewRef.current]);
+    }
     setView("log");
     setExpandedExercise(null);
     setPrehabOpen(true);
@@ -690,7 +701,10 @@ export function useAppState(firebaseUser) {
       haptic("medium");
     }
 
-    setView("home");
+    setViewReturnStack((current) => {
+      setView(current.length ? current[current.length - 1] : "home");
+      return current.slice(0, -1);
+    });
     setWorkoutId(null);
     setSession(null);
     setExpandedExercise(null);
@@ -704,7 +718,10 @@ export function useAppState(firebaseUser) {
     }
 
     draftClear();
-    setView("home");
+    setViewReturnStack((current) => {
+      setView(current.length ? current[current.length - 1] : "home");
+      return current.slice(0, -1);
+    });
     setWorkoutId(null);
     setSession(null);
     setExpandedExercise(null);
@@ -731,18 +748,27 @@ export function useAppState(firebaseUser) {
     };
   }, [app.phaseStart]);
 
-  const closeMoreSection = useCallback(() => {
+  // Clear all Profile sub-section state without touching the top-level view. Used
+  // whenever we navigate to an explicit destination (tab switch / drill-in), so
+  // the section's origin-return can't fight the chosen destination.
+  const clearMoreSectionState = useCallback(() => {
     setSectionView(null);
     setSectionStack([]);
     setRecoveryForm(null);
     setBodyStatsForm(null);
     setReviewForm(null);
+    sectionOriginRef.current = "more";
+  }, []);
+
+  // Close a Profile sub-section via its Back control: clear state and return to
+  // wherever the section was opened from (e.g. Recovery opened from Home → Home).
+  const closeMoreSection = useCallback(() => {
     const originView = sectionOriginRef.current;
+    clearMoreSectionState();
     if (originView && originView !== "more") {
       setView(originView);
-      sectionOriginRef.current = "more";
     }
-  }, []);
+  }, [clearMoreSectionState]);
 
   const goBackMoreSection = useCallback(() => {
     setSectionStack((current) => {
@@ -757,9 +783,9 @@ export function useAppState(firebaseUser) {
       setBodyStatsForm(null);
       setReviewForm(null);
       const originView = sectionOriginRef.current;
+      sectionOriginRef.current = "more";
       if (originView && originView !== "more") {
         setView(originView);
-        sectionOriginRef.current = "more";
       }
       return [];
     });
@@ -797,11 +823,39 @@ export function useAppState(firebaseUser) {
     openMoreSection("review");
   }, [openMoreSection]);
 
+  // Tab-level navigation. Switching main tabs is a fresh start, so any drill-in
+  // return history is cleared.
   const navigate = useCallback((nextView) => {
     setView(nextView);
+    setViewReturnStack([]);
     setHistoryDetailIndex(null);
-    closeMoreSection();
-  }, [closeMoreSection]);
+    clearMoreSectionState();
+  }, [clearMoreSectionState]);
+
+  // Drill into a screen while remembering where we came from, so a Back control
+  // returns to the exact origin instead of a hardcoded destination.
+  const pushView = useCallback((nextView) => {
+    const from = viewRef.current;
+    if (from === nextView) {
+      return;
+    }
+    setViewReturnStack((current) => [...current, from]);
+    setView(nextView);
+    setHistoryDetailIndex(null);
+    clearMoreSectionState();
+  }, [clearMoreSectionState]);
+
+  // Pop back to the origin recorded by the most recent pushView. Falls back to
+  // Home when there is no recorded origin (e.g. a deep link).
+  const goBackView = useCallback(() => {
+    setViewReturnStack((current) => {
+      const target = current.length ? current[current.length - 1] : "home";
+      setView(target);
+      return current.slice(0, -1);
+    });
+    setHistoryDetailIndex(null);
+    clearMoreSectionState();
+  }, [clearMoreSectionState]);
 
   const resetAllData = useCallback(() => {
     // Confirmation is handled by the type-to-confirm modal in the Profile screen.
@@ -894,6 +948,8 @@ export function useAppState(firebaseUser) {
     getPhaseProgress,
     historyDetailIndex,
     navigate,
+    pushView,
+    goBackView,
     notificationPermission,
     notificationSupported,
     serviceWorkerSupported,
