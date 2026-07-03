@@ -101,6 +101,8 @@ export function useAppState(firebaseUser) {
   const [session, setSession] = useState(() => initialDraft?.session || null);
   const [historyDetailIndex, setHistoryDetailIndex] = useState(null);
   const [sectionView, setSectionView] = useState(null);
+  const [sectionStack, setSectionStack] = useState([]);
+  const sectionOriginRef = useRef("more");
   const [expandedExercise, setExpandedExercise] = useState(() => initialDraft?.expandedExercise || null);
   const [prehabOpen, setPrehabOpen] = useState(() => initialDraft?.prehabOpen !== false);
   const [coreOpen, setCoreOpen] = useState(() => Boolean(initialDraft?.coreOpen));
@@ -731,13 +733,48 @@ export function useAppState(firebaseUser) {
 
   const closeMoreSection = useCallback(() => {
     setSectionView(null);
+    setSectionStack([]);
     setRecoveryForm(null);
     setBodyStatsForm(null);
     setReviewForm(null);
+    const originView = sectionOriginRef.current;
+    if (originView && originView !== "more") {
+      setView(originView);
+      sectionOriginRef.current = "more";
+    }
+  }, []);
+
+  const goBackMoreSection = useCallback(() => {
+    setSectionStack((current) => {
+      if (current.length > 1) {
+        const nextStack = current.slice(0, -1);
+        setSectionView(nextStack[nextStack.length - 1]);
+        return nextStack;
+      }
+
+      setSectionView(null);
+      setRecoveryForm(null);
+      setBodyStatsForm(null);
+      setReviewForm(null);
+      const originView = sectionOriginRef.current;
+      if (originView && originView !== "more") {
+        setView(originView);
+        sectionOriginRef.current = "more";
+      }
+      return [];
+    });
   }, []);
 
   const openMoreSection = useCallback((key) => {
+    if (!sectionView) {
+      sectionOriginRef.current = view;
+    }
     setSectionView(key);
+    setSectionStack((current) => {
+      if (!current.length) return [key];
+      if (current[current.length - 1] === key) return current;
+      return [...current, key];
+    });
 
     if (key === "recovery") {
       setRecoveryForm(app.recovery.find((entry) => entry.date === today()) || { date: today(), sleep: 8, water: 3, mobilityDone: false, recoveryState: 2, explosiveness: 2, jointCondition: 2, motivationState: 2, setQuality: 2 });
@@ -748,7 +785,7 @@ export function useAppState(firebaseUser) {
     if (key === "review") {
       setReviewForm(WQ.map(() => ""));
     }
-  }, [app.bodyStats, app.recovery]);
+  }, [app.bodyStats, app.recovery, sectionView, view]);
 
   const openRecoveryFromHome = useCallback(() => {
     setView("more");
@@ -861,6 +898,7 @@ export function useAppState(firebaseUser) {
     notificationSupported,
     serviceWorkerSupported,
     openMoreSection,
+    goBackMoreSection,
     prehabOpen,
     recoveryForm,
     reviewForm,
@@ -885,6 +923,7 @@ export function useAppState(firebaseUser) {
     actions: {
       cancelWorkout,
       closeMoreSection,
+      goBackMoreSection,
       dismissCelebration,
       exportData,
       finishWorkout,

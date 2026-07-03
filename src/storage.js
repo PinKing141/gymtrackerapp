@@ -36,7 +36,6 @@ const DEFAULT_PROFILE = {
   goal: "maintain",
   notes: "",
   enabledModules: { ...DEFAULT_ENABLED_MODULES },
-  coachPersona: "none",
   onboardingComplete: false,
 };
 const DEFAULT_SOUND_CATEGORIES = {
