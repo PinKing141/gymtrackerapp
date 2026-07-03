@@ -16,16 +16,28 @@ const DEFAULT_STREAK_STATE = {
   frozenWeeks: [],
   rewardedWeeks: [],
 };
+const DEFAULT_ENABLED_MODULES = {
+  gym: true,
+  cardio: true,
+  basketball: false,
+  nutrition: false,
+};
 const DEFAULT_PROFILE = {
   name: "",
+  firstName: "",
+  lastName: "",
   unitSystem: "imperial",
   age: "",
   sex: "male",
   heightCm: "",
   weightKg: "",
+  targetWeightKg: "",
   activityLevel: "moderate",
   goal: "maintain",
   notes: "",
+  enabledModules: { ...DEFAULT_ENABLED_MODULES },
+  coachPersona: "none",
+  onboardingComplete: false,
 };
 const DEFAULT_DEVICE_PREFS = {
   reminderNotifications: false,
@@ -68,6 +80,7 @@ export const DD = () => ({
   recovery: [],
   bodyStats: [],
   weeklyReviews: [],
+  cardioSessions: [],
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   streakState: { ...DEFAULT_STREAK_STATE },
@@ -215,7 +228,12 @@ export const withDefaults = (d) => {
     recovery: isArr(d?.recovery) ? d.recovery : b.recovery,
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
-    profile: { ...DEFAULT_PROFILE, ...(isObj(d?.profile) ? d.profile : {}) },
+    cardioSessions: isArr(d?.cardioSessions) ? d.cardioSessions : b.cardioSessions,
+    profile: {
+      ...DEFAULT_PROFILE,
+      ...(isObj(d?.profile) ? d.profile : {}),
+      enabledModules: { ...DEFAULT_ENABLED_MODULES, ...(isObj(d?.profile?.enabledModules) ? d.profile.enabledModules : {}) },
+    },
     streakState: normalizeStreakState(d?.streakState),
     meta: { ...meta, dataVersion: DATA_VERSION },
   };
