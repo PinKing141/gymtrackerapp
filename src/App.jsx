@@ -7,6 +7,7 @@ import { HistoryScreen } from "./screens/HistoryScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
 import { MoreScreen } from "./screens/MoreScreen.jsx";
+import { OnboardingScreen } from "./screens/OnboardingScreen.jsx";
 import { PersonalBestsScreen } from "./screens/PersonalBestsScreen.jsx";
 import { ProgressScreen } from "./screens/ProgressScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
@@ -89,6 +90,30 @@ export function App() {
         }}
       >
         <AuthScreen />
+      </div>
+    );
+  }
+
+  // Onboarding gate: logged in but profile not yet set up. Wait out the initial
+  // Firestore load so a returning user's cloud profile isn't overwritten by a
+  // premature onboarding flash.
+  const onboardingReady = firestoreSync?.status !== "loading";
+  if (onboardingReady && !app.profile?.onboardingComplete) {
+    return (
+      <div
+        style={{
+          maxWidth: 430,
+          margin: "0 auto",
+          minHeight: "100dvh",
+          background: colors.background,
+          color: colors.textPrimary,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+        }}
+      >
+        <OnboardingScreen
+          profile={app.profile}
+          onComplete={(patch) => setApp((current) => ({ ...current, profile: { ...current.profile, ...patch } }))}
+        />
       </div>
     );
   }
