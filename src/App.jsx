@@ -8,6 +8,7 @@ import { CardioScreen } from "./screens/CardioScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
 import { MoreScreen } from "./screens/MoreScreen.jsx";
+import { NutritionScreen } from "./screens/NutritionScreen.jsx";
 import { OnboardingScreen } from "./screens/OnboardingScreen.jsx";
 import { ProgressHubScreen } from "./screens/ProgressHubScreen.jsx";
 import { TrainScreen } from "./screens/TrainScreen.jsx";
@@ -211,6 +212,9 @@ export function App() {
   if (view === "basketball") {
     content = <BasketballScreen onExit={() => navigate("home")} firebaseUser={firebaseUser} />;
   }
+  if (view === "nutrition") {
+    content = <NutritionScreen app={app} />;
+  }
   if (view === "progress") {
     content = (
       <ProgressHubScreen
@@ -339,6 +343,7 @@ export function App() {
           ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => navigate("basketball") }] : []),
           { key: "recovery", label: "Log recovery", desc: "Sleep, hydration, mobility", icon: "pulse", onClick: () => actions.openRecoveryFromHome() },
           { key: "weigh", label: "Weigh in", desc: "Body stats check-in", icon: "scale", onClick: () => { navigate("more"); openMoreSection("bodystats"); } },
+          ...(app.profile?.enabledModules?.nutrition ? [{ key: "nutrition", label: "Nutrition", desc: "Calorie target", icon: "clipboard", onClick: () => navigate("nutrition") }] : []),
         ]}
       />
       <CelebrationOverlay celebration={celebration} onDismiss={actions.dismissCelebration} />

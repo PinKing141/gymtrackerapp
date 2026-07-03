@@ -76,7 +76,9 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
     );
   }
 
-  if (!app.sessions.length) {
+  const cardioSessions = Array.isArray(app.cardioSessions) ? app.cardioSessions : [];
+
+  if (!app.sessions.length && !cardioSessions.length) {
     return (
       <div style={{ padding: "80px 20px", textAlign: "center" }}>
         <div style={{ width: 52, height: 52, borderRadius: 14, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
@@ -89,7 +91,7 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
 
   return (
     <Screen>
-      <ScreenHeader title="History" subtitle={`${app.sessions.length} sessions`} />
+      <ScreenHeader title="History" subtitle={`${app.sessions.length} workout${app.sessions.length === 1 ? "" : "s"}${cardioSessions.length ? ` · ${cardioSessions.length} cardio` : ""}`} />
       {[...app.sessions].reverse().map((session, reverseIndex) => {
         const sessionIndex = app.sessions.length - 1 - reverseIndex;
         const workout = getWorkoutForSession(session);
@@ -106,6 +108,21 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
           </SurfaceButton>
         );
       })}
+
+      {cardioSessions.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, color: "#555", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600, margin: "22px 0 10px" }}>Cardio</p>
+          {cardioSessions.map((entry) => (
+            <SurfaceCard key={entry.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: "#fff" }}>{entry.type} · {entry.durationMin} min</p>
+                <p style={{ fontSize: 10, color: "#555", margin: "2px 0 0" }}>{fd(entry.date)}{entry.distance ? ` · ${entry.distance} km` : ""}</p>
+              </div>
+              {entry.effort ? <span style={{ fontSize: 11, color: "#8A8F9C" }}>effort {entry.effort}/10</span> : null}
+            </SurfaceCard>
+          ))}
+        </>
+      )}
     </Screen>
   );
 }
