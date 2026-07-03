@@ -302,9 +302,23 @@ export function MoreScreen({
     );
   }
 
+  const enabledModules = profile.enabledModules || {};
+  const moduleRows = [
+    { key: "gym", label: "Gym / Lifting", desc: "Strength workouts & PBs", locked: true },
+    { key: "cardio", label: "Cardio", desc: "Bike, treadmill, running" },
+    { key: "basketball", label: "Basketball", desc: "Shot tracking & stats" },
+  ];
+  const toggleModule = (key) => setApp((current) => ({
+    ...current,
+    profile: {
+      ...current.profile,
+      enabledModules: { ...(current.profile.enabledModules || {}), [key]: !current.profile.enabledModules?.[key], gym: true },
+    },
+  }));
+
   return (
     <Screen>
-      <ScreenHeader title="More" />
+      <ScreenHeader title="You" />
 
       {firebaseUser && (() => {
         const syncLabels = {
@@ -327,6 +341,32 @@ export function MoreScreen({
           </SurfaceCard>
         );
       })()}
+
+      <SurfaceCard>
+        <p style={{ fontSize: 11, color: "#555", margin: "0 0 10px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>What you track</p>
+        <div style={{ display: "grid", gap: 8 }}>
+          {moduleRows.map((module) => {
+            const on = module.locked ? true : Boolean(enabledModules[module.key]);
+            return (
+              <button
+                key={module.key}
+                type="button"
+                disabled={module.locked}
+                onClick={() => toggleModule(module.key)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", padding: "10px 4px", background: "none", border: "none", cursor: module.locked ? "default" : "pointer", fontFamily: "inherit" }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>{module.label}{module.locked ? " · Core" : ""}</p>
+                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#8A8F9C" }}>{module.desc}</p>
+                </div>
+                <div style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, background: on ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative", opacity: module.locked ? 0.6 : 1 }}>
+                  <div style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </SurfaceCard>
 
       {[
         { key: "recovery", icon: "pulse", title: "Recovery Log", description: "Sleep, hydration, mobility" },

@@ -1,19 +1,52 @@
-import { NI } from "./components/WorkoutComponents.jsx";
+import { useState } from "react";
 import { CelebrationOverlay } from "./components/ui.jsx";
+import { Icon } from "./components/icons.jsx";
+import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
 import { AuthScreen } from "./screens/AuthScreen.jsx";
 import { BasketballScreen } from "./screens/BasketballScreen.jsx";
 import { BikeRoutineScreen } from "./screens/BikeRoutineScreen.jsx";
-import { HistoryScreen } from "./screens/HistoryScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
 import { MoreScreen } from "./screens/MoreScreen.jsx";
 import { OnboardingScreen } from "./screens/OnboardingScreen.jsx";
-import { PersonalBestsScreen } from "./screens/PersonalBestsScreen.jsx";
-import { ProgressScreen } from "./screens/ProgressScreen.jsx";
+import { ProgressHubScreen } from "./screens/ProgressHubScreen.jsx";
+import { TrainScreen } from "./screens/TrainScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
 import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
 import { signOutUser } from "./services/firebaseAuth.js";
 import { colors, radii, typeScale } from "./theme.js";
+
+const NAV_TABS = [
+  { id: "home", label: "Home", icon: "home" },
+  { id: "train", label: "Train", icon: "dumbbell" },
+  { id: "progress", label: "Progress", icon: "barChart" },
+  { id: "more", label: "You", icon: "user" },
+];
+
+function NavTab({ item, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 3,
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: "6px 10px",
+        width: 64,
+        color: active ? colors.accent : colors.textMuted,
+        ...typeScale.caption,
+      }}
+    >
+      <Icon name={item.icon} size={22} color={active ? colors.accent : colors.textMuted} />
+      <span style={{ fontWeight: active ? 700 : 500 }}>{item.label}</span>
+    </button>
+  );
+}
 
 export function App() {
   const { user: firebaseUser, authLoading, isLoggedIn } = useFirebaseAuth();
@@ -57,6 +90,7 @@ export function App() {
     workoutId,
     actions,
   } = useAppState(firebaseUser);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
   if (authLoading) {
     return (
@@ -127,11 +161,19 @@ export function App() {
         getPhaseProgress={getPhaseProgress}
         onOpenRecovery={actions.openRecoveryFromHome}
         onOpenReview={actions.openReviewFromHome}
+        onNavigate={navigate}
+        streakSummary={streakSummary}
+      />
+    );
+  }
+  if (view === "train") {
+    content = (
+      <TrainScreen
+        app={app}
+        onStartWorkout={actions.startWorkout}
         onSaveWorkoutPreset={actions.saveWorkoutPreset}
         onDeleteWorkoutPreset={actions.deleteWorkoutPreset}
-        onStartWorkout={actions.startWorkout}
-        onUseWeekFreeze={actions.useCurrentWeekFreeze}
-        streakSummary={streakSummary}
+        onNavigate={navigate}
       />
     );
   }
@@ -167,21 +209,15 @@ export function App() {
   if (view === "basketball") {
     content = <BasketballScreen onExit={() => navigate("home")} firebaseUser={firebaseUser} />;
   }
-  if (view === "history") {
+  if (view === "progress") {
     content = (
-      <HistoryScreen
+      <ProgressHubScreen
         app={app}
-        detailIndex={historyDetailIndex}
-        setDetailIndex={setHistoryDetailIndex}
+        historyDetailIndex={historyDetailIndex}
+        setHistoryDetailIndex={setHistoryDetailIndex}
         setApp={setApp}
       />
     );
-  }
-  if (view === "progress") {
-    content = <ProgressScreen app={app} />;
-  }
-  if (view === "pbs") {
-    content = <PersonalBestsScreen app={app} />;
   }
   if (view === "more") {
     content = (
@@ -256,37 +292,53 @@ export function App() {
             WebkitBackdropFilter: "blur(20px)",
             borderTop: `1px solid ${colors.border}`,
             display: "flex",
+            alignItems: "center",
             justifyContent: "space-around",
             padding: "6px 0 env(safe-area-inset-bottom, 6px)",
             zIndex: 100,
           }}
         >
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => navigate(item.id)}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 1,
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "5px 12px",
-                color: view === item.id ? colors.textPrimary : colors.textMuted,
-                background: view === item.id ? "rgba(78,161,255,0.14)" : "transparent",
-                borderRadius: radii.pill,
-                ...typeScale.caption,
-                letterSpacing: "0.02em",
-              }}
-            >
-              <NI d={item.icon} />
-              <span>{item.l}</span>
-            </button>
+          {NAV_TABS.slice(0, 2).map((item) => (
+            <NavTab key={item.id} item={item} active={view === item.id} onClick={() => navigate(item.id)} />
+          ))}
+          <button
+            type="button"
+            onClick={() => setQuickAddOpen(true)}
+            aria-label="Quick add"
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              cursor: "pointer",
+              background: colors.accent,
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 8px 24px rgba(78,161,255,0.4)",
+              marginTop: -18,
+              flexShrink: 0,
+            }}
+          >
+            <Icon name="plus" size={26} color="#fff" strokeWidth={2.4} />
+          </button>
+          {NAV_TABS.slice(2).map((item) => (
+            <NavTab key={item.id} item={item} active={view === item.id} onClick={() => navigate(item.id)} />
           ))}
         </div>
       )}
+      <QuickAddSheet
+        open={quickAddOpen}
+        onClose={() => setQuickAddOpen(false)}
+        items={[
+          { key: "workout", label: "Start a workout", desc: "Gym session", icon: "dumbbell", onClick: () => navigate("train") },
+          ...(app.profile?.enabledModules?.cardio ? [{ key: "cardio", label: "Cardio session", desc: "Bike, treadmill, run", icon: "pulse", onClick: () => navigate("bike") }] : []),
+          ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => navigate("basketball") }] : []),
+          { key: "recovery", label: "Log recovery", desc: "Sleep, hydration, mobility", icon: "pulse", onClick: () => actions.openRecoveryFromHome() },
+          { key: "weigh", label: "Weigh in", desc: "Body stats check-in", icon: "scale", onClick: () => { navigate("more"); openMoreSection("bodystats"); } },
+        ]}
+      />
       <CelebrationOverlay celebration={celebration} onDismiss={actions.dismissCelebration} />
     </div>
   );
