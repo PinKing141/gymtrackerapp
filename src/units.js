@@ -50,3 +50,16 @@ export function kgToPounds(weightKg) {
   if (!kg) return "";
   return Number((kg / KG_PER_LB).toFixed(1));
 }
+
+// Mifflin-St Jeor BMR + activity/goal-adjusted daily calorie target.
+export function calculateCalories(profile) {
+  const kg = Number(profile?.weightKg);
+  const cm = Number(profile?.heightCm);
+  const age = Number(profile?.age);
+  if (!kg || !cm || !age) return null;
+  const base = (10 * kg) + (6.25 * cm) - (5 * age) + (profile.sex === "female" ? -161 : 5);
+  const factor = ACTIVITY_OPTIONS.find((o) => o.value === profile.activityLevel)?.factor || 1.55;
+  const delta = GOAL_OPTIONS.find((o) => o.value === profile.goal)?.delta || 0;
+  const target = Math.max(1200, Math.round(((base * factor) + delta) / 10) * 10);
+  return { bmr: Math.round(base), target };
+}
