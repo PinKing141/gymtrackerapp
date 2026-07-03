@@ -4,6 +4,7 @@ import { ShotZoneCourtPicker } from "../components/ShotZoneCourtPicker.jsx";
 import { Icon } from "../components/icons.jsx";
 import { loadRimCalibration } from "../lib/rimCalibration.js";
 import { saveBasketballSession } from "../services/basketballSync.js";
+import { haptic, playCue } from "../services/sound.js";
 import { colors, radii, typeScale } from "../theme.js";
 
 const AI_SOURCES = ["auto-confirmed", "auto-corrected", "auto"];
@@ -329,6 +330,9 @@ export function BasketballScreen({ onExit, firebaseUser }) {
   };
 
   const recordShot = (shotInput) => {
+    const previewResult = typeof shotInput === "string" ? shotInput : shotInput?.result;
+    if (previewResult === "make") { playCue("ballMake"); haptic("light"); }
+    else if (previewResult === "miss") { playCue("ballMiss"); haptic("light"); }
     setActiveSession((previous) => {
       if (!previous) return previous;
       const shotPayload = typeof shotInput === "string" ? { result: shotInput } : shotInput;

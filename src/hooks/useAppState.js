@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import { haptic, playCue } from "../services/sound.js";
 import { NAV, WQ } from "../data.js";
 import {
   DB,
@@ -680,6 +681,11 @@ export function useAppState(firebaseUser) {
         records: [...earnedRecords.values()],
         weekComplete: justCompletedWeek,
       });
+      playCue(earnedRecords.size ? "pr" : "workoutComplete");
+      haptic("success");
+    } else {
+      playCue("workoutComplete");
+      haptic("medium");
     }
 
     setView("home");
@@ -761,14 +767,7 @@ export function useAppState(firebaseUser) {
   }, [closeMoreSection]);
 
   const resetAllData = useCallback(() => {
-    if (!window.confirm("This permanently removes all local data on this device. Continue?")) {
-      return;
-    }
-    const confirmation = (window.prompt("Type DELETE to confirm reset") || "").trim();
-    if (confirmation !== "DELETE") {
-      return;
-    }
-
+    // Confirmation is handled by the type-to-confirm modal in the Profile screen.
     try {
       localStorage.removeItem(DB);
       localStorage.removeItem(DB_BACKUP);

@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { Spark } from "../components/WorkoutComponents.jsx";
+import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { Icon, WaterGlassIcon } from "../components/icons.jsx";
 import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
 import { PHASES, WQ } from "../data.js";
 import { DD, IS, fd, today } from "../storage.js";
+import { haptic, playCue, unlockAudio } from "../services/sound.js";
 
 const ACTIVITY_OPTIONS = [
   { value: "sedentary", label: "Sedentary", factor: 1.2 },
@@ -130,7 +133,9 @@ export function MoreScreen({
   setDevicePrefs,
   setRecoveryForm,
   setReviewForm,
+  streakSummary,
 }) {
+  const [resetOpen, setResetOpen] = useState(false);
   const profile = app.profile || {};
   const calorieStats = calculateCalories(profile);
   const unitSystem = profile.unitSystem || "imperial";
@@ -317,9 +322,50 @@ export function MoreScreen({
     },
   }));
 
+  const soundCategories = devicePrefs.soundCategories || {};
+  const soundRows = [
+    { key: "timers", label: "Timers", cue: "restEnd" },
+    { key: "logging", label: "Logging", cue: "setLogged" },
+    { key: "celebrations", label: "Celebrations", cue: "pr" },
+    { key: "basketball", label: "Basketball", cue: "ballMake" },
+  ];
+  const toggleSoundCategory = (key) => setDevicePrefs((current) => ({
+    ...current,
+    soundCategories: { ...(current.soundCategories || {}), [key]: !(current.soundCategories?.[key] !== false) },
+  }));
+
+  const displayName = (profile.firstName || profile.name || "").trim() || "Your profile";
+  const initials = displayName.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "Y";
+  const goalLabel = { cut: "Fat loss", maintain: "Maintain", bulk: "Muscle gain" }[profile.goal] || "—";
+  const weightLabel = profile.weightKg
+    ? (unitSystem === "imperial" ? `${kgToPounds(profile.weightKg)} lb` : `${profile.weightKg} kg`)
+    : "—";
+
   return (
     <Screen>
-      <ScreenHeader title="You" />
+      <div style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)", marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize: 22, fontWeight: 800 }}>
+            {initials}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</h1>
+            {firebaseUser?.email && <p style={{ margin: "3px 0 0", fontSize: 12, color: "#8A8F9C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {[
+            { label: "Goal", value: goalLabel },
+            { label: "Weight", value: weightLabel },
+            { label: "Streak", value: `${streakSummary?.currentStreak || 0} wk` },
+          ].map((stat) => (
+            <div key={stat.label} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "11px 6px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stat.value}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 10, color: "#6C6F7B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {firebaseUser && (() => {
         const syncLabels = {
@@ -366,6 +412,50 @@ export function MoreScreen({
               </button>
             );
           })}
+        </div>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 11, color: "#555", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Sound &amp; Haptics</p>
+            <p style={{ margin: "3px 0 0", fontSize: 11, color: "#8A8F9C" }}>Respects your phone's silent switch.</p>
+          </div>
+          <button type="button" onClick={() => { const next = !(devicePrefs.soundEnabled !== false); setDevicePrefs((c) => ({ ...c, soundEnabled: next })); if (next) { unlockAudio(); playCue("pr"); } }} style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer", padding: 0, background: devicePrefs.soundEnabled !== false ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative" }}>
+            <div style={{ position: "absolute", top: 3, left: devicePrefs.soundEnabled !== false ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
+          </button>
+        </div>
+
+        {devicePrefs.soundEnabled !== false && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0" }}>
+              <Icon name="pulse" size={16} color="#8A8F9C" />
+              <input type="range" min="0" max="1" step="0.05" value={devicePrefs.soundVolume ?? 0.6} onChange={(e) => setDevicePrefs((c) => ({ ...c, soundVolume: Number(e.target.value) }))} style={{ flex: 1, accentColor: "#4EA1FF" }} />
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {soundRows.map((row) => {
+                const on = soundCategories[row.key] !== false;
+                return (
+                  <div key={row.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 2px" }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#fff" }}>{row.label}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <button type="button" onClick={() => { unlockAudio(); playCue(row.cue); }} style={{ border: `1px solid ${"rgba(255,255,255,0.14)"}`, background: "rgba(255,255,255,0.04)", color: "#A6A8B3", borderRadius: 999, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Test</button>
+                      <button type="button" onClick={() => toggleSoundCategory(row.key)} style={{ width: 40, height: 24, borderRadius: 999, border: "none", cursor: "pointer", padding: 0, background: on ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative" }}>
+                        <div style={{ position: "absolute", top: 3, left: on ? 19 : 3, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#fff" }}>Haptics (vibration)</p>
+          <button type="button" onClick={() => { const next = !(devicePrefs.hapticsEnabled !== false); setDevicePrefs((c) => ({ ...c, hapticsEnabled: next })); if (next) haptic("success"); }} style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer", padding: 0, background: devicePrefs.hapticsEnabled !== false ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative" }}>
+            <div style={{ position: "absolute", top: 3, left: devicePrefs.hapticsEnabled !== false ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
+          </button>
         </div>
       </SurfaceCard>
 
@@ -519,7 +609,22 @@ export function MoreScreen({
       </div>
       <input ref={fileInputRef} type="file" accept="application/json" onChange={onImportData} style={{ display: "none" }} />
       <ActionButton onClick={onRestoreBackup} tone="tinted" color="#45B649" compact style={{ marginTop: 8 }}>Restore Local Backup</ActionButton>
-      <ActionButton onClick={() => { if (firebaseUser && !window.confirm("Resetting now will also sync the empty state to your cloud account. Continue?")) { return; } onResetAllData(); }} tone="danger" compact style={{ marginTop: 10 }}>Reset All Data</ActionButton>
+
+      <SurfaceCard style={{ marginTop: 18, borderColor: "rgba(255,93,93,0.3)", background: "rgba(255,93,93,0.05)" }}>
+        <p style={{ fontSize: 11, color: "#FF8A8A", margin: "0 0 4px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Danger zone</p>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "#8A8F9C" }}>Permanently erase everything on this device (and in the cloud if signed in).</p>
+        <ActionButton onClick={() => setResetOpen(true)} tone="danger" compact>Reset all data</ActionButton>
+      </SurfaceCard>
+
+      <ConfirmModal
+        open={resetOpen}
+        title="Reset all data?"
+        message={`This permanently deletes all your workouts, cardio, stats and PBs on this device${firebaseUser ? " and in your cloud account" : ""}. This can't be undone.`}
+        requireText="RESET"
+        confirmLabel="Delete everything"
+        onCancel={() => setResetOpen(false)}
+        onConfirm={() => { setResetOpen(false); onResetAllData(); }}
+      />
     </Screen>
   );
 }
