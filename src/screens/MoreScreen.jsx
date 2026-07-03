@@ -4,7 +4,7 @@ import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { Icon, WaterGlassIcon } from "../components/icons.jsx";
 import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
 import { PHASES, WQ } from "../data.js";
-import { DD, IS, fd, today } from "../storage.js";
+import { DB_BACKUP, DD, IS, dbSave, fd, isValidData, today, withDefaults } from "../storage.js";
 import { haptic, playCue, unlockAudio } from "../services/sound.js";
 
 const ACTIVITY_OPTIONS = [
@@ -136,6 +136,10 @@ export function MoreScreen({
   streakSummary,
 }) {
   const [resetOpen, setResetOpen] = useState(false);
+  const [signOutOpen, setSignOutOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importError, setImportError] = useState("");
+  const [restorePreview, setRestorePreview] = useState(null);
   const profile = app.profile || {};
   const calorieStats = calculateCalories(profile);
   const unitSystem = profile.unitSystem || "imperial";
@@ -307,20 +311,22 @@ export function MoreScreen({
     );
   }
 
-  const enabledModules = profile.enabledModules || {};
-  const moduleRows = [
+  const enabledModules = { gym: true, ...(profile.enabledModules || {}) };
+  const supportModules = [
+    { key: "recovery", label: "Recovery", desc: "Sleep, hydration, mobility" },
+    { key: "bodyweight", label: "Bodyweight", desc: "Weigh-ins and trends" },
+    { key: "weeklyReview", label: "Weekly review", desc: "Sunday accountability" },
+    { key: "phaseTracking", label: "Phase tracking", desc: "12-week progression" },
+  ];
+  const mainModules = [
     { key: "gym", label: "Gym / Lifting", desc: "Strength workouts & PBs", locked: true },
     { key: "cardio", label: "Cardio", desc: "Bike, treadmill, running" },
     { key: "basketball", label: "Basketball", desc: "Shot tracking & stats" },
-    { key: "nutrition", label: "Nutrition", desc: "Calorie target (food logging soon)" },
+    { key: "nutrition", label: "Nutrition", desc: "Calorie target and food logging" },
   ];
-  const toggleModule = (key) => setApp((current) => ({
-    ...current,
-    profile: {
-      ...current.profile,
-      enabledModules: { ...(current.profile.enabledModules || {}), [key]: !current.profile.enabledModules?.[key], gym: true },
-    },
-  }));
+  const toggleModule = (key) => setApp((current) => ({ ...current, profile: { ...current.profile, enabledModules: { ...(current.profile.enabledModules || {}), [key]: !current.profile.enabledModules?.[key], gym: true } } }));
+  const setProfile = (patch) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), ...patch } }));
+  const setUnitSystem = (unitSystem) => setProfile({ unitSystem });
 
   const soundCategories = devicePrefs.soundCategories || {};
   const soundRows = [
@@ -329,293 +335,98 @@ export function MoreScreen({
     { key: "celebrations", label: "Celebrations", cue: "pr" },
     { key: "basketball", label: "Basketball", cue: "ballMake" },
   ];
-  const toggleSoundCategory = (key) => setDevicePrefs((current) => ({
-    ...current,
-    soundCategories: { ...(current.soundCategories || {}), [key]: !(current.soundCategories?.[key] !== false) },
-  }));
+  const toggleSoundCategory = (key) => setDevicePrefs((current) => ({ ...current, soundCategories: { ...(current.soundCategories || {}), [key]: !(current.soundCategories?.[key] !== false) } }));
 
   const displayName = (profile.firstName || profile.name || "").trim() || "Your profile";
   const initials = displayName.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("") || "Y";
   const goalLabel = { cut: "Fat loss", maintain: "Maintain", bulk: "Muscle gain" }[profile.goal] || "—";
-  const weightLabel = profile.weightKg
-    ? (unitSystem === "imperial" ? `${kgToPounds(profile.weightKg)} lb` : `${profile.weightKg} kg`)
-    : "—";
+  const unitLabel = unitSystem === "imperial" ? "Imperial" : "Metric";
+  const weightLabel = profile.weightKg ? (unitSystem === "imperial" ? `${kgToPounds(profile.weightKg)} lb` : `${profile.weightKg} kg`) : "—";
+  const targetWeightDisplay = profile.targetWeightKg ? (unitSystem === "imperial" ? kgToPounds(profile.targetWeightKg) : profile.targetWeightKg) : "";
+  const dataCounts = {
+    workouts: app.sessions?.length || 0,
+    recovery: app.recovery?.length || 0,
+    weighIns: app.bodyStats?.length || 0,
+    reviews: app.weeklyReviews?.length || 0,
+    pbs: Object.keys(app.personalBests || {}).length,
+    cardio: app.cardioSessions?.length || 0,
+    basketball: app.basketballSessions?.length || 0,
+  };
+  const summarizeData = (data) => ({
+    workouts: data?.sessions?.length || 0,
+    recovery: data?.recovery?.length || 0,
+    weighIns: data?.bodyStats?.length || 0,
+    reviews: data?.weeklyReviews?.length || 0,
+    pbs: Object.keys(data?.personalBests || {}).length,
+    cardio: data?.cardioSessions?.length || 0,
+    basketball: data?.basketballSessions?.length || 0,
+    preferences: Boolean(data?.profile),
+  });
+  const preferencesIncluded = (summary) => summary.preferences ? "Preferences included" : "Preferences not included";
+  const syncText = !firebaseUser ? "Signed out" : firestoreSync?.status === "error" ? "Sync error" : firestoreSync?.status === "synced" ? "Synced to cloud" : firestoreSync?.status === "saving" ? "Saving…" : "Signed in";
+  const notificationSummary = !notificationSupported ? "Unsupported" : notificationPermission === "granted" ? `${devicePrefs.reminderThresholdDays || 3}-day reminder` : "Off";
+  const selectedCoach = profile.coachVoice || profile.coachPersona || "none";
+  const coachLabel = { balanced: "Balanced", strict: "Strict", hype: "Hype", calm: "Calm", technical: "Technical", none: "Not chosen" }[selectedCoach] || "Not chosen";
+  const trackedSummary = mainModules.filter((m) => m.locked || enabledModules[m.key]).map((m) => m.label.replace(" / Lifting", "")).join(" · ") || "Gym";
+  const bodyGoalsSummary = calorieStats && profile.weightKg && profile.goal ? `${weightLabel} · ${goalLabel} · ${calorieStats.target.toLocaleString()} kcal` : "Finish setup";
+  const dataSummary = dataCounts.workouts || dataCounts.pbs ? `${dataCounts.workouts} sessions · ${dataCounts.pbs} PBs` : "No backup yet";
+  const completionItems = [profile.name || profile.firstName, profile.age, profile.sex, profile.heightCm, profile.weightKg, profile.goal, profile.targetWeightKg, profile.activityLevel, Object.values(enabledModules).some(Boolean), notificationPermission === "granted", selectedCoach !== "none", profile.unitSystem];
+  const completionPercent = Math.round((completionItems.filter(Boolean).length / completionItems.length) * 100);
+  const nextAction = !profile.name && !profile.firstName ? "Add name" : !profile.weightKg ? "Add current weight" : !profile.heightCm ? "Add height" : !profile.age ? "Add age" : !profile.goal ? "Pick goal" : !profile.targetWeightKg ? "Set your target weight" : !profile.activityLevel ? "Pick activity level" : !Object.values(enabledModules).some(Boolean) ? "Choose what you track" : selectedCoach === "none" ? "Choose coach voice" : notificationPermission !== "granted" ? "Enable reminders" : "Ready to train";
+  const proteinRange = profile.weightKg ? `${Math.round(Number(profile.weightKg) * 1.6)}–${Math.round(Number(profile.weightKg) * 2.2)}g/day` : "Add current weight";
+
+  const ProfileRow = ({ icon, label, summary, onClick, danger = false }) => <SurfaceButton onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 58, padding: "14px 16px", borderColor: danger ? "rgba(255,93,93,0.3)" : undefined }}><div style={{ width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: danger ? "rgba(255,93,93,0.1)" : "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}><Icon name={icon} size={18} color={danger ? "#FF5D5D" : "#9AA4B3"} /></div><div style={{ flex: 1, minWidth: 0 }}><p style={{ fontSize: 14, fontWeight: 700, margin: 0, color: danger ? "#FF8A8A" : "#fff" }}>{label}</p></div><span style={{ maxWidth: "48%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#8A8F9C", fontSize: 12, textAlign: "right" }}>{summary}</span><span style={{ color: "#555", fontSize: 18 }}>›</span></SurfaceButton>;
+  const Group = ({ title, children }) => <SurfaceCard><p style={{ fontSize: 11, color: "#555", margin: "0 0 10px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>{title}</p><div style={{ display: "grid", gap: 10 }}>{children}</div></SurfaceCard>;
+  const Field = ({ label, children }) => <label style={{ display: "grid", gap: 6, fontSize: 11, color: "#8A8F9C", fontWeight: 700 }}>{label}{children}</label>;
+  const Toggle = ({ on, onClick, disabled }) => <button type="button" disabled={disabled} onClick={onClick} style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: disabled ? "default" : "pointer", padding: 0, background: on ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative", opacity: disabled ? 0.6 : 1 }}><div style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff" }} /></button>;
+  const Header = ({ title, subtitle }) => <ScreenHeader action={<BackButton onClick={closeSection} />} title={title} subtitle={subtitle} topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />;
+  const applyImportedData = (data) => { const nextApp = withDefaults(data); dbSave(nextApp); setApp(nextApp); setImportPreview(null); closeSection(); window.alert("Data imported successfully."); };
+  const handleImportFile = (event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { const parsed = JSON.parse(reader.result); if (!isValidData(parsed)) { setImportError("Invalid backup file."); return; } setImportPreview({ data: withDefaults(parsed), summary: summarizeData(parsed), current: summarizeData(app) }); onOpenSection("importPreview"); } catch { setImportError("Could not read this backup file."); } }; reader.readAsText(file); event.target.value = ""; };
+  const openRestorePreview = () => { try { const parsed = JSON.parse(localStorage.getItem(DB_BACKUP) || ""); if (!isValidData(parsed)) { window.alert("No valid backup found."); return; } setRestorePreview({ data: withDefaults(parsed), summary: summarizeData(parsed), current: summarizeData(app) }); onOpenSection("restorePreview"); } catch { window.alert("No valid backup found."); } };
+
+  if (["editProfile","bodyGoals","trackingModules","preferences","units","soundHaptics","appearance","notifications","coachVoice","account","dataBackup","dangerZone","about","importPreview","restorePreview"].includes(sectionView)) {
+    return <Screen><Header title={{editProfile:"Edit profile",bodyGoals:"Body & Goals",trackingModules:"What you track",preferences:"Preferences",units:"Units",soundHaptics:"Sound & Haptics",appearance:"Appearance",notifications:"Notifications",coachVoice:"Coach voice",account:"Account",dataBackup:"Data & Backup",dangerZone:"Danger Zone",about:"About",importPreview:"Import preview",restorePreview:"Restore preview"}[sectionView]} subtitle={sectionView === "bodyGoals" ? "The better this is, the better the app coaches you." : undefined} />
+      {sectionView === "editProfile" && <><Group title="Identity"><div style={{ display: "flex", alignItems: "center", gap: 12 }}><div style={{ width: 52, height: 52, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize: 19, fontWeight: 800 }}>{initials}</div><div style={{ minWidth: 0 }}><p style={{ margin: 0, color: "#fff", fontWeight: 800 }}>{displayName}</p><p style={{ margin: "3px 0 0", color: "#8A8F9C", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser?.email || "Signed out"}</p></div></div><Field label="Display name"><input style={IS} value={profile.name || ""} onChange={(e)=>setProfile({ name: e.target.value })} placeholder="Your name" /></Field><Field label="Personal notes"><TextAreaField value={profile.notes || ""} onChange={(e)=>setProfile({ notes: e.target.value })} placeholder="Injuries, schedule, preferences..." /></Field></Group></>}
+      {sectionView === "bodyGoals" && <><Group title="Body"><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Field label="Age"><input style={IS} type="number" value={profile.age || ""} onChange={(e)=>setProfile({ age:e.target.value })} /></Field><Field label="Sex"><select style={IS} value={profile.sex || "male"} onChange={(e)=>setProfile({ sex:e.target.value })}><option value="male">Male</option><option value="female">Female</option></select></Field>{unitSystem === "imperial" ? <><Field label="Height feet"><input style={IS} type="number" value={profileFeet || ""} onChange={(e)=>setProfile({ heightCm: feetInchesToCm(e.target.value, profileInches) })} /></Field><Field label="Height inches"><input style={IS} type="number" value={profileInches || ""} onChange={(e)=>setProfile({ heightCm: feetInchesToCm(profileFeet, e.target.value) })} /></Field><Field label="Current weight (lb)"><input style={IS} type="number" value={kgToPounds(profile.weightKg)} onChange={(e)=>setProfile({ weightKg:poundsToKg(e.target.value) })} /></Field><Field label="Target weight (lb)"><input style={IS} type="number" value={targetWeightDisplay} onChange={(e)=>setProfile({ targetWeightKg:poundsToKg(e.target.value) })} /></Field></> : <><Field label="Height (cm)"><input style={IS} type="number" value={profile.heightCm || ""} onChange={(e)=>setProfile({ heightCm:e.target.value })} /></Field><Field label="Current weight (kg)"><input style={IS} type="number" value={profile.weightKg || ""} onChange={(e)=>setProfile({ weightKg:e.target.value })} /></Field><Field label="Target weight (kg)"><input style={IS} type="number" value={profile.targetWeightKg || ""} onChange={(e)=>setProfile({ targetWeightKg:e.target.value })} /></Field></>}</div></Group><Group title="Goal"><select style={IS} value={profile.goal || "maintain"} onChange={(e)=>setProfile({ goal:e.target.value })}>{GOAL_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><select style={IS} value={profile.weeklyGoalRate || "moderate"} onChange={(e)=>setProfile({ weeklyGoalRate:e.target.value })}>{(profile.goal === "bulk" ? ["Slow lean bulk","Moderate gain","Aggressive gain"] : ["0.25 kg/week","0.5 kg/week","0.75 kg/week","1.0 kg/week"]).map(o=><option key={o} value={o}>{o}</option>)}</select><select style={IS} value={profile.activityLevel || "moderate"} onChange={(e)=>setProfile({ activityLevel:e.target.value })}>{ACTIVITY_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></Group><Group title="Nutrition target">{calorieStats ? <><p style={{margin:0,color:"#fff"}}>BMR estimate: <strong>{calorieStats.bmr}</strong> kcal/day</p><p style={{margin:0,color:"#fff"}}>Maintenance calories: <strong>{calorieStats.maintenance}</strong> kcal/day</p><p style={{margin:0,color:"#fff"}}>Goal calories: <strong>{calorieStats.target}</strong> kcal/day</p><p style={{margin:0,color:"#8BA6C9"}}>Protein target: <strong>{proteinRange}</strong></p></> : <p style={{margin:0,color:"#888"}}>Add age, height, and current weight to estimate calories and protein.</p>}</Group></>}
+      {sectionView === "trackingModules" && <><Group title="Main modules">{mainModules.map(m=><div key={m.key} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><p style={{margin:0,color:"#fff",fontWeight:700}}>{m.label}{m.locked ? " · Core" : ""}</p><p style={{margin:"2px 0 0",color:"#8A8F9C",fontSize:11}}>{m.desc}</p></div><Toggle on={m.locked || enabledModules[m.key]} disabled={m.locked} onClick={()=>toggleModule(m.key)} /></div>)}</Group><Group title="Support modules">{supportModules.map(m=><div key={m.key} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><p style={{margin:0,color:"#fff",fontWeight:700}}>{m.label}</p><p style={{margin:"2px 0 0",color:"#8A8F9C",fontSize:11}}>{m.desc}</p></div><Toggle on={enabledModules[m.key]} onClick={()=>toggleModule(m.key)} /></div>)}</Group></>}
+      {sectionView === "preferences" && <><ProfileRow icon="scale" label="Units" summary={unitLabel} onClick={()=>onOpenSection("units")} /><ProfileRow icon="pulse" label="Sound & Haptics" summary={`${devicePrefs.soundEnabled !== false ? "Sound on" : "Sound off"} · ${devicePrefs.hapticsEnabled !== false ? "Haptics on" : "Haptics off"}`} onClick={()=>onOpenSection("soundHaptics")} /><ProfileRow icon="spark" label="Appearance" summary="Dark" onClick={()=>onOpenSection("appearance")} /></>}
+      {sectionView === "units" && <Group title="Units"><ActionButton tone={unitSystem==="imperial"?"tinted":"secondary"} onClick={()=>setUnitSystem("imperial")}>Imperial · lb · ft/in · miles</ActionButton><ActionButton tone={unitSystem==="metric"?"tinted":"secondary"} onClick={()=>setUnitSystem("metric")}>Metric · kg · cm · km</ActionButton><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Energy stays in kcal.</p></Group>}
+      {sectionView === "soundHaptics" && <><Group title="Sound"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><p style={{margin:0,color:"#fff",fontWeight:700}}>Master sound</p><Toggle on={devicePrefs.soundEnabled !== false} onClick={()=>setDevicePrefs(c=>({...c,soundEnabled:!(c.soundEnabled !== false)}))} /></div><input type="range" min="0" max="1" step="0.05" value={devicePrefs.soundVolume ?? 0.6} onChange={(e)=>setDevicePrefs(c=>({...c,soundVolume:Number(e.target.value)}))} style={{width:"100%",accentColor:"#4EA1FF"}} /></Group><Group title="Sound categories">{soundRows.map(r=><div key={r.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}><p style={{margin:0,color:"#fff",fontWeight:700}}>{r.label}</p><div style={{display:"flex",gap:10,alignItems:"center"}}><ActionButton compact fullWidth={false} tone="secondary" onClick={()=>{unlockAudio();playCue(r.cue)}}>Play</ActionButton><Toggle on={soundCategories[r.key] !== false} onClick={()=>toggleSoundCategory(r.key)} /></div></div>)}</Group><Group title="Haptics"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><p style={{margin:0,color:"#fff",fontWeight:700}}>Haptics vibration</p><Toggle on={devicePrefs.hapticsEnabled !== false} onClick={()=>setDevicePrefs(c=>({...c,hapticsEnabled:!(c.hapticsEnabled !== false)}))} /></div><ActionButton tone="secondary" onClick={()=>haptic("success")}>Test haptic</ActionButton></Group></>}
+      {sectionView === "appearance" && <Group title="Theme"><p style={{margin:0,color:"#fff",fontWeight:700}}>Dark</p><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Theme customization is coming soon. The app currently supports its dark training theme.</p></Group>}
+      {sectionView === "notifications" && <><Group title="Reminder status"><p style={{margin:0,color:"#fff"}}>Permission: <strong>{notificationSupported ? notificationPermission : "Unsupported"}</strong></p>{notificationSupported && <ActionButton onClick={onRequestReminderPermission} tone="tinted" color="#2D7DD2">{notificationPermission === "granted" ? "Enabled" : "Enable reminders"}</ActionButton>}</Group>{notificationSupported && <Group title="Streak protection"><p style={{margin:0,color:"#fff"}}>Remind me when I haven’t trained for {devicePrefs.reminderThresholdDays || 3} days</p><input type="range" min="2" max="5" value={devicePrefs.reminderThresholdDays || 3} onChange={(e)=>setDevicePrefs(c=>({...c,reminderThresholdDays:Number(e.target.value),lastReminderKey:null}))} style={{width:"100%",accentColor:"#2D7DD2"}} /></Group>}<Group title="Testing"><ActionButton onClick={onSendTestReminder} tone="secondary" disabled={!notificationSupported}>Send test reminder</ActionButton></Group><Group title="Device support"><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Browser support: {notificationSupported ? "Available" : "Unsupported"}</p><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Service worker: {serviceWorkerSupported ? "Available" : "Unavailable"}</p></Group></>}
+      {sectionView === "coachVoice" && <Group title="Personas">{[{k:"balanced",d:"Clear, supportive, direct.",q:"Good session. You stayed consistent. Next time, push the top set slightly."},{k:"strict",d:"No excuses, accountability focused.",q:"You said you wanted progress. Log the work or stop pretending."},{k:"hype",d:"High-energy motivation.",q:"That’s a PR. Lock in — we’re stacking wins now."},{k:"calm",d:"Low-pressure, steady.",q:"You showed up. That counts. Let’s build from here."},{k:"technical",d:"Form, numbers, progression.",q:"Volume is trending up. Keep RIR stable before increasing load."}].map(p=><button key={p.k} onClick={()=>setProfile({coachVoice:p.k,coachPersona:p.k})} style={{...IS,textAlign:"left",borderColor:selectedCoach===p.k?"rgba(78,161,255,0.7)":"rgba(255,255,255,0.08)",cursor:"pointer"}}><strong style={{color:"#fff",textTransform:"capitalize"}}>{p.k}</strong><br/><span style={{color:"#8A8F9C"}}>{p.d}</span><br/><span style={{color:"#bbb",fontStyle:"italic"}}>“{p.q}”</span></button>)}</Group>}
+      {sectionView === "account" && <><Group title="Account"><p style={{margin:0,color:"#fff"}}>Email: <strong>{firebaseUser?.email || "Signed out"}</strong></p><p style={{margin:0,color:"#fff"}}>Display name: <strong>{displayName}</strong></p><p style={{margin:0,color:"#8A8F9C"}}>Status: {firebaseUser ? "Signed in" : "Signed out"}</p></Group><Group title="Sync"><p style={{margin:0,color:"#fff"}}>Cloud sync status: <strong>{syncText}</strong></p><p style={{margin:0,color:"#8A8F9C"}}>Last synced: {firestoreSync?.lastSyncedAt ? new Date(firestoreSync.lastSyncedAt).toLocaleString() : "—"}</p>{firestoreSync?.error && <p style={{margin:0,color:"#FF8A8A"}}>{firestoreSync.error}</p>}</Group>{firebaseUser && <ActionButton tone="secondary" onClick={()=>setSignOutOpen(true)}>Sign out</ActionButton>}</>}
+      {sectionView === "dataBackup" && <><Group title="Training data"><p style={{margin:0,color:"#fff"}}>{dataCounts.workouts} workouts</p><p style={{margin:0,color:"#fff"}}>{dataCounts.cardio} cardio sessions</p><p style={{margin:0,color:"#fff"}}>{dataCounts.basketball} basketball sessions</p><p style={{margin:0,color:"#fff"}}>{dataCounts.pbs} PBs</p></Group><Group title="Wellness data"><p style={{margin:0,color:"#fff"}}>{dataCounts.recovery} recovery logs</p><p style={{margin:0,color:"#fff"}}>{dataCounts.weighIns} weigh-ins</p><p style={{margin:0,color:"#fff"}}>{dataCounts.reviews} weekly reviews</p></Group><Group title="Backup actions"><ActionButton onClick={onExportData} tone="tinted" color="#2D7DD2">Export backup</ActionButton><ActionButton onClick={()=>fileInputRef.current?.click()} tone="tinted" color="#F5A623">Import backup</ActionButton><ActionButton onClick={openRestorePreview} tone="tinted" color="#45B649">Restore local backup</ActionButton><input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{display:"none"}} />{importError && <p style={{margin:0,color:"#FF8A8A",fontSize:12}}>{importError}</p>}</Group><Group title="Cloud sync"><p style={{margin:0,color:"#fff"}}>{syncText}</p><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Last synced: {firestoreSync?.lastSyncedAt ? new Date(firestoreSync.lastSyncedAt).toLocaleString() : "—"}</p></Group><ProfileRow icon="trash" label="Danger Zone" summary="Reset all data" danger onClick={()=>onOpenSection("dangerZone")} /></>}
+      {sectionView === "dangerZone" && <SurfaceCard style={{borderColor:"rgba(255,93,93,0.3)",background:"rgba(255,93,93,0.05)"}}><p style={{margin:"0 0 6px",color:"#FF8A8A",fontWeight:800}}>Reset all data</p><p style={{margin:"0 0 14px",color:"#8A8F9C",fontSize:12}}>Permanently deletes workouts, cardio, basketball data, stats, PBs, preferences and local/cloud data.</p><ActionButton onClick={()=>setResetOpen(true)} tone="danger">Reset all data</ActionButton></SurfaceCard>}
+      {sectionView === "about" && <Group title="App"><p style={{margin:0,color:"#fff",fontWeight:700}}>Orion Gym Tracker</p><p style={{margin:0,color:"#8A8F9C"}}>Version 1.0.0</p></Group>}
+      {sectionView === "importPreview" && importPreview && <Group title="Import backup"><p style={{margin:0,color:"#fff",fontWeight:700}}>Found in backup</p><p style={{margin:0,color:"#8A8F9C"}}>{importPreview.summary.workouts} workouts · {importPreview.summary.recovery} recovery logs · {importPreview.summary.weighIns} weigh-ins · {importPreview.summary.pbs} PBs · {preferencesIncluded(importPreview.summary)}</p><p style={{margin:"8px 0 0",color:"#fff",fontWeight:700}}>Current app data</p><p style={{margin:0,color:"#8A8F9C"}}>{importPreview.current.workouts} workouts · {importPreview.current.recovery} recovery logs · {importPreview.current.weighIns} weigh-ins · {importPreview.current.pbs} PBs</p><p style={{margin:"8px 0",color:"#FFCA8A",fontSize:12}}>Importing a backup replaces your current data with the data inside the file.</p><ActionButton onClick={()=>{onExportData?.(); applyImportedData(importPreview.data);}} tone="tinted" color="#2D7DD2">Create safety backup and import</ActionButton><ActionButton onClick={()=>applyImportedData(importPreview.data)} tone="danger">Import without safety backup</ActionButton><ActionButton onClick={()=>{setImportPreview(null);closeSection();}} tone="secondary">Cancel</ActionButton></Group>}
+      {sectionView === "restorePreview" && restorePreview && <Group title="Restore local backup"><p style={{margin:0,color:"#fff",fontWeight:700}}>Backup found</p><p style={{margin:0,color:"#8A8F9C"}}>{restorePreview.summary.workouts} workouts · {restorePreview.summary.pbs} PBs · {preferencesIncluded(restorePreview.summary)}</p><p style={{margin:"8px 0",color:"#FFCA8A",fontSize:12}}>Restoring uses the last local backup saved on this device and replaces your current data.</p><ActionButton onClick={()=>{onExportData?.(); dbSave(restorePreview.data); setApp(restorePreview.data); setRestorePreview(null); closeSection();}} tone="tinted" color="#2D7DD2">Create safety export and restore</ActionButton><ActionButton onClick={()=>{dbSave(restorePreview.data); setApp(restorePreview.data); setRestorePreview(null); closeSection();}} tone="danger">Restore backup</ActionButton><ActionButton onClick={()=>{setRestorePreview(null);closeSection();}} tone="secondary">Cancel</ActionButton></Group>}
+      <ConfirmModal open={resetOpen} title="Reset all data?" message={`This permanently deletes all your workouts, cardio, basketball sessions, recovery logs, body stats, weekly reviews, preferences and PBs on this device${firebaseUser ? " and in your cloud account" : ""}. This can't be undone.`} requireText="RESET" confirmLabel="Delete everything" onCancel={()=>setResetOpen(false)} onConfirm={()=>{setResetOpen(false);onResetAllData();}} />
+      <ConfirmModal open={signOutOpen} title="Sign out?" message="Your data stays on this device, but cloud sync will stop until you sign back in." confirmLabel="Sign out" onCancel={()=>setSignOutOpen(false)} onConfirm={()=>{setSignOutOpen(false);onFirebaseSignOut?.();}} />
+    </Screen>;
+  }
 
   return (
     <Screen>
       <div style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)", marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-          <div style={{ width: 60, height: 60, borderRadius: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize: 22, fontWeight: 800 }}>
-            {initials}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</h1>
-            {firebaseUser?.email && <p style={{ margin: "3px 0 0", fontSize: 12, color: "#8A8F9C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>}
-          </div>
+          <div style={{ width: 60, height: 60, borderRadius: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize: 22, fontWeight: 800 }}>{initials}</div>
+          <div style={{ minWidth: 0 }}><h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</h1>{firebaseUser?.email && <p style={{ margin: "3px 0 0", fontSize: 12, color: "#8A8F9C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>}</div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {[
-            { label: "Goal", value: goalLabel },
-            { label: "Weight", value: weightLabel },
-            { label: "Streak", value: `${streakSummary?.currentStreak || 0} wk` },
-          ].map((stat) => (
-            <div key={stat.label} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "11px 6px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stat.value}</p>
-              <p style={{ margin: "2px 0 0", fontSize: 10, color: "#6C6F7B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{stat.label}</p>
-            </div>
-          ))}
-        </div>
+        <div style={{ display: "flex", gap: 8 }}>{[{ label: "Goal", value: goalLabel }, { label: "Weight", value: weightLabel }, { label: "Streak", value: `${streakSummary?.currentStreak || 0} wk` }].map((stat) => <div key={stat.label} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "11px 6px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}><p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stat.value}</p><p style={{ margin: "2px 0 0", fontSize: 10, color: "#6C6F7B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{stat.label}</p></div>)}</div>
       </div>
-
-      {firebaseUser && (() => {
-        const syncLabels = {
-          loading: { text: "Syncing…", color: "#4EA1FF" },
-          saving: { text: "Saving…", color: "#4EA1FF" },
-          synced: { text: "Synced to cloud", color: "#3DDC97" },
-          error: { text: firestoreSync?.error || "Sync error", color: "#FF5D5D" },
-        };
-        const sync = syncLabels[firestoreSync?.status];
-        return (
-          <SurfaceCard style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 10, color: "#555", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Signed in</p>
-              <p style={{ fontSize: 13, color: "#fff", fontWeight: 600, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email || firebaseUser.displayName || "Account"}</p>
-              {sync && <p style={{ fontSize: 11, color: sync.color, margin: "3px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sync.text}</p>}
-            </div>
-            <ActionButton tone="secondary" compact fullWidth={false} onClick={() => { onFirebaseSignOut?.(); }} style={{ flexShrink: 0 }}>
-              Sign out
-            </ActionButton>
-          </SurfaceCard>
-        );
-      })()}
-
-      <SurfaceCard>
-        <p style={{ fontSize: 11, color: "#555", margin: "0 0 10px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>What you track</p>
-        <div style={{ display: "grid", gap: 8 }}>
-          {moduleRows.map((module) => {
-            const on = module.locked ? true : Boolean(enabledModules[module.key]);
-            return (
-              <button
-                key={module.key}
-                type="button"
-                disabled={module.locked}
-                onClick={() => toggleModule(module.key)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, textAlign: "left", padding: "10px 4px", background: "none", border: "none", cursor: module.locked ? "default" : "pointer", fontFamily: "inherit" }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#fff" }}>{module.label}{module.locked ? " · Core" : ""}</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 11, color: "#8A8F9C" }}>{module.desc}</p>
-                </div>
-                <div style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, background: on ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative", opacity: module.locked ? 0.6 : 1 }}>
-                  <div style={{ position: "absolute", top: 3, left: on ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </SurfaceCard>
-
-      <SurfaceCard>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
-          <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 11, color: "#555", margin: 0, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Sound &amp; Haptics</p>
-            <p style={{ margin: "3px 0 0", fontSize: 11, color: "#8A8F9C" }}>Respects your phone's silent switch.</p>
-          </div>
-          <button type="button" onClick={() => { const next = !(devicePrefs.soundEnabled !== false); setDevicePrefs((c) => ({ ...c, soundEnabled: next })); if (next) { unlockAudio(); playCue("pr"); } }} style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer", padding: 0, background: devicePrefs.soundEnabled !== false ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative" }}>
-            <div style={{ position: "absolute", top: 3, left: devicePrefs.soundEnabled !== false ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
-          </button>
-        </div>
-
-        {devicePrefs.soundEnabled !== false && (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0" }}>
-              <Icon name="pulse" size={16} color="#8A8F9C" />
-              <input type="range" min="0" max="1" step="0.05" value={devicePrefs.soundVolume ?? 0.6} onChange={(e) => setDevicePrefs((c) => ({ ...c, soundVolume: Number(e.target.value) }))} style={{ flex: 1, accentColor: "#4EA1FF" }} />
-            </div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {soundRows.map((row) => {
-                const on = soundCategories[row.key] !== false;
-                return (
-                  <div key={row.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 2px" }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#fff" }}>{row.label}</p>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <button type="button" onClick={() => { unlockAudio(); playCue(row.cue); }} style={{ border: `1px solid ${"rgba(255,255,255,0.14)"}`, background: "rgba(255,255,255,0.04)", color: "#A6A8B3", borderRadius: 999, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Test</button>
-                      <button type="button" onClick={() => toggleSoundCategory(row.key)} style={{ width: 40, height: 24, borderRadius: 999, border: "none", cursor: "pointer", padding: 0, background: on ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative" }}>
-                        <div style={{ position: "absolute", top: 3, left: on ? 19 : 3, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#fff" }}>Haptics (vibration)</p>
-          <button type="button" onClick={() => { const next = !(devicePrefs.hapticsEnabled !== false); setDevicePrefs((c) => ({ ...c, hapticsEnabled: next })); if (next) haptic("success"); }} style={{ width: 44, height: 26, borderRadius: 999, flexShrink: 0, border: "none", cursor: "pointer", padding: 0, background: devicePrefs.hapticsEnabled !== false ? "#4EA1FF" : "rgba(255,255,255,0.14)", position: "relative" }}>
-            <div style={{ position: "absolute", top: 3, left: devicePrefs.hapticsEnabled !== false ? 21 : 3, width: 20, height: 20, borderRadius: 999, background: "#fff", transition: "left 160ms ease" }} />
-          </button>
-        </div>
-      </SurfaceCard>
-
-      {[
-        { key: "recovery", icon: "pulse", title: "Recovery Log", description: "Sleep, hydration, mobility" },
-        { key: "bodystats", icon: "scale", title: "Body Stats", description: "Bodyweight check-in" },
-        { key: "review", icon: "clipboard", title: "Weekly Review", description: "Sunday accountability" },
-        { key: "phase", icon: "barChart", title: "Phase Tracker", description: "12-week progression" },
-      ].map((item) => (
-        <SurfaceButton key={item.key} onClick={() => onOpenSection(item.key)} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <Icon name={item.icon} size={18} color="#9AA4B3" />
-          </div>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 14, fontWeight: 600, margin: 0, color: "#fff" }}>{item.title}</p>
-            <p style={{ fontSize: 11, color: "#555", margin: "2px 0 0" }}>{item.description}</p>
-          </div>
-          <span style={{ color: "#555", fontSize: 18 }}>›</span>
-        </SurfaceButton>
-      ))}
-
-      <SurfaceCard style={{ marginTop: 16 }}>
-        <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Notifications</p>
-        <p style={{ fontSize: 12, color: "#bbb", margin: "0 0 8px" }}>We'll send a friendly training reminder when your streak is at risk.</p>
-        {!notificationSupported ? (
-          <p style={{ fontSize: 11, color: "#666", margin: 0 }}>
-            Push notifications are not available in this browser, but in-app reminders still update as you log workouts.
-          </p>
-        ) : (
-          <>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <p style={{ margin: 0, fontSize: 11, color: "#888" }}>Status: {notificationPermission}</p>
-              <ActionButton onClick={onRequestReminderPermission} tone="tinted" color="#2D7DD2" compact fullWidth={false}>
-                {notificationPermission === "granted" ? "Enabled" : "Enable"}
-              </ActionButton>
-            </div>
-            {!serviceWorkerSupported && (
-              <p style={{ margin: "8px 0 0", fontSize: 10, color: "#777" }}>Service workers are unavailable here, so reminders may only appear while the app is open.</p>
-            )}
-            <div style={{ marginTop: 10 }}>
-              <p style={{ margin: "0 0 6px", fontSize: 10, color: "#666" }}>Reminder trigger (days since last session)</p>
-              <input type="range" min="2" max="5" value={devicePrefs.reminderThresholdDays} onChange={(event) => setDevicePrefs((current) => ({ ...current, reminderThresholdDays: Number(event.target.value), lastReminderKey: null }))} style={{ width: "100%", accentColor: "#2D7DD2" }} />
-              <p style={{ margin: "3px 0 0", fontSize: 11, color: "#8BA6C9", fontWeight: 600 }}>{devicePrefs.reminderThresholdDays} day threshold</p>
-            </div>
-            <ActionButton onClick={onSendTestReminder} tone="secondary" compact style={{ marginTop: 10 }}>
-              Send Test Reminder
-            </ActionButton>
-          </>
-        )}
-      </SurfaceCard>
-
-      <SurfaceCard style={{ marginTop: 16 }}>
-        <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Profile & Calories</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-          <button
-            onClick={() => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), unitSystem: "imperial" } }))}
-            style={{ ...IS, background: unitSystem === "imperial" ? "rgba(45,125,210,0.2)" : "rgba(255,255,255,0.06)", borderColor: unitSystem === "imperial" ? "rgba(45,125,210,0.45)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}
-          >
-            Imperial (ft/lb)
-          </button>
-          <button
-            onClick={() => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), unitSystem: "metric" } }))}
-            style={{ ...IS, background: unitSystem === "metric" ? "rgba(45,125,210,0.2)" : "rgba(255,255,255,0.06)", borderColor: unitSystem === "metric" ? "rgba(45,125,210,0.45)" : "rgba(255,255,255,0.08)", cursor: "pointer" }}
-          >
-            Metric (cm/kg)
-          </button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <input type="text" autoComplete="name" value={profile.name || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), name: event.target.value } }))} placeholder="Name" style={IS} />
-          <input type="number" inputMode="numeric" value={profile.age || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), age: event.target.value } }))} placeholder="Age" style={IS} />
-          {unitSystem === "imperial" ? (
-            <>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={profileFeet || ""}
-                onChange={(event) => setApp((current) => {
-                  const currentHeight = toFeetInches(current.profile?.heightCm);
-                  return { ...current, profile: { ...(current.profile || {}), heightCm: feetInchesToCm(event.target.value, currentHeight.inches) } };
-                })}
-                placeholder="Height (ft)"
-                style={IS}
-              />
-              <input
-                type="number"
-                inputMode="numeric"
-                value={profileInches || ""}
-                onChange={(event) => setApp((current) => {
-                  const currentHeight = toFeetInches(current.profile?.heightCm);
-                  return { ...current, profile: { ...(current.profile || {}), heightCm: feetInchesToCm(currentHeight.feet, event.target.value) } };
-                })}
-                placeholder="Height (in)"
-                style={IS}
-              />
-              <input
-                type="number"
-                inputMode="decimal"
-                value={kgToPounds(profile.weightKg)}
-                onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), weightKg: poundsToKg(event.target.value) } }))}
-                placeholder="Weight (lbs)"
-                style={{ ...IS, gridColumn: "1 / span 2" }}
-              />
-            </>
-          ) : (
-            <>
-              <input type="number" inputMode="decimal" value={profile.heightCm || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), heightCm: event.target.value } }))} placeholder="Height (cm)" style={IS} />
-              <input type="number" inputMode="decimal" value={profile.weightKg || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), weightKg: event.target.value } }))} placeholder="Weight (kg)" style={IS} />
-            </>
-          )}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
-          <select value={profile.sex || "male"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), sex: event.target.value } }))} style={IS}>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-          </select>
-          <select value={profile.activityLevel || "moderate"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), activityLevel: event.target.value } }))} style={IS}>
-            {ACTIVITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <select value={profile.goal || "maintain"} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), goal: event.target.value } }))} style={IS}>
-            {GOAL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </div>
-        <TextAreaField value={profile.notes || ""} onChange={(event) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), notes: event.target.value } }))} placeholder="Any personal notes (injuries, schedule, food preferences)..." style={{ marginTop: 8 }} />
-        <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(45,125,210,0.2)", background: "rgba(45,125,210,0.08)" }}>
-          <p style={{ margin: 0, fontSize: 11, color: "#8BA6C9", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>Calorie Calculator</p>
-          {!calorieStats ? (
-            <p style={{ margin: "6px 0 0", fontSize: 11, color: "#888" }}>Add age, height, and weight to estimate calories.</p>
-          ) : (
-            <>
-              <p style={{ margin: "6px 0 0", fontSize: 12, color: "#fff" }}>Maintenance: <strong>{calorieStats.maintenance}</strong> kcal/day</p>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#fff" }}>Goal target: <strong>{calorieStats.target}</strong> kcal/day</p>
-              <p style={{ margin: "4px 0 0", fontSize: 10, color: "#7F8B99" }}>BMR estimate: {calorieStats.bmr} kcal/day</p>
-            </>
-          )}
-        </div>
-      </SurfaceCard>
-
-      <SurfaceCard style={{ marginTop: 16 }}>
-        <p style={{ fontSize: 11, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Data</p>
-        <div style={{ fontSize: 12, color: "#888" }}>
-          <p style={{ margin: "3px 0" }}>{app.sessions.length} sessions · {app.recovery.length} recovery logs</p>
-          <p style={{ margin: "3px 0" }}>{app.bodyStats.length} weigh-ins · {app.weeklyReviews.length} reviews · {Object.keys(app.personalBests).length} PBs</p>
-        </div>
-      </SurfaceCard>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
-        <ActionButton onClick={onExportData} tone="tinted" color="#2D7DD2" compact>Export Backup</ActionButton>
-        <ActionButton onClick={() => fileInputRef.current?.click()} tone="tinted" color="#F5A623" compact>Import Backup</ActionButton>
+      <SurfaceCard style={{ borderColor: "rgba(78,161,255,0.25)", background: "rgba(78,161,255,0.07)" }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}><div><p style={{ margin:0, color:"#fff", fontWeight:800 }}>{completionPercent >= 100 ? "Profile complete" : `Profile ${completionPercent}% complete`}</p><p style={{ margin:"4px 0 0", color:"#8BA6C9", fontSize:12 }}>Next: {nextAction}</p></div><div style={{ width:52, height:52, borderRadius:999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.06)", color:"#fff", fontWeight:800 }}>{completionPercent}%</div></div></SurfaceCard>
+      <div style={{ display: "grid", gap: 10 }}>
+        <ProfileRow icon="user" label="Edit profile" summary={(profile.name || profile.firstName || "").trim() || "Not set"} onClick={()=>onOpenSection("editProfile")} />
+        <ProfileRow icon="scale" label="Body & Goals" summary={bodyGoalsSummary} onClick={()=>onOpenSection("bodyGoals")} />
+        <ProfileRow icon="clipboard" label="What you track" summary={trackedSummary} onClick={()=>onOpenSection("trackingModules")} />
+        <ProfileRow icon="spark" label="Preferences" summary={`${unitLabel} · ${devicePrefs.soundEnabled !== false ? "Sound on" : "Sound off"} · ${devicePrefs.hapticsEnabled !== false ? "Haptics on" : "Haptics off"}`} onClick={()=>onOpenSection("preferences")} />
+        <ProfileRow icon="bell" label="Notifications" summary={notificationSummary} onClick={()=>onOpenSection("notifications")} />
+        <ProfileRow icon="pulse" label="Coach voice" summary={coachLabel} onClick={()=>onOpenSection("coachVoice")} />
+        <ProfileRow icon="user" label="Account" summary={syncText} onClick={()=>onOpenSection("account")} />
+        <ProfileRow icon="barChart" label="Data & Backup" summary={dataSummary} onClick={()=>onOpenSection("dataBackup")} />
+        <ProfileRow icon="info" label="About" summary="v1.0.0" onClick={()=>onOpenSection("about")} />
       </div>
-      <input ref={fileInputRef} type="file" accept="application/json" onChange={onImportData} style={{ display: "none" }} />
-      <ActionButton onClick={onRestoreBackup} tone="tinted" color="#45B649" compact style={{ marginTop: 8 }}>Restore Local Backup</ActionButton>
-
-      <SurfaceCard style={{ marginTop: 18, borderColor: "rgba(255,93,93,0.3)", background: "rgba(255,93,93,0.05)" }}>
-        <p style={{ fontSize: 11, color: "#FF8A8A", margin: "0 0 4px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>Danger zone</p>
-        <p style={{ margin: "0 0 12px", fontSize: 12, color: "#8A8F9C" }}>Permanently erase everything on this device (and in the cloud if signed in).</p>
-        <ActionButton onClick={() => setResetOpen(true)} tone="danger" compact>Reset all data</ActionButton>
-      </SurfaceCard>
-
       <ConfirmModal
         open={resetOpen}
         title="Reset all data?"
