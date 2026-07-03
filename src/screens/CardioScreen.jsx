@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
 import { CARDIO_LOG_TYPES, CARDIO_MACHINES, CARDIO_ROUTINES } from "../cardioData.js";
+import { notifyIfHidden } from "../services/notify.js";
 import { IS, devicePrefsLoad, fd, today } from "../storage.js";
 import { colors, radii } from "../theme.js";
 
@@ -237,6 +238,7 @@ export function CardioScreen({ app, onBack, onLogCardio, notificationPermission,
     const currentStep = activeTimer.sequence[activeTimer.stepIndex];
     if (activeTimer.status === "done") {
       pulseAlarm(audioContextRef);
+      notifyIfHidden("Cardio complete", "Your session timer has finished.", "orion-cardio-timer");
       clearInterval(alarmLoopRef.current);
       alarmLoopRef.current = setInterval(() => pulseAlarm(audioContextRef), 2200);
     } else if (currentStep && activeTimer.remaining === currentStep.seconds && activeTimer.elapsed > 0) {

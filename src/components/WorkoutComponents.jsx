@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { C, IS } from "../storage.js";
 import { getExerciseInputConfig, getResolvedSet, getSetSummary, isSetComplete, isSetStarted } from "../workouts.js";
 import { haptic, playCue, unlockAudio } from "../services/sound.js";
+import { notifyIfHidden } from "../services/notify.js";
 import { Icon } from "./icons.jsx";
 
 function NumberInput({ value, onChange, placeholder, inputMode = "numeric" }) {
@@ -105,6 +106,7 @@ export function RestTimer({ seconds, color }) {
           setRunning(false);
           playCue("restEnd");
           haptic("success");
+          notifyIfHidden("Rest complete", "Time for your next set.", "orion-rest-timer");
           return seconds;
         }
         // Tick for the final few seconds before rest ends.

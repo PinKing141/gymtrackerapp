@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IS } from "../storage.js";
 import { ActionButton } from "../components/ui.jsx";
 import { colors } from "../theme.js";
-import { signInWithEmail, signInWithGoogle, signUpWithEmail } from "../services/firebaseAuth.js";
+import { getGoogleRedirectResult, signInWithEmail, signInWithGoogle, signUpWithEmail } from "../services/firebaseAuth.js";
 
 const ERROR_MESSAGES = {
   "auth/invalid-email": "That email address doesn't look right.",
@@ -14,6 +14,8 @@ const ERROR_MESSAGES = {
   "auth/weak-password": "Password must be at least 6 characters.",
   "auth/too-many-requests": "Too many attempts. Try again in a moment.",
   "auth/network-request-failed": "Network error. Check your connection.",
+  "auth/unauthorized-domain": "This site isn't authorized for Google sign-in yet. Add it in Firebase → Authentication → Settings → Authorized domains.",
+  "auth/account-exists-with-different-credential": "You already have an account with this email. Sign in with your email and password.",
 };
 
 function messageForError(error) {
@@ -28,6 +30,18 @@ export function AuthScreen() {
   const [error, setError] = useState(null);
 
   const isSignup = mode === "signup";
+
+  // After a Google redirect returns to the app, surface any error from the round
+  // trip (a success is handled by the auth listener, which unmounts this screen).
+  useEffect(() => {
+    let active = true;
+    getGoogleRedirectResult().catch((err) => {
+      if (active) setError(messageForError(err));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -64,12 +78,12 @@ export function AuthScreen() {
     setSubmitting(true);
     setError(null);
     try {
+      // This navigates away to Google and returns to the app; the result is
+      // picked up by the auth listener / getGoogleRedirectResult on return.
       await signInWithGoogle();
     } catch (err) {
-      // A user closing the popup isn't an error worth shouting about.
-      if (err?.code !== "auth/popup-closed-by-user" && err?.code !== "auth/cancelled-popup-request") {
-        setError(messageForError(err));
-      }
+      // Only reached if starting the redirect itself failed.
+      setError(messageForError(err));
       setSubmitting(false);
     }
   };
@@ -211,7 +225,7 @@ export function AuthScreen() {
           <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z" />
           <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.47.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z" />
         </svg>
-        Continue with Google
+        {submitting ? "Redirecting…" : "Continue with Google"}
       </button>
 
       <p style={{ fontSize: 11, color: colors.textMuted, textAlign: "center", margin: "20px 0 0" }}>
