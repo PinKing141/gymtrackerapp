@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { C, IS } from "../storage.js";
 import { getExerciseInputConfig, getResolvedSet, getSetSummary, isSetComplete, isSetStarted } from "../workouts.js";
+import { haptic, playCue, unlockAudio } from "../services/sound.js";
 import { Icon } from "./icons.jsx";
 
 function NumberInput({ value, onChange, placeholder, inputMode = "numeric" }) {
@@ -95,12 +96,20 @@ export function RestTimer({ seconds, color }) {
 
     setRunning(true);
     setRemaining(seconds);
+    // Unlock audio within this tap so the interval-driven end cue can play on iOS.
+    unlockAudio();
     intervalRef.current = setInterval(() => {
       setRemaining((value) => {
         if (value <= 1) {
           clearInterval(intervalRef.current);
           setRunning(false);
+          playCue("restEnd");
+          haptic("success");
           return seconds;
+        }
+        // Tick for the final few seconds before rest ends.
+        if (value <= 4) {
+          playCue("countdown");
         }
         return value - 1;
       });
@@ -286,7 +295,16 @@ function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet }) {
           value={resolved[column.field]}
           inputMode={column.inputMode}
           placeholder={column.placeholder}
-          onChange={(event) => onSet(exerciseKey, setIndex, column.field, event.target.value)}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            const wasComplete = isSetComplete(setData, exercise);
+            onSet(exerciseKey, setIndex, column.field, nextValue);
+            // Chime the moment a set is fully filled in (incomplete -> complete).
+            if (!wasComplete && isSetComplete({ ...setData, [column.field]: nextValue }, exercise)) {
+              playCue("setLogged");
+              haptic("light");
+            }
+          }}
         />
       ))}
       {exercise.rest > 0 ? <RestTimer seconds={exercise.rest} color={color} /> : <span style={{ fontSize: 10, color: "#444", textAlign: "center" }}>Full</span>}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CelebrationOverlay } from "./components/ui.jsx";
 import { Icon } from "./components/icons.jsx";
 import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
@@ -15,6 +15,7 @@ import { TrainScreen } from "./screens/TrainScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
 import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
 import { signOutUser } from "./services/firebaseAuth.js";
+import { unlockAudio } from "./services/sound.js";
 import { colors, radii, typeScale } from "./theme.js";
 
 const NAV_TABS = [
@@ -95,6 +96,14 @@ export function App() {
     actions,
   } = useAppState(firebaseUser);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+
+  // Unlock the Web Audio context on the first user gesture so cues that fire from
+  // timers/intervals (not directly from a tap) can play on mobile browsers.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
 
   if (authLoading) {
     return (
