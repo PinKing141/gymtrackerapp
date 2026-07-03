@@ -3,7 +3,6 @@ import { fd, fdu } from "../storage.js";
 import { Icon } from "../components/icons.jsx";
 import { WorkoutPresetBuilder } from "../components/WorkoutPresetBuilder.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
-import { getWorkoutSuggestion } from "../progression.js";
 import { getWorkoutPresets } from "../workouts.js";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -36,8 +35,6 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
 
       {workoutPresets.map((workout) => {
         const lastSession = [...app.sessions].reverse().find((s) => s.workoutId === workout.id);
-        const latestRecovery = [...(app.recovery || [])].slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
-        const suggestion = getWorkoutSuggestion({ ...app, readiness: latestRecovery }, workout);
         const isCustom = workout.source === "custom";
         const exerciseCount = (workout.performance?.length || 0) + (workout.finisher?.length || 0);
         return (
@@ -59,14 +56,6 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
               </div>
             </div>
             {lastSession && <p style={{ fontSize: 10, color: colors.textMuted, marginTop: 6, marginBottom: 0 }}>Last: {fd(lastSession.date)} · {fdu(lastSession.duration)}</p>}
-            {suggestion && (
-              <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: radii.sm, background: "rgba(255,255,255,0.03)", border: `1px solid ${colors.border}` }}>
-                <p style={{ margin: 0, fontSize: 11, color: suggestion.readiness.zone === "green" ? colors.success : suggestion.readiness.zone === "yellow" ? colors.warning : colors.danger, fontWeight: 700 }}>
-                  {suggestion.readiness.label} readiness · {suggestion.headline}
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: 10, color: colors.textSecondary }}>{suggestion.note}</p>
-              </div>
-            )}
           </SurfaceButton>
         );
       })}
