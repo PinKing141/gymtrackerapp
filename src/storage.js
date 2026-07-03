@@ -69,14 +69,14 @@ export const fd = (d) => {
 };
 export const fdu = (m) => { if(!m) return "–"; const h=Math.floor(m/60),mn=m%60; return h>0?`${h}h ${mn}m`:`${mn}m`; };
 export const ft = (ts) => { if(!ts) return "–"; return new Date(ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}); };
-export const C = { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:14, padding:"14px 16px", marginBottom:8 };
-export const L = { fontSize:11,color:"#555",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:600,margin:"20px 0 10px" };
-export const BB = { background:"none",border:"none",color:"#666",fontSize:13,cursor:"pointer",padding:0,marginBottom:12 };
-export const IS = { background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,padding:"9px 10px",color:"#fff",fontSize:14,fontWeight:600,width:"100%",boxSizing:"border-box",outline:"none",WebkitAppearance:"none" };
+export const C = { background:"rgba(255,255,255,0.035)", border:"1px solid rgba(255,255,255,0.09)", borderRadius:16, padding:"14px 16px", marginBottom:10 };
+export const L = { fontSize:11,color:"#6C6F7B",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:700,margin:"20px 0 10px" };
+export const BB = { background:"none",border:"none",color:"#A6A8B3",fontSize:13,cursor:"pointer",padding:0,marginBottom:12 };
+export const IS = { background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.10)",borderRadius:10,padding:"10px 12px",color:"#F3F2EF",fontSize:14,fontWeight:600,width:"100%",boxSizing:"border-box",outline:"none",WebkitAppearance:"none" };
 export const DD = () => ({
   sessions: [],
   personalBests: {},
-  workoutPresets: getDefaultWorkoutPresets(),
+  workoutPresets: [],
   recovery: [],
   bodyStats: [],
   weeklyReviews: [],

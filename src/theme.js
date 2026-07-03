@@ -21,6 +21,15 @@ export const radii = {
   pill: 999,
 };
 
+export const space = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 28,
+};
+
 export const typeScale = {
   titleLg: { fontSize: 26, lineHeight: 1.2, fontWeight: 700 },
   titleMd: { fontSize: 21, lineHeight: 1.25, fontWeight: 700 },

@@ -3,7 +3,6 @@ import { fd, fdu } from "../storage.js";
 import { Icon } from "../components/icons.jsx";
 import { WorkoutPresetBuilder } from "../components/WorkoutPresetBuilder.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
-import { getWorkoutSuggestion } from "../progression.js";
 import { getWorkoutPresets } from "../workouts.js";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -34,10 +33,19 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
         />
       )}
 
+      {workoutPresets.length === 0 && !builderOpen && (
+        <SurfaceCard style={{ textAlign: "center", padding: "26px 18px" }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(78,161,255,0.12)", border: `1px solid ${colors.accent}33` }}>
+            <Icon name="dumbbell" size={22} color={colors.accent} />
+          </div>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: colors.textPrimary }}>No workouts yet</p>
+          <p style={{ margin: "6px 0 14px", ...typeScale.bodySm, color: colors.textSecondary }}>Build your first workout — add your exercises, sets and reps.</p>
+          <ActionButton onClick={() => setBuilderOpen(true)}>Create a workout</ActionButton>
+        </SurfaceCard>
+      )}
+
       {workoutPresets.map((workout) => {
         const lastSession = [...app.sessions].reverse().find((s) => s.workoutId === workout.id);
-        const latestRecovery = [...(app.recovery || [])].slice().sort((a, b) => String(b.date).localeCompare(String(a.date)))[0] || {};
-        const suggestion = getWorkoutSuggestion({ ...app, readiness: latestRecovery }, workout);
         const isCustom = workout.source === "custom";
         const exerciseCount = (workout.performance?.length || 0) + (workout.finisher?.length || 0);
         return (
@@ -45,7 +53,7 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
             <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: workout.color }} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 10, color: workout.color, fontWeight: 700, margin: 0, letterSpacing: "0.08em", textTransform: "uppercase" }}>{isCustom ? "Custom" : "Orion"} · {exerciseCount} exercises</p>
+                <p style={{ fontSize: 10, color: workout.color, fontWeight: 700, margin: 0, letterSpacing: "0.08em", textTransform: "uppercase" }}>{exerciseCount} exercises</p>
                 <p style={{ fontSize: 16, fontWeight: 700, margin: "3px 0 0", color: colors.textPrimary }}>{workout.shortTitle}</p>
                 <p style={{ ...typeScale.caption, color: colors.textMuted, margin: "2px 0 0" }}>{workout.goal}</p>
               </div>
@@ -59,14 +67,6 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
               </div>
             </div>
             {lastSession && <p style={{ fontSize: 10, color: colors.textMuted, marginTop: 6, marginBottom: 0 }}>Last: {fd(lastSession.date)} · {fdu(lastSession.duration)}</p>}
-            {suggestion && (
-              <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: radii.sm, background: "rgba(255,255,255,0.03)", border: `1px solid ${colors.border}` }}>
-                <p style={{ margin: 0, fontSize: 11, color: suggestion.readiness.zone === "green" ? colors.success : suggestion.readiness.zone === "yellow" ? colors.warning : colors.danger, fontWeight: 700 }}>
-                  {suggestion.readiness.label} readiness · {suggestion.headline}
-                </p>
-                <p style={{ margin: "4px 0 0", fontSize: 10, color: colors.textSecondary }}>{suggestion.note}</p>
-              </div>
-            )}
           </SurfaceButton>
         );
       })}
