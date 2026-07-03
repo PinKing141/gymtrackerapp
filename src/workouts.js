@@ -92,14 +92,11 @@ export function getDefaultWorkoutPresets() {
 }
 
 export function normalizeWorkoutPresetList(presets) {
-  const defaults = getDefaultWorkoutPresets();
-  const list = Array.isArray(presets) && presets.length ? presets : defaults;
-  const normalized = list.map((preset, index) => normalizeWorkoutPreset(preset, index));
-  const existingIds = new Set(normalized.map((preset) => preset.id));
-  return [
-    ...defaults.filter((preset) => !existingIds.has(preset.id)),
-    ...normalized,
-  ];
+  // Presets are user-owned: new users start empty and build their own. The
+  // built-in Orion set is no longer auto-injected (kept only as optional
+  // starter templates via getDefaultWorkoutPresets).
+  const list = Array.isArray(presets) ? presets : [];
+  return list.map((preset, index) => normalizeWorkoutPreset(preset, index));
 }
 
 export function getWorkoutPresets(appOrPresets) {
