@@ -13,6 +13,7 @@ import {
 
 const MODULES = [
   { key: "gym", label: "Gym / Lifting", desc: "Strength workouts, presets, PBs", locked: true },
+  { key: "nutrition", label: "Nutrition", desc: "Food logging, calories and macros" },
   { key: "cardio", label: "Cardio", desc: "Bike, treadmill, running & more" },
   { key: "basketball", label: "Basketball", desc: "Shot tracking & session stats" },
 ];
@@ -72,6 +73,7 @@ export function OnboardingScreen({ profile, onComplete }) {
     activityLevel: profile?.activityLevel || "moderate",
     enabledModules: {
       gym: true,
+      nutrition: profile?.enabledModules?.nutrition ?? true,
       cardio: profile?.enabledModules?.cardio ?? true,
       basketball: profile?.enabledModules?.basketball ?? false,
     },

@@ -948,6 +948,7 @@ export function useAppState(firebaseUser) {
     app,
     bodyStatsForm,
     celebration,
+    canGoBackView: viewReturnStack.length > 0,
     coreOpen,
     devicePrefs,
     expandedExercise,

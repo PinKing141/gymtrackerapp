@@ -21,6 +21,7 @@ import { colors, radii, typeScale } from "./theme.js";
 const NAV_TABS = [
   { id: "home", label: "Home", icon: "home" },
   { id: "train", label: "Train", icon: "dumbbell" },
+  { id: "nutrition", label: "Nutrition", icon: "clipboard" },
   { id: "progress", label: "Progress", icon: "barChart" },
   { id: "more", label: "Profile", icon: "user" },
 ];
@@ -39,7 +40,7 @@ function NavTab({ item, active, onClick }) {
         border: "none",
         cursor: "pointer",
         padding: "6px 10px",
-        width: 64,
+        width: 58,
         color: active ? colors.accent : colors.textMuted,
         ...typeScale.caption,
       }}
@@ -56,6 +57,7 @@ export function App() {
     app,
     bodyStatsForm,
     celebration,
+    canGoBackView,
     coreOpen,
     devicePrefs,
     expandedExercise,
@@ -226,7 +228,7 @@ export function App() {
     content = <BasketballScreen onExit={goBackView} firebaseUser={firebaseUser} />;
   }
   if (view === "nutrition") {
-    content = <NutritionScreen app={app} onBack={goBackView} />;
+    content = <NutritionScreen app={app} setApp={setApp} onBack={canGoBackView ? goBackView : undefined} />;
   }
   if (view === "progress") {
     content = (
@@ -357,7 +359,7 @@ export function App() {
           ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => pushView("basketball") }] : []),
           { key: "recovery", label: "Log recovery", desc: "Sleep, hydration, mobility", icon: "pulse", onClick: () => actions.openRecoveryFromHome() },
           { key: "weigh", label: "Weigh in", desc: "Body stats check-in", icon: "scale", onClick: () => { navigate("more"); openMoreSection("bodystats"); } },
-          ...(app.profile?.enabledModules?.nutrition ? [{ key: "nutrition", label: "Nutrition", desc: "Calorie target", icon: "clipboard", onClick: () => pushView("nutrition") }] : []),
+          { key: "nutrition", label: "Nutrition", desc: "Food logging", icon: "clipboard", onClick: () => pushView("nutrition") },
         ]}
       />
       <CelebrationOverlay celebration={celebration} onDismiss={actions.dismissCelebration} />

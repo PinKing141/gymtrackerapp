@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",
+    "build:data": "node scripts/build-food-data.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },

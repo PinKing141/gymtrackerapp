@@ -39,7 +39,8 @@ self.addEventListener("fetch", (event) => {
   }
 
   const isNavigation = event.request.mode === "navigate";
-  const shouldCache = isNavigation || url.pathname.startsWith(`${new URL(self.registration.scope).pathname}assets/`) || APP_SHELL.some((path) => new URL(path, self.registration.scope).pathname === url.pathname);
+  const scopePath = new URL(self.registration.scope).pathname;
+  const shouldCache = isNavigation || url.pathname.startsWith(`${scopePath}assets/`) || url.pathname.startsWith(`${scopePath}data/`) || APP_SHELL.some((path) => new URL(path, self.registration.scope).pathname === url.pathname);
 
   event.respondWith(
     fetch(event.request)

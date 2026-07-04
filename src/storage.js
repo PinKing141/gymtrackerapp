@@ -9,7 +9,7 @@ import {
 } from "./workouts.js";
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-const DATA_VERSION = 6;
+const DATA_VERSION = 7;
 const DEFAULT_STREAK_STATE = {
   weeklyTarget: 3,
   freezeCredits: 1,
@@ -20,7 +20,13 @@ const DEFAULT_ENABLED_MODULES = {
   gym: true,
   cardio: true,
   basketball: false,
-  nutrition: false,
+  nutrition: true,
+};
+const DEFAULT_NUTRITION = {
+  foodLogs: [],
+  customFoods: [],
+  savedMeals: [],
+  targets: null,
 };
 const DEFAULT_PROFILE = {
   name: "",
@@ -91,6 +97,12 @@ export const DD = () => ({
   bodyStats: [],
   weeklyReviews: [],
   cardioSessions: [],
+  nutrition: {
+    foodLogs: [],
+    customFoods: [],
+    savedMeals: [],
+    targets: null,
+  },
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   streakState: { ...DEFAULT_STREAK_STATE },
@@ -112,6 +124,9 @@ export const hasAnyUserData = (app) => Boolean(
   app?.recovery?.length ||
   app?.bodyStats?.length ||
   app?.weeklyReviews?.length ||
+  app?.nutrition?.foodLogs?.length ||
+  app?.nutrition?.customFoods?.length ||
+  app?.nutrition?.savedMeals?.length ||
   app?.phaseStart
 );
 
@@ -199,6 +214,17 @@ function normalizeStreakState(value) {
   };
 }
 
+function normalizeNutrition(value) {
+  return {
+    ...DEFAULT_NUTRITION,
+    ...(isObj(value) ? value : {}),
+    foodLogs: isArr(value?.foodLogs) ? value.foodLogs : [],
+    customFoods: isArr(value?.customFoods) ? value.customFoods : [],
+    savedMeals: isArr(value?.savedMeals) ? value.savedMeals : [],
+    targets: isObj(value?.targets) ? value.targets : null,
+  };
+}
+
 export const withDefaults = (d) => {
   const b = DD();
   const meta = { ...b.meta, ...(isObj(d?.meta) ? d.meta : {}) };
@@ -229,6 +255,10 @@ export const withDefaults = (d) => {
     dataVersion = 6;
   }
 
+  if (dataVersion < 7) {
+    dataVersion = 7;
+  }
+
   return {
     ...b,
     ...d,
@@ -239,6 +269,7 @@ export const withDefaults = (d) => {
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
     cardioSessions: isArr(d?.cardioSessions) ? d.cardioSessions : b.cardioSessions,
+    nutrition: normalizeNutrition(d?.nutrition),
     profile: {
       ...DEFAULT_PROFILE,
       ...(isObj(d?.profile) ? d.profile : {}),

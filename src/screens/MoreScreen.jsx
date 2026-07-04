@@ -363,7 +363,7 @@ export function MoreScreen({
     { key: "gym", label: "Gym / Lifting", desc: "Strength workouts & PBs", locked: true },
     { key: "cardio", label: "Cardio", desc: "Bike, treadmill, running" },
     { key: "basketball", label: "Basketball", desc: "Shot tracking & stats" },
-    { key: "nutrition", label: "Nutrition", desc: "Calorie target and food logging" },
+    { key: "nutrition", label: "Nutrition", desc: "Calorie target and food logging", locked: true },
   ];
   const toggleModule = (key) => setApp((current) => ({ ...current, profile: { ...current.profile, enabledModules: { ...(current.profile.enabledModules || {}), [key]: !current.profile.enabledModules?.[key], gym: true } } }));
   const setProfile = (patch) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), ...patch } }));
