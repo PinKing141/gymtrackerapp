@@ -38,6 +38,29 @@ function cleanFoodDisplayName(value) {
   return title;
 }
 
+function capitalizeSegment(segment) {
+  const text = String(segment || "").trim();
+  if (!text) return "";
+  // Leave existing casing intact after the first letter so "flesh only" ->
+  // "Flesh only" but "UHT" / brand casing is preserved.
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// CoFID names pack everything into one comma string, e.g.
+// "Apple juice concentrate, unsweetened, commercial". Split the first segment
+// out as the title and turn the qualifiers into a readable detail line.
+export function splitFoodName(rawName) {
+  const cleaned = cleanFoodDisplayName(rawName);
+  if (!cleaned) {
+    return { title: "Food", detail: "" };
+  }
+
+  const segments = cleaned.split(",").map((segment) => segment.trim()).filter(Boolean);
+  const title = capitalizeSegment(segments[0] || cleaned) || "Food";
+  const detail = segments.slice(1).map(capitalizeSegment).filter(Boolean).join(" · ");
+  return { title, detail };
+}
+
 function scoreFood(food, query) {
   const name = normalizeText(getFoodName(food));
   const group = normalizeText(food.food_group || food.brand || food.food_group_code);
@@ -87,7 +110,22 @@ export function searchFoods({ foods = [], customFoods = [], query = "", limit = 
 }
 
 export function getFoodDisplayName(food = {}) {
-  return cleanFoodDisplayName(getFoodName(food)) || "Food";
+  return splitFoodName(getFoodName(food)).title;
+}
+
+export function getFoodDisplayDetail(food = {}) {
+  return splitFoodName(getFoodName(food)).detail;
+}
+
+// Clean + split a raw stored log name (entry.foodName) the same way, so old
+// saved entries render tidily without rewriting the stored data.
+export function getLoggedFoodParts(rawName) {
+  return splitFoodName(rawName);
+}
+
+// Source label for the little tag on a result card.
+export function getFoodSourceLabel(food = {}) {
+  return food.source === "custom" ? "Custom food" : "Food database";
 }
 
 export function getFoodMeta(food = {}) {

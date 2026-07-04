@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../components/icons.jsx";
-import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
+import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { IS, fd, today } from "../storage.js";
 import { colors, radii, typeScale } from "../theme.js";
-import { getFoodDisplayName, getFoodMeta, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
+import { getFoodDisplayDetail, getFoodDisplayName, getFoodSourceLabel, getLoggedFoodParts, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
 import {
   MEAL_TYPES,
   createFoodLogEntry,
@@ -215,18 +215,32 @@ function SummaryCard({ totals, targets }) {
 }
 
 function FoodResultRow({ food, onClick }) {
+  const isCustom = food.source === "custom";
+  const detail = getFoodDisplayDetail(food);
   return (
     <SurfaceButton onClick={onClick} style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-      <div style={{ width: 38, height: 38, borderRadius: 12, background: food.source === "custom" ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)", border: `1px solid ${food.source === "custom" ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <Icon name={food.source === "custom" ? "spark" : "search"} size={17} color={food.source === "custom" ? colors.success : colors.accent} />
+      <div style={{ width: 40, height: 40, borderRadius: 12, background: isCustom ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)", border: `1px solid ${isCustom ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon name={isCustom ? "spark" : "clipboard"} size={18} color={isCustom ? colors.success : colors.accent} />
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getFoodDisplayName(food)}</p>
-        <p style={{ margin: "3px 0 0", ...typeScale.caption, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {getFoodMeta(food)} · {formatPer100(food.calories_per_100g, "kcal")} · {formatPer100(food.protein_per_100g, "g")} protein per 100g
+        <p style={{ margin: 0, ...typeScale.body, fontWeight: 800, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getFoodDisplayName(food)}</p>
+        {detail && (
+          <p style={{ margin: "2px 0 0", ...typeScale.caption, color: colors.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</p>
+        )}
+        <p style={{ margin: "4px 0 0", ...typeScale.caption, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {formatPer100(food.calories_per_100g, "kcal")} · {formatPer100(food.protein_per_100g, "g")} protein per 100g
         </p>
       </div>
-      <Icon name="chevronRight" size={16} color={colors.textMuted} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+        <Pill
+          color={isCustom ? colors.success : colors.accent}
+          background={isCustom ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)"}
+          border={`1px solid ${isCustom ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`}
+        >
+          {isCustom ? "Custom" : "Database"}
+        </Pill>
+        <Icon name="chevronRight" size={16} color={colors.textMuted} />
+      </div>
     </SurfaceButton>
   );
 }
@@ -251,7 +265,7 @@ function RecentFoodRow({ entry, onRepeat }) {
   return (
     <SurfaceCard style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
       <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.foodName}</p>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getLoggedFoodParts(entry.foodName).title}</p>
         <p style={{ margin: "3px 0 0", ...typeScale.caption, color: colors.textMuted }}>
           {formatAmount(entry.amount, entry.unit)} · {Math.round(entry.calories || 0)} kcal · {entry.protein || 0}g protein
         </p>
@@ -291,19 +305,22 @@ function MealSection({ meal, entries, onDelete, onSaveMeal }) {
           </button>
         )}
       </div>
-      {entries.map((entry) => (
-        <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${colors.border}` }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 750, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.foodName}</p>
-            <p style={{ margin: "2px 0 0", ...typeScale.caption, color: colors.textMuted }}>
-              {formatAmount(entry.amount, entry.unit)} · {Math.round(entry.calories || 0)} kcal · {entry.protein || 0}g protein
-            </p>
+      {entries.map((entry) => {
+        const parts = getLoggedFoodParts(entry.foodName);
+        return (
+          <div key={entry.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderTop: `1px solid ${colors.border}` }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 750, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{parts.title}</p>
+              <p style={{ margin: "2px 0 0", ...typeScale.caption, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {formatAmount(entry.amount, entry.unit)} · {Math.round(entry.calories || 0)} kcal · {entry.protein || 0}g protein
+              </p>
+            </div>
+            <button type="button" aria-label={`Delete ${parts.title}`} onClick={() => onDelete(entry.id)} style={{ ...iconButtonStyle, width: 32, height: 32, borderRadius: 9 }}>
+              <Icon name="trash" size={14} color={colors.danger} />
+            </button>
           </div>
-          <button type="button" aria-label={`Delete ${entry.foodName}`} onClick={() => onDelete(entry.id)} style={{ ...iconButtonStyle, width: 32, height: 32, borderRadius: 9 }}>
-            <Icon name="trash" size={14} color={colors.danger} />
-          </button>
-        </div>
-      ))}
+        );
+      })}
     </SurfaceCard>
   );
 }
@@ -470,7 +487,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
         <ScreenHeader action={headerAction} title="Add food" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
         <div style={{ position: "relative", marginBottom: 12 }}>
           <Icon name="search" size={17} color={colors.textMuted} style={{ position: "absolute", left: 12, top: 12 }} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search foods or custom foods" autoFocus style={{ ...IS, padding: "11px 12px 11px 38px" }} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search foods" autoFocus style={{ ...IS, padding: "11px 12px 11px 38px" }} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -516,8 +533,20 @@ export function NutritionScreen({ app, setApp, onBack }) {
       <Screen>
         <ScreenHeader action={headerAction} title="Food details" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
         <SurfaceCard>
-          <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>{getFoodDisplayName(selectedFood)}</p>
-          <p style={{ margin: "5px 0 0", ...typeScale.caption, color: colors.textMuted }}>{getFoodMeta(selectedFood)}</p>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+            <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>{getFoodDisplayName(selectedFood)}</p>
+            <Pill
+              color={selectedFood.source === "custom" ? colors.success : colors.accent}
+              background={selectedFood.source === "custom" ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)"}
+              border={`1px solid ${selectedFood.source === "custom" ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`}
+              style={{ flexShrink: 0 }}
+            >
+              {getFoodSourceLabel(selectedFood)}
+            </Pill>
+          </div>
+          {getFoodDisplayDetail(selectedFood) && (
+            <p style={{ margin: "5px 0 0", ...typeScale.bodySm, color: colors.textSecondary }}>{getFoodDisplayDetail(selectedFood)}</p>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
             {[
               ["kcal", selectedFood.calories_per_100g, "kcal"],
