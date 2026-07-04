@@ -34,7 +34,7 @@ export function createFoodLogEntry({ food, amount, mealType, date }) {
     source,
     foodName: food.food_name || food.name || "Food",
     amount: roundNutrition(amount),
-    unit: "g",
+    unit: food.serving_unit === "ml" ? "ml" : "g",
     ...nutrition,
     createdAt: new Date().toISOString(),
   };

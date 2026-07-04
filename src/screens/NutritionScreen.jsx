@@ -4,6 +4,7 @@ import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceButton, Su
 import { IS, fd, today } from "../storage.js";
 import { colors, radii, typeScale } from "../theme.js";
 import { getFoodDisplayDetail, getFoodDisplayName, getFoodSourceLabel, getLoggedFoodParts, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
+import { lookupByBarcode, normalizeBarcode } from "../services/nutrition/openFoodFacts.js";
 import {
   MEAL_TYPES,
   createFoodLogEntry,
@@ -214,13 +215,24 @@ function SummaryCard({ totals, targets }) {
   );
 }
 
+const SOURCE_ACCENT = {
+  custom: { color: colors.success, bg: "rgba(61,220,151,0.12)", border: "rgba(61,220,151,0.3)", icon: "spark", tag: "Custom" },
+  open_food_facts: { color: "#B58BFF", bg: "rgba(139,92,246,0.14)", border: "rgba(139,92,246,0.4)", icon: "search", tag: "Branded" },
+  default: { color: colors.accent, bg: "rgba(78,161,255,0.12)", border: "rgba(78,161,255,0.3)", icon: "clipboard", tag: "Database" },
+};
+
+function sourceAccent(source) {
+  return SOURCE_ACCENT[source] || SOURCE_ACCENT.default;
+}
+
 function FoodResultRow({ food, onClick }) {
-  const isCustom = food.source === "custom";
+  const accent = sourceAccent(food.source);
   const detail = getFoodDisplayDetail(food);
+  const perUnit = food.serving_unit === "ml" ? "per 100ml" : "per 100g";
   return (
     <SurfaceButton onClick={onClick} style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-      <div style={{ width: 40, height: 40, borderRadius: 12, background: isCustom ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)", border: `1px solid ${isCustom ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-        <Icon name={isCustom ? "spark" : "clipboard"} size={18} color={isCustom ? colors.success : colors.accent} />
+      <div style={{ width: 40, height: 40, borderRadius: 12, background: accent.bg, border: `1px solid ${accent.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Icon name={accent.icon} size={18} color={accent.color} />
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
         <p style={{ margin: 0, ...typeScale.body, fontWeight: 800, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getFoodDisplayName(food)}</p>
@@ -228,17 +240,11 @@ function FoodResultRow({ food, onClick }) {
           <p style={{ margin: "2px 0 0", ...typeScale.caption, color: colors.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</p>
         )}
         <p style={{ margin: "4px 0 0", ...typeScale.caption, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {formatPer100(food.calories_per_100g, "kcal")} · {formatPer100(food.protein_per_100g, "g")} protein per 100g
+          {formatPer100(food.calories_per_100g, "kcal")} · {formatPer100(food.protein_per_100g, "g")} protein {perUnit}
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-        <Pill
-          color={isCustom ? colors.success : colors.accent}
-          background={isCustom ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)"}
-          border={`1px solid ${isCustom ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`}
-        >
-          {isCustom ? "Custom" : "Database"}
-        </Pill>
+        <Pill color={accent.color} background={accent.bg} border={`1px solid ${accent.border}`}>{accent.tag}</Pill>
         <Icon name="chevronRight" size={16} color={colors.textMuted} />
       </div>
     </SurfaceButton>
@@ -347,6 +353,10 @@ export function NutritionScreen({ app, setApp, onBack }) {
   const [customDraft, setCustomDraft] = useState(DEFAULT_CUSTOM_DRAFT);
   const [quickDraft, setQuickDraft] = useState(() => createEmptyQuickDraft());
   const [saveMealDraft, setSaveMealDraft] = useState(null);
+  const [barcodeInput, setBarcodeInput] = useState("");
+  const [barcodeStatus, setBarcodeStatus] = useState("idle");
+  const [barcodeError, setBarcodeError] = useState("");
+  const [incompleteProduct, setIncompleteProduct] = useState(null);
 
   const nutrition = useMemo(() => normalizeNutrition(app?.nutrition), [app?.nutrition]);
   const logs = nutrition.foodLogs;
@@ -392,6 +402,62 @@ export function NutritionScreen({ app, setApp, onBack }) {
     setAmount(100);
     setMealType(getDefaultMealType());
     setMode("detail");
+  };
+
+  const openBarcode = () => {
+    setBarcodeInput("");
+    setBarcodeStatus("idle");
+    setBarcodeError("");
+    setIncompleteProduct(null);
+    setMode("barcode");
+  };
+
+  const cacheBarcode = (barcode, food) => {
+    updateNutrition((current) => ({
+      ...current,
+      barcodeCache: { ...(current.barcodeCache || {}), [barcode]: food },
+    }));
+  };
+
+  const runBarcodeLookup = async () => {
+    const barcode = normalizeBarcode(barcodeInput);
+    if (barcode.length < 6) {
+      setBarcodeStatus("error");
+      setBarcodeError("Enter a full barcode number.");
+      return;
+    }
+
+    setIncompleteProduct(null);
+
+    // Cache hit — never re-hit the API for a barcode we've already resolved.
+    const cached = (nutrition.barcodeCache || {})[barcode];
+    if (cached) {
+      openFoodDetail(cached);
+      return;
+    }
+
+    setBarcodeStatus("loading");
+    setBarcodeError("");
+    const result = await lookupByBarcode(barcode);
+
+    if (result.status === "found") {
+      cacheBarcode(barcode, result.food);
+      setBarcodeStatus("idle");
+      openFoodDetail(result.food);
+    } else if (result.status === "incomplete") {
+      setIncompleteProduct(result.food);
+      setBarcodeStatus("incomplete");
+    } else if (result.status === "not_found") {
+      setBarcodeStatus("not_found");
+    } else {
+      setBarcodeStatus("error");
+      setBarcodeError(result.error || "Something went wrong.");
+    }
+  };
+
+  const addProductManually = (product) => {
+    setCustomDraft({ ...DEFAULT_CUSTOM_DRAFT, name: product?.food_name || "", brand: product?.brand || "" });
+    setMode("custom");
   };
 
   const addSelectedFood = () => {
@@ -481,6 +547,59 @@ export function NutritionScreen({ app, setApp, onBack }) {
     ? (onBack ? <BackButton onClick={onBack} /> : undefined)
     : <BackButton onClick={() => setMode("home")} label="Nutrition" />;
 
+  if (mode === "barcode") {
+    const canLookup = normalizeBarcode(barcodeInput).length >= 6 && barcodeStatus !== "loading";
+    return (
+      <Screen>
+        <ScreenHeader action={<BackButton onClick={() => setMode("search")} label="Add food" />} title="Barcode lookup" subtitle="Find a branded product on Open Food Facts" titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+        <SurfaceCard>
+          <Field label="Barcode number">
+            <input
+              value={barcodeInput}
+              inputMode="numeric"
+              autoFocus
+              placeholder="e.g. 5011321100000"
+              onChange={(event) => setBarcodeInput(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && canLookup) runBarcodeLookup(); }}
+              style={{ ...IS, fontSize: 18, letterSpacing: "0.06em", padding: 13 }}
+            />
+          </Field>
+          <ActionButton onClick={runBarcodeLookup} disabled={!canLookup} color="#8B5CF6" style={{ marginTop: 12 }}>
+            {barcodeStatus === "loading" ? "Looking up…" : "Look up product"}
+          </ActionButton>
+          <p style={{ margin: "10px 0 0", ...typeScale.caption, color: colors.textMuted }}>
+            Camera scanning is coming soon — for now, type the number printed under the barcode.
+          </p>
+        </SurfaceCard>
+
+        {barcodeStatus === "not_found" && (
+          <SurfaceCard>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: colors.textPrimary }}>No product found</p>
+            <p style={{ margin: "4px 0 12px", ...typeScale.caption, color: colors.textMuted }}>That barcode isn't in Open Food Facts yet. You can add it as a custom food.</p>
+            <ActionButton tone="secondary" onClick={() => addProductManually(null)}>Add as custom food</ActionButton>
+          </SurfaceCard>
+        )}
+
+        {barcodeStatus === "error" && (
+          <SurfaceCard style={{ borderColor: "rgba(255,93,93,0.3)", background: "rgba(255,93,93,0.06)" }}>
+            <p style={{ margin: 0, ...typeScale.bodySm, color: colors.danger }}>{barcodeError}</p>
+          </SurfaceCard>
+        )}
+
+        {barcodeStatus === "incomplete" && incompleteProduct && (
+          <SurfaceCard style={{ borderColor: "rgba(246,183,60,0.3)", background: "rgba(246,183,60,0.07)" }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: colors.textPrimary }}>{getFoodDisplayName(incompleteProduct)}</p>
+            {getFoodDisplayDetail(incompleteProduct) && (
+              <p style={{ margin: "2px 0 0", ...typeScale.caption, color: colors.textSecondary }}>{getFoodDisplayDetail(incompleteProduct)}</p>
+            )}
+            <p style={{ margin: "8px 0 12px", ...typeScale.caption, color: colors.warning }}>Product found, but its nutrition is incomplete. Add the values manually?</p>
+            <ActionButton onClick={() => addProductManually(incompleteProduct)} color={colors.warning}>Add nutrition manually</ActionButton>
+          </SurfaceCard>
+        )}
+      </Screen>
+    );
+  }
+
   if (mode === "search") {
     return (
       <Screen>
@@ -490,6 +609,10 @@ export function NutritionScreen({ app, setApp, onBack }) {
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search foods" autoFocus style={{ ...IS, padding: "11px 12px 11px 38px" }} />
         </div>
 
+        <ActionButton tone="tinted" color="#B58BFF" compact onClick={openBarcode} style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Icon name="search" size={16} color="#B58BFF" />
+          Scan or enter a barcode
+        </ActionButton>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
           <ActionButton tone="secondary" compact onClick={() => setMode("custom")}>
             Create custom
@@ -536,9 +659,9 @@ export function NutritionScreen({ app, setApp, onBack }) {
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>{getFoodDisplayName(selectedFood)}</p>
             <Pill
-              color={selectedFood.source === "custom" ? colors.success : colors.accent}
-              background={selectedFood.source === "custom" ? "rgba(61,220,151,0.12)" : "rgba(78,161,255,0.12)"}
-              border={`1px solid ${selectedFood.source === "custom" ? "rgba(61,220,151,0.3)" : "rgba(78,161,255,0.3)"}`}
+              color={sourceAccent(selectedFood.source).color}
+              background={sourceAccent(selectedFood.source).bg}
+              border={`1px solid ${sourceAccent(selectedFood.source).border}`}
               style={{ flexShrink: 0 }}
             >
               {getFoodSourceLabel(selectedFood)}
@@ -563,7 +686,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
         </SurfaceCard>
 
         <SurfaceCard>
-          <Field label="Amount (grams)">
+          <Field label={selectedFood.serving_unit === "ml" ? "Amount (millilitres)" : "Amount (grams)"}>
             <input type="number" min="1" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} style={{ ...IS, fontSize: 22, textAlign: "center", padding: 14 }} />
           </Field>
           <div style={{ marginTop: 14 }}>

@@ -149,10 +149,18 @@ export function searchFoods({ foods = [], customFoods = [], query = "", limit = 
 }
 
 export function getFoodDisplayName(food = {}) {
+  // Branded product names are already clean; don't run them through the CoFID
+  // comma-splitter (which is tuned for "Base, qualifier, qualifier" names).
+  if (food.source === "open_food_facts") {
+    return capitalizeSegment(getFoodName(food)) || "Food";
+  }
   return splitFoodName(getFoodName(food)).title;
 }
 
 export function getFoodDisplayDetail(food = {}) {
+  if (food.source === "open_food_facts") {
+    return food.brand || "";
+  }
   return splitFoodName(getFoodName(food)).detail;
 }
 
@@ -164,7 +172,9 @@ export function getLoggedFoodParts(rawName) {
 
 // Source label for the little tag on a result card.
 export function getFoodSourceLabel(food = {}) {
-  return food.source === "custom" ? "Custom food" : "Food database";
+  if (food.source === "custom") return "Custom food";
+  if (food.source === "open_food_facts") return "Open Food Facts";
+  return "Food database";
 }
 
 export function getFoodMeta(food = {}) {
