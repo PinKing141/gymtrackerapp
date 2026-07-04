@@ -1,9 +1,101 @@
 import { ExerciseCard, LiveTimer } from "../components/WorkoutComponents.jsx";
 import { Icon } from "../components/icons.jsx";
 import { PREHAB } from "../data.js";
-import { BB, C, L, fd } from "../storage.js";
-import { ActionButton, BackButton, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
-import { getWorkoutById } from "../workouts.js";
+import { ActionButton, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
+import { colors, radii, typeScale } from "../theme.js";
+import { getWorkoutById, isSetComplete, isSetStarted } from "../workouts.js";
+
+
+function getEnergyLabel(value) {
+  if (value >= 8) return "Ready to push";
+  if (value >= 6) return "Feeling good";
+  if (value >= 4) return "Steady";
+  return "Take it easy";
+}
+
+function ReadinessDot({ value, selected, onClick }) {
+  const dotColor = value <= 2 ? colors.success : value === 3 ? colors.warning : colors.danger;
+  return (
+    <button
+      onClick={onClick}
+      aria-label={`Readiness ${value}`}
+      style={{
+        minWidth: 44,
+        minHeight: 36,
+        flex: 1,
+        borderRadius: radii.pill,
+        border: `1px solid ${selected ? dotColor : colors.border}`,
+        background: selected ? `${dotColor}24` : "rgba(255,255,255,0.035)",
+        color: selected ? dotColor : colors.textMuted,
+        cursor: "pointer",
+        fontWeight: 800,
+      }}
+    >
+      {value}
+    </button>
+  );
+}
+
+function SectionHeader({ title, subtitle, count }) {
+  return (
+    <div style={{ margin: "24px 0 10px", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12 }}>
+      <div>
+        <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: 0 }}>{title}</p>
+        {subtitle && <p style={{ ...typeScale.caption, color: colors.textSecondary, margin: "3px 0 0" }}>{subtitle}</p>}
+      </div>
+      <span style={{ ...typeScale.caption, color: colors.textMuted }}>{count}</span>
+    </div>
+  );
+}
+
+function ChecklistBlock({ title, iconName, done, open, onToggle, onDone, exercises, color }) {
+  return (
+    <>
+      <SurfaceButton
+        onClick={onToggle}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          borderColor: done ? `${colors.success}55` : colors.border,
+          background: done ? `${colors.success}10` : colors.surface,
+          borderRadius: radii.lg,
+          padding: 14,
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span style={{ width: 34, height: 34, borderRadius: radii.md, display: "grid", placeItems: "center", background: done ? `${colors.success}1f` : `${color}18` }}>
+            <Icon name={iconName} size={16} color={done ? colors.success : color} />
+          </span>
+          <span>
+            <span style={{ ...typeScale.body, display: "block", color: done ? colors.success : colors.textPrimary, fontWeight: 800 }}>{title}</span>
+            <span style={{ ...typeScale.caption, color: colors.textMuted }}>{done ? "Complete" : `${exercises.length} movements`}</span>
+          </span>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 10, color: colors.textMuted }}>
+          <span style={{ ...typeScale.caption }}>{done ? `${exercises.length}/${exercises.length}` : `0/${exercises.length}`}</span>
+          <span style={{ fontSize: 18, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
+        </span>
+      </SurfaceButton>
+      {open && (
+        <SurfaceCard style={{ padding: 12, borderRadius: radii.lg, background: colors.surface }}>
+          {exercises.map((exercise) => (
+            <div key={exercise.name} style={{ minHeight: 44, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 22, height: 22, borderRadius: "50%", border: `1px solid ${done ? colors.success : colors.borderStrong}`, display: "grid", placeItems: "center", color: colors.success }}>
+                {done && <Icon name="check" size={13} color={colors.success} />}
+              </span>
+              <span style={{ ...typeScale.bodySm, color: colors.textSecondary, flex: 1 }}>{exercise.name}</span>
+              <span style={{ ...typeScale.caption, color: colors.textMuted, background: "rgba(255,255,255,0.04)", borderRadius: radii.pill, padding: "4px 8px" }}>{exercise.sets}×{exercise.reps}</span>
+            </div>
+          ))}
+          <ActionButton onClick={onDone} tone="tinted" color={done ? colors.success : color} compact style={{ marginTop: 8 }}>
+            {done ? "Done" : "Mark Complete"}
+          </ActionButton>
+        </SurfaceCard>
+      )}
+    </>
+  );
+}
 
 export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, sessionNotice, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout }) {
   if (!session || !workoutId) {
@@ -15,90 +107,79 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
     return null;
   }
   const previousSession = [...app.sessions].reverse().find((entry) => entry.workoutId === workoutId);
+  const allExercises = [...workout.performance, ...(workout.finisher || [])];
+  const completedExercises = allExercises.filter((exercise, index) => {
+    const exerciseKey = `${index}-${exercise.name}`;
+    const exerciseSets = session.sets[exerciseKey] || [];
+    return exerciseSets.length > 0 && exerciseSets.filter((setData) => isSetComplete(setData, exercise)).length >= exercise.sets;
+  }).length;
+  const startedSetCount = allExercises.reduce((total, exercise, index) => {
+    const exerciseKey = `${index}-${exercise.name}`;
+    return total + (session.sets[exerciseKey] || []).filter((setData) => isSetStarted(setData, exercise)).length;
+  }, 0);
+  const hasStartedLogging = startedSetCount > 0 || session.timer.startedAt;
 
   return (
     <div>
-      <LiveTimer color={workout.color} timerState={session.timer} onUpdate={(timer) => setSession((current) => ({ ...current, timer }))} />
-      <div style={{ padding: "0 16px" }}>
-        <div style={{ paddingTop: 12, marginBottom: 16 }}>
-          <BackButton onClick={onCancelWorkout} label="Cancel" />
-          <h2 style={{ fontSize: 21, fontWeight: 700, margin: 0, color: workout.color }}>{workout.shortTitle}</h2>
-          <p style={{ fontSize: 11, color: "#555", margin: "2px 0 0" }}>{fd(session.date)}</p>
-          {sessionNotice && (
-            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#8BA6C9", display: "flex", alignItems: "center", gap: 6 }}>
-              <Icon name="save" size={13} color="#8BA6C9" />
-              {sessionNotice}
-            </p>
-          )}
-        </div>
+      <LiveTimer
+        color={workout.color}
+        timerState={session.timer}
+        onUpdate={(timer) => setSession((current) => ({ ...current, timer }))}
+        title={workout.shortTitle}
+        onCancel={onCancelWorkout}
+        completedExercises={completedExercises}
+        totalExercises={allExercises.length}
+      />
+      <div style={{ padding: "12px 16px 0" }}>
+        {sessionNotice && (
+          <div style={{ marginBottom: 12, padding: "9px 12px", borderRadius: radii.md, background: `${colors.accent}14`, color: colors.textSecondary, display: "flex", alignItems: "center", gap: 8, ...typeScale.caption }}>
+            <Icon name="save" size={13} color={colors.accent} />
+            {sessionNotice}
+          </div>
+        )}
 
-        <SurfaceCard style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, color: "#666" }}>Energy</span>
-          <input type="range" min="1" max="10" value={session.energy} onChange={(event) => setSession((current) => ({ ...current, energy: Number(event.target.value) }))} style={{ flex: 1, accentColor: workout.color }} />
-          <span style={{ fontSize: 15, fontWeight: 700, color: workout.color, minWidth: 22, textAlign: "right" }}>{session.energy}</span>
-        </SurfaceCard>
-
-        <SurfaceCard style={{ padding: "10px 14px" }}>
-          <p style={{ fontSize: 10, color: "#555", margin: "0 0 8px", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Injury Check (1=fine, 5=bad)</p>
+        <SurfaceCard style={{ display: hasStartedLogging ? "none" : "block", borderRadius: radii.lg, background: colors.surface }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <span style={{ ...typeScale.body, color: colors.textPrimary, fontWeight: 800 }}>Before you start</span>
+            <span style={{ marginLeft: "auto", ...typeScale.caption, color: workout.color, fontWeight: 800 }}>{session.energy} · {getEnergyLabel(session.energy)}</span>
+          </div>
+          <input type="range" min="1" max="10" value={session.energy} onChange={(event) => setSession((current) => ({ ...current, energy: Number(event.target.value) }))} style={{ width: "100%", accentColor: workout.color }} />
+          <div style={{ marginTop: 14 }}>
+            <p style={{ ...typeScale.overline, color: colors.textMuted, margin: "0 0 8px", textTransform: "uppercase" }}>Readiness <span style={{ float: "right", color: colors.textMuted, fontWeight: 600 }}>Fine → Bad</span></p>
           {["shoulder", "ankle", "hip"].map((part) => (
             <div key={part} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <span style={{ fontSize: 12, color: "#999", width: 64, textTransform: "capitalize" }}>{part}</span>
-              <div style={{ display: "flex", gap: 4, flex: 1 }}>
+              <span style={{ ...typeScale.bodySm, color: colors.textSecondary, width: 68, textTransform: "capitalize" }}>{part}</span>
+              <div style={{ display: "flex", gap: 6, flex: 1 }}>
                 {[1, 2, 3, 4, 5].map((value) => (
-                  <button
+                  <ReadinessDot
                     key={value}
+                    value={value}
+                    selected={session.painFlags[part] === value}
                     onClick={() => setSession((current) => ({ ...current, painFlags: { ...current.painFlags, [part]: value } }))}
-                    style={{
-                      flex: 1,
-                      padding: "7px 0",
-                      borderRadius: 7,
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      background: session.painFlags[part] === value
-                        ? value <= 2
-                          ? "rgba(69,182,73,0.2)"
-                          : value <= 3
-                            ? "rgba(245,166,35,0.2)"
-                            : "rgba(232,69,69,0.2)"
-                        : "rgba(255,255,255,0.04)",
-                      color: session.painFlags[part] === value
-                        ? value <= 2
-                          ? "#45B649"
-                          : value <= 3
-                            ? "#F5A623"
-                            : "#E84545"
-                        : "#555",
-                    }}
-                  >
-                    {value}
-                  </button>
+                  />
                 ))}
               </div>
             </div>
           ))}
+          </div>
         </SurfaceCard>
 
-        <SurfaceButton onClick={() => setPrehabOpen((open) => !open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderColor: session.prehabDone ? "rgba(69,182,73,0.2)" : "rgba(255,255,255,0.06)", background: session.prehabDone ? "rgba(69,182,73,0.05)" : C.background }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: session.prehabDone ? "#45B649" : "#fff", display: "flex", alignItems: "center", gap: 6 }}>{session.prehabDone && <Icon name="check" size={13} color="#45B649" />}Prehab Block — 15 min</span>
-          <span style={{ color: "#555", fontSize: 16, transform: prehabOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
-        </SurfaceButton>
-        {prehabOpen && (
-          <SurfaceCard style={{ padding: "8px 12px" }}>
-            {PREHAB.map((exercise, index) => (
-              <div key={exercise.name} style={{ padding: "5px 0", borderBottom: index < PREHAB.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}>
-                <p style={{ fontSize: 12, margin: 0, color: "#bbb" }}>{exercise.name}</p>
-                <p style={{ fontSize: 10, color: "#555", margin: "1px 0 0" }}>{exercise.sets}×{exercise.reps}</p>
-              </div>
-            ))}
-            <ActionButton onClick={() => setSession((current) => ({ ...current, prehabDone: true }))} tone={session.prehabDone ? "tinted" : "primary"} color={session.prehabDone ? "#45B649" : workout.color} compact style={{ marginTop: 8 }}>
-                  {session.prehabDone ? "Done" : "Mark Complete"}
-            </ActionButton>
-          </SurfaceCard>
+        {hasStartedLogging && (
+          <div style={{ marginBottom: 12, display: "inline-flex", gap: 8, padding: "7px 10px", borderRadius: radii.pill, border: `1px solid ${colors.border}`, color: colors.textSecondary, background: "rgba(255,255,255,0.035)", ...typeScale.caption }}>Energy {session.energy} · {Object.values(session.painFlags).some((value) => value >= 4) ? "Pain flag" : "No pain flags"}</div>
         )}
 
-        <p style={L}>Performance Block</p>
+        <ChecklistBlock
+          title="Warm-up · 15 min"
+          iconName="pulse"
+          done={session.prehabDone}
+          open={prehabOpen}
+          onToggle={() => setPrehabOpen((open) => !open)}
+          onDone={() => setSession((current) => ({ ...current, prehabDone: true }))}
+          exercises={PREHAB}
+          color={workout.color}
+        />
+
+        <SectionHeader title="Main work" subtitle="Performance Block" count={`${workout.performance.length} exercises`} />
         {workout.performance.map((exercise, index) => {
           const exerciseKey = `${index}-${exercise.name}`;
           return (
@@ -118,7 +199,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
 
         {workout.finisher.length > 0 && (
           <>
-            <p style={L}>Aesthetic Finisher</p>
+            <SectionHeader title="Finisher" subtitle="Aesthetic Finisher" count={`${workout.finisher.length} exercises`} />
             {workout.finisher.map((exercise, index) => {
               const exerciseIndex = workout.performance.length + index;
               const exerciseKey = `${exerciseIndex}-${exercise.name}`;
@@ -140,31 +221,28 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
         )}
 
         {workout.core && (
-          <>
-            <SurfaceButton onClick={() => setCoreOpen((open) => !open)} style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", borderColor: session.coreDone ? "rgba(69,182,73,0.2)" : "rgba(255,255,255,0.06)", background: session.coreDone ? "rgba(69,182,73,0.05)" : C.background }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: session.coreDone ? "#45B649" : "#fff", display: "flex", alignItems: "center", gap: 6 }}>{session.coreDone && <Icon name="check" size={13} color="#45B649" />}{workout.core.title}</span>
-              <span style={{ color: "#555", fontSize: 16, transform: coreOpen ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>›</span>
-            </SurfaceButton>
-            {coreOpen && (
-              <SurfaceCard style={{ padding: "8px 12px" }}>
-                {workout.core.exercises.map((exercise, index) => (
-                  <div key={exercise.name} style={{ padding: "5px 0", borderBottom: index < workout.core.exercises.length - 1 ? "1px solid rgba(255,255,255,0.03)" : "none" }}>
-                    <p style={{ fontSize: 12, margin: 0, color: "#bbb" }}>{exercise.name}</p>
-                    <p style={{ fontSize: 10, color: "#555", margin: "1px 0 0" }}>{exercise.sets}×{exercise.reps}</p>
-                  </div>
-                ))}
-                <ActionButton onClick={() => setSession((current) => ({ ...current, coreDone: true }))} tone={session.coreDone ? "tinted" : "primary"} color={session.coreDone ? "#45B649" : workout.color} compact style={{ marginTop: 8 }}>
-                  {session.coreDone ? "Done" : "Mark Complete"}
-                </ActionButton>
-              </SurfaceCard>
-            )}
-          </>
+          <ChecklistBlock
+            title={workout.core.title}
+            iconName="dumbbell"
+            done={session.coreDone}
+            open={coreOpen}
+            onToggle={() => setCoreOpen((open) => !open)}
+            onDone={() => setSession((current) => ({ ...current, coreDone: true }))}
+            exercises={workout.core.exercises}
+            color={workout.color}
+          />
         )}
 
-        <TextAreaField placeholder="Session notes..." value={session.notes} onChange={(event) => setSession((current) => ({ ...current, notes: event.target.value }))} style={{ marginTop: 14, minHeight: 50, color: "#bbb", background: "rgba(255,255,255,0.03)" }} />
-        <ActionButton onClick={onFinishWorkout} color={workout.color} style={{ marginTop: 14, marginBottom: 40, padding: "15px", borderRadius: 14, background: `linear-gradient(135deg,${workout.color},${workout.color}cc)`, boxShadow: `0 4px 20px ${workout.color}44` }}>
-          Finish Session
-        </ActionButton>
+        <TextAreaField placeholder="Session notes..." value={session.notes} onChange={(event) => setSession((current) => ({ ...current, notes: event.target.value }))} style={{ marginTop: 14, minHeight: 50, color: colors.textSecondary, background: colors.surface }} />
+        <div style={{ position: "sticky", bottom: 0, zIndex: 40, margin: "14px -16px 0", padding: "10px 16px max(10px, env(safe-area-inset-bottom, 0px))", background: "rgba(10,10,15,0.92)", backdropFilter: "blur(16px)", borderTop: `1px solid ${colors.border}`, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <p style={{ ...typeScale.bodySm, color: colors.textPrimary, fontWeight: 800, margin: 0 }}>{completedExercises}/{allExercises.length} exercises</p>
+            <p style={{ ...typeScale.caption, color: colors.textMuted, margin: "2px 0 0" }}>{startedSetCount} sets logged</p>
+          </div>
+          <ActionButton onClick={onFinishWorkout} color={colors.success} fullWidth={false} style={{ minWidth: 132, borderRadius: radii.pill }}>
+            Finish
+          </ActionButton>
+        </div>
       </div>
     </div>
   );
