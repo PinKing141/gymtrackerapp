@@ -12,20 +12,21 @@ function proteinMultiplier(goal) {
 }
 
 export function getNutritionTargets(profile = {}, overrides = {}) {
+  const safeOverrides = overrides && typeof overrides === "object" ? overrides : {};
   const calorieStats = calculateCalories(profile);
-  const calories = numeric(overrides.calorieTarget) || calorieStats?.target || 0;
+  const calories = numeric(safeOverrides.calorieTarget) || calorieStats?.target || 0;
   const weightKg = numeric(profile.weightKg);
-  const protein = numeric(overrides.proteinTarget) || (weightKg ? Math.round(weightKg * proteinMultiplier(profile.goal)) : 0);
-  const fat = numeric(overrides.fatTarget) || (calories ? Math.round((calories * 0.25) / 9) : 0);
-  const carbs = numeric(overrides.carbsTarget) || (calories ? Math.max(0, Math.round((calories - (protein * 4) - (fat * 9)) / 4)) : 0);
+  const protein = numeric(safeOverrides.proteinTarget) || (weightKg ? Math.round(weightKg * proteinMultiplier(profile.goal)) : 0);
+  const fat = numeric(safeOverrides.fatTarget) || (calories ? Math.round((calories * 0.25) / 9) : 0);
+  const carbs = numeric(safeOverrides.carbsTarget) || (calories ? Math.max(0, Math.round((calories - (protein * 4) - (fat * 9)) / 4)) : 0);
 
   return {
     calorieTarget: Math.round(calories),
     proteinTarget: protein,
     carbsTarget: carbs,
     fatTarget: fat,
-    fibreTarget: numeric(overrides.fibreTarget) || 30,
-    saltLimit: numeric(overrides.saltLimit) || 6,
+    fibreTarget: numeric(safeOverrides.fibreTarget) || 30,
+    saltLimit: numeric(safeOverrides.saltLimit) || 6,
     bmr: calorieStats?.bmr || 0,
   };
 }
