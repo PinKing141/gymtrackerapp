@@ -451,7 +451,7 @@ export function useAppState(firebaseUser) {
     return () => clearTimeout(firestoreSaveTimeoutRef.current);
   }, [app, firebaseUid]);
 
-  const exportData = useCallback(() => {
+  const exportStats = useCallback(() => {
     try {
       const workbook = XLSX.utils.book_new();
       const sessions = [...(app.sessions || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
@@ -515,6 +515,26 @@ export function useAppState(firebaseUser) {
       // Ignore export failures in-browser.
     }
   }, [app, streakSummary]);
+
+  // Full JSON backup: a complete, re-importable snapshot of the app data. This
+  // is what the Import/Restore flows read back, so it must carry everything —
+  // including workout presets, cardio/basketball sessions and nutrition.
+  const exportData = useCallback(() => {
+    try {
+      const payload = toPlainAppData(app);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `orion-gym-backup-${today()}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Ignore export failures in-browser.
+    }
+  }, [app]);
 
   const importData = useCallback((event) => {
     const file = event.target.files?.[0];
@@ -991,6 +1011,7 @@ export function useAppState(firebaseUser) {
       goBackMoreSection,
       dismissCelebration,
       exportData,
+      exportStats,
       finishWorkout,
       importData,
       logCardioSession,

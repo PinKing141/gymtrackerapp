@@ -252,6 +252,7 @@ export function App() {
         fileInputRef={fileInputRef}
         getPhaseProgress={getPhaseProgress}
         onExportData={actions.exportData}
+        onExportStats={actions.exportStats}
         onImportData={actions.importData}
         onOpenSection={openMoreSection}
         firebaseUser={firebaseUser}
