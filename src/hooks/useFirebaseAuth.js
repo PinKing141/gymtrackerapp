@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { firebaseConfigured } from "../firebase.js";
 import { listenToAuth } from "../services/firebaseAuth.js";
 
 export function useFirebaseAuth() {
@@ -25,6 +26,6 @@ export function useFirebaseAuth() {
   return {
     user,
     authLoading,
-    isLoggedIn: Boolean(user),
+    isLoggedIn: firebaseConfigured ? Boolean(user) : true,
   };
 }

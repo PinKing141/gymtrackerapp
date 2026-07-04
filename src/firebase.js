@@ -15,14 +15,16 @@ const missingFirebaseEnv = Object.entries(requiredFirebaseEnv)
   .filter(([, value]) => !value)
   .map(([key]) => key);
 
-if (missingFirebaseEnv.length > 0) {
-  throw new Error(
-    `Missing Firebase config env vars: ${missingFirebaseEnv.join(", ")}. ` +
-      "Copy .env.example to .env.local and fill in the VITE_FIREBASE_* values.",
+export const firebaseConfigured = missingFirebaseEnv.length === 0;
+
+if (!firebaseConfigured) {
+  console.warn(
+    `Firebase config is missing: ${missingFirebaseEnv.join(", ")}. ` +
+      "Running Orion Gym in local-only mode.",
   );
 }
 
-const app = initializeApp(requiredFirebaseEnv);
+const app = firebaseConfigured ? initializeApp(requiredFirebaseEnv) : null;
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const auth = app ? getAuth(app) : null;
+export const db = app ? getFirestore(app) : null;

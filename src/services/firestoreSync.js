@@ -2,7 +2,7 @@ import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
 
 export async function loadUserAppData(userId) {
-  if (!userId) return null;
+  if (!userId || !db) return null;
 
   const ref = doc(db, "users", userId);
   const snap = await getDoc(ref);
@@ -13,7 +13,7 @@ export async function loadUserAppData(userId) {
 }
 
 export async function saveUserAppData(userId, appData) {
-  if (!userId) return null;
+  if (!userId || !db) return null;
 
   const ref = doc(db, "users", userId);
 
