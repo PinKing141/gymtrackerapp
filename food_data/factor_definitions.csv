@@ -1,0 +1,6 @@
+factor_key,factor_name,source_sheet,column_index
+edible_proportion,Edible proportion,1.2 Factors,8
+specific_gravity,Specific gravity,1.2 Factors,9
+total_solids,Total solids,1.2 Factors,10
+nitrogen_conversion_factor,Nitrogen conversion factor,1.2 Factors,11
+glycerol_conversion_factor,Glycerol conversion factor,1.2 Factors,12
