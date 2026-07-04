@@ -9,6 +9,7 @@ import { getBodyGoalsSummary, getDataSummary, getDisplayName, getEnabledModuleSu
 import { PHASES, WQ } from "../data.js";
 import { DB_BACKUP, DD, IS, dbSave, fd, isValidData, today, withDefaults } from "../storage.js";
 import { haptic, playCue, unlockAudio } from "../services/sound.js";
+import { readAvatarFile } from "../services/avatar.js";
 
 const ACTIVITY_OPTIONS = [
   { value: "sedentary", label: "Sedentary", factor: 1.2 },
@@ -387,25 +388,9 @@ export function MoreScreen({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-        const out = 256;
-        const canvas = document.createElement("canvas");
-        canvas.width = out;
-        canvas.height = out;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
-        setApp((current) => ({ ...current, profile: { ...(current.profile || {}), avatar: canvas.toDataURL("image/jpeg", 0.82) } }));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
+    readAvatarFile(file)
+      .then((avatar) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), avatar } })))
+      .catch(() => {});
   };
 
   // Photo if set, initials otherwise.
