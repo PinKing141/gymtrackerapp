@@ -1,5 +1,11 @@
 const FOOD_DATA_PATH = "data/foods_core_app.json";
 
+const FOOD_NAME_REPLACEMENTS = [
+  [/\bcommerical\b/gi, "commercial"],
+  [/\bAgriculature\b/g, "Agriculture"],
+  [/\bInsitute\b/g, "Institute"],
+];
+
 function publicDataUrl(path) {
   const base = import.meta.env.BASE_URL || "/";
   return `${base.endsWith("/") ? base : `${base}/`}${path}`;
@@ -16,6 +22,20 @@ function normalizeText(value) {
 
 function getFoodName(food = {}) {
   return food.food_name || food.name || "";
+}
+
+function cleanFoodDisplayName(value) {
+  let title = String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*/g, ", ")
+    .trim();
+
+  FOOD_NAME_REPLACEMENTS.forEach(([pattern, replacement]) => {
+    title = title.replace(pattern, replacement);
+  });
+
+  return title;
 }
 
 function scoreFood(food, query) {
@@ -67,7 +87,7 @@ export function searchFoods({ foods = [], customFoods = [], query = "", limit = 
 }
 
 export function getFoodDisplayName(food = {}) {
-  return getFoodName(food) || "Food";
+  return cleanFoodDisplayName(getFoodName(food)) || "Food";
 }
 
 export function getFoodMeta(food = {}) {
