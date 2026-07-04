@@ -1,6 +1,5 @@
 import {
   createWorkoutSnapshot,
-  getDefaultWorkoutPresets,
   getExercisesForWorkout,
   getResolvedSet,
   getWorkoutById,
@@ -92,7 +91,7 @@ export const IS = { background:"rgba(255,255,255,0.06)",border:"1px solid rgba(2
 export const DD = () => ({
   sessions: [],
   personalBests: {},
-  workoutPresets: getDefaultWorkoutPresets(),
+  workoutPresets: [],
   recovery: [],
   bodyStats: [],
   weeklyReviews: [],
