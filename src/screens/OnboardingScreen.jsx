@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { IS } from "../storage.js";
 import { ActionButton } from "../components/ui.jsx";
+import { Avatar } from "../components/Avatar.jsx";
+import { readAvatarFile } from "../services/avatar.js";
 import { colors, radii, typeScale } from "../theme.js";
 import {
   ACTIVITY_OPTIONS,
@@ -60,7 +62,9 @@ function Segmented({ options, value, onChange }) {
 
 export function OnboardingScreen({ profile, onComplete }) {
   const [step, setStep] = useState(0);
+  const avatarInputRef = useRef(null);
   const [draft, setDraft] = useState(() => ({
+    avatar: profile?.avatar || null,
     firstName: profile?.firstName || "",
     lastName: profile?.lastName || "",
     sex: profile?.sex || "male",
@@ -80,6 +84,12 @@ export function OnboardingScreen({ profile, onComplete }) {
   }));
 
   const set = (patch) => setDraft((current) => ({ ...current, ...patch }));
+  const pickAvatar = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    readAvatarFile(file).then((avatar) => set({ avatar })).catch(() => {});
+  };
   const imperial = draft.unitSystem === "imperial";
   const { feet, inches } = useMemo(() => toFeetInches(draft.heightCm), [draft.heightCm]);
   const lbs = useMemo(() => (draft.weightKg ? kgToPounds(draft.weightKg) : ""), [draft.weightKg]);
@@ -236,6 +246,27 @@ export function OnboardingScreen({ profile, onComplete }) {
         </div>
       ),
     },
+    {
+      title: "Add a profile photo",
+      subtitle: "Optional — you can always add or change it later.",
+      valid: true,
+      skippable: true,
+      body: (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 8 }}>
+          <Avatar profile={draft} size={128} radius={40} fontSize={44} onClick={() => avatarInputRef.current?.click()} badge badgeBorder={colors.background} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <ActionButton tone="secondary" fullWidth={false} onClick={() => avatarInputRef.current?.click()} style={{ minWidth: 130 }}>
+              {draft.avatar ? "Change photo" : "Choose photo"}
+            </ActionButton>
+            {draft.avatar && (
+              <ActionButton tone="secondary" fullWidth={false} onClick={() => set({ avatar: null })} style={{ minWidth: 96 }}>
+                Remove
+              </ActionButton>
+            )}
+          </div>
+        </div>
+      ),
+    },
   ];
 
   const current = steps[step];
@@ -243,6 +274,7 @@ export function OnboardingScreen({ profile, onComplete }) {
 
   const finish = () => {
     onComplete({
+      avatar: draft.avatar || null,
       firstName: draft.firstName.trim(),
       lastName: draft.lastName.trim(),
       name: [draft.firstName.trim(), draft.lastName.trim()].filter(Boolean).join(" ") || draft.firstName.trim(),
@@ -265,6 +297,11 @@ export function OnboardingScreen({ profile, onComplete }) {
     else setStep((s) => s + 1);
   };
 
+  const skip = () => {
+    if (isLast) finish();
+    else setStep((s) => s + 1);
+  };
+
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "calc(env(safe-area-inset-top, 0px) + 24px) 22px calc(env(safe-area-inset-bottom, 0px) + 22px)", boxSizing: "border-box" }}>
       {/* Progress dots */}
@@ -280,6 +317,8 @@ export function OnboardingScreen({ profile, onComplete }) {
         {current.body}
       </div>
 
+      <input ref={avatarInputRef} type="file" accept="image/*" onChange={pickAvatar} style={{ display: "none" }} />
+
       <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
         {step > 0 && (
           <ActionButton tone="secondary" fullWidth={false} onClick={() => setStep((s) => s - 1)} style={{ minWidth: 96 }}>
@@ -291,8 +330,8 @@ export function OnboardingScreen({ profile, onComplete }) {
             {isLast ? "Finish" : "Continue"}
           </ActionButton>
           {current.skippable && (
-            <button type="button" onClick={finish} style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 }}>
-              Set up later
+            <button type="button" onClick={skip} style={{ background: "none", border: "none", color: colors.textMuted, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 }}>
+              {isLast ? "Skip for now" : "Set up later"}
             </button>
           )}
         </div>

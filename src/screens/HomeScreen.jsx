@@ -1,6 +1,7 @@
 import { PHASES } from "../data.js";
 import { fd, fdu, today } from "../storage.js";
 import { Icon } from "../components/icons.jsx";
+import { Avatar } from "../components/Avatar.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -28,12 +29,17 @@ export function HomeScreen({
   return (
     <Screen>
       <ScreenHeader bottomSpace={22} topPadding="calc(env(safe-area-inset-top, 0px) + 24px)">
-        <p style={{ ...typeScale.caption, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", margin: 0 }}>
-          {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
-        <h1 style={{ fontSize: 26, fontWeight: 800, margin: "4px 0 0", lineHeight: 1.2, color: colors.textPrimary }}>
-          {greeting()}{firstName ? `, ${firstName}` : ""}
-        </h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ ...typeScale.caption, color: colors.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", margin: 0 }}>
+              {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+            </p>
+            <h1 style={{ fontSize: 26, fontWeight: 800, margin: "4px 0 0", lineHeight: 1.2, color: colors.textPrimary }}>
+              {greeting()}{firstName ? `, ${firstName}` : ""}
+            </h1>
+          </div>
+          <Avatar profile={app.profile} size={46} radius={15} fontSize={17} onClick={() => onNavigate("more")} />
+        </div>
       </ScreenHeader>
 
       {app.phaseStart && (
