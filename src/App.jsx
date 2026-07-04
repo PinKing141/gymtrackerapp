@@ -188,6 +188,7 @@ export function App() {
         onSaveWorkoutPreset={actions.saveWorkoutPreset}
         onDeleteWorkoutPreset={actions.deleteWorkoutPreset}
         onNavigate={pushView}
+        onOpenProfile={() => navigate("more")}
       />
     );
   }
@@ -196,6 +197,7 @@ export function App() {
       <CardioScreen
         app={app}
         onBack={goBackView}
+        onOpenProfile={() => navigate("more")}
         onLogCardio={actions.logCardioSession}
         notificationPermission={notificationPermission}
         notificationSupported={notificationSupported}
@@ -227,7 +229,7 @@ export function App() {
     content = <BasketballScreen onExit={goBackView} firebaseUser={firebaseUser} />;
   }
   if (view === "nutrition") {
-    content = <NutritionScreen app={app} setApp={setApp} onBack={canGoBackView ? goBackView : undefined} />;
+    content = <NutritionScreen app={app} setApp={setApp} onBack={canGoBackView ? goBackView : undefined} onOpenProfile={() => navigate("more")} />;
   }
   if (view === "progress") {
     content = (
@@ -236,6 +238,7 @@ export function App() {
         historyDetailIndex={historyDetailIndex}
         setHistoryDetailIndex={setHistoryDetailIndex}
         setApp={setApp}
+        onOpenProfile={() => navigate("more")}
       />
     );
   }

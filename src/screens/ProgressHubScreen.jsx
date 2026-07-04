@@ -2,6 +2,7 @@ import { useState } from "react";
 import { HistoryScreen } from "./HistoryScreen.jsx";
 import { PersonalBestsScreen } from "./PersonalBestsScreen.jsx";
 import { ProgressScreen } from "./ProgressScreen.jsx";
+import { Avatar } from "../components/Avatar.jsx";
 import { colors } from "../theme.js";
 
 const TABS = [
@@ -10,12 +11,16 @@ const TABS = [
   { key: "history", label: "History" },
 ];
 
-export function ProgressHubScreen({ app, historyDetailIndex, setHistoryDetailIndex, setApp }) {
+export function ProgressHubScreen({ app, historyDetailIndex, setHistoryDetailIndex, setApp, onOpenProfile }) {
   const [tab, setTab] = useState("overview");
 
   return (
     <div>
-      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 20px 0" }}>
+      <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 24px) 20px 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, lineHeight: 1.2, color: colors.textPrimary }}>Progress</h1>
+          {onOpenProfile && <Avatar profile={app.profile} size={40} radius={13} fontSize={15} onClick={onOpenProfile} />}
+        </div>
         <div style={{ display: "flex", gap: 6, padding: 4, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}` }}>
           {TABS.map((t) => (
             <button

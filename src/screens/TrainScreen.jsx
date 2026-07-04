@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { fd, fdu } from "../storage.js";
 import { Icon } from "../components/icons.jsx";
+import { Avatar } from "../components/Avatar.jsx";
 import { WorkoutPresetBuilder } from "../components/WorkoutPresetBuilder.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { getWorkoutPresets } from "../workouts.js";
@@ -80,7 +81,7 @@ function ModuleLaunchCard({ icon, title, desc, cta, onClick }) {
   );
 }
 
-export function TrainScreen({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutPreset, onNavigate }) {
+export function TrainScreen({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutPreset, onNavigate, onOpenProfile }) {
   const modules = app.profile?.enabledModules || { gym: true, cardio: true, basketball: false };
   const tabs = MODULE_TABS.filter((t) => modules[t.key] || t.key === "gym");
   const [tab, setTab] = useState("gym");
@@ -88,7 +89,7 @@ export function TrainScreen({ app, onStartWorkout, onSaveWorkoutPreset, onDelete
 
   return (
     <Screen>
-      <ScreenHeader title="Train" titleAs="h1" bottomSpace={16} topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+      <ScreenHeader title="Train" titleAs="h1" bottomSpace={16} topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" trailing={onOpenProfile && <Avatar profile={app.profile} size={40} radius={13} fontSize={15} onClick={onOpenProfile} />} />
 
       {tabs.length > 1 && (
         <div style={{ display: "flex", gap: 6, padding: 4, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, marginBottom: 18 }}>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceCard } from "../components/ui.jsx";
+import { Avatar } from "../components/Avatar.jsx";
 import { CARDIO_LOG_TYPES, CARDIO_MACHINES, CARDIO_ROUTINES } from "../cardioData.js";
 import { notifyIfHidden } from "../services/notify.js";
 import { IS, devicePrefsLoad, fd, today } from "../storage.js";
@@ -173,7 +174,7 @@ function CardioLog({ app, onLogCardio }) {
   );
 }
 
-export function CardioScreen({ app, onBack, onLogCardio, notificationPermission, notificationSupported, onRequestReminderPermission }) {
+export function CardioScreen({ app, onBack, onOpenProfile, onLogCardio, notificationPermission, notificationSupported, onRequestReminderPermission }) {
   const [machine, setMachine] = useState("bike");
   const [selectedDurationByRoutine, setSelectedDurationByRoutine] = useState(() => ({}));
   const [activeTimer, setActiveTimer] = useState(null);
@@ -399,7 +400,7 @@ export function CardioScreen({ app, onBack, onLogCardio, notificationPermission,
 
   return (
     <Screen>
-      <ScreenHeader action={onBack ? <BackButton onClick={onBack} /> : undefined} title="Cardio" subtitle="Guided routines with a full-screen countdown, plus a quick session log." />
+      <ScreenHeader action={onBack ? <BackButton onClick={onBack} /> : undefined} title="Cardio" subtitle="Guided routines with a full-screen countdown, plus a quick session log." trailing={onOpenProfile && <Avatar profile={app.profile} size={40} radius={13} fontSize={15} onClick={onOpenProfile} />} />
 
       <div style={{ display: "flex", gap: 6, padding: 4, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, marginBottom: 16 }}>
         {CARDIO_MACHINES.map((option) => (

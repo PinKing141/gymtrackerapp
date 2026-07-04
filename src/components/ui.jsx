@@ -31,6 +31,7 @@ export function ScreenHeader({
   subtitleStyle,
   topPadding = "calc(env(safe-area-inset-top, 0px) + 24px)",
   bottomSpace = 20,
+  trailing,
   children,
 }) {
   const HeadingTag = titleAs;
@@ -38,10 +39,8 @@ export function ScreenHeader({
     ? { fontSize: 26, lineHeight: 1.2 }
     : { fontSize: 21, lineHeight: 1.25 };
 
-  return (
-    <div style={{ paddingTop: topPadding, marginBottom: bottomSpace }}>
-      {action}
-      {children}
+  const titleBlock = (title || subtitle) ? (
+    <div style={{ minWidth: 0 }}>
       {title && (
         <HeadingTag
           style={{
@@ -66,6 +65,19 @@ export function ScreenHeader({
         >
           {subtitle}
         </p>
+      )}
+    </div>
+  ) : null;
+
+  return (
+    <div style={{ paddingTop: topPadding, marginBottom: bottomSpace }}>
+      {action}
+      {children}
+      {(titleBlock || trailing) && (
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          {titleBlock || <span />}
+          {trailing}
+        </div>
       )}
     </div>
   );
