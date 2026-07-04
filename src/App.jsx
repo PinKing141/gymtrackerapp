@@ -23,7 +23,6 @@ const NAV_TABS = [
   { id: "train", label: "Train", icon: "dumbbell" },
   { id: "nutrition", label: "Nutrition", icon: "clipboard" },
   { id: "progress", label: "Progress", icon: "barChart" },
-  { id: "more", label: "Profile", icon: "user" },
 ];
 
 function NavTab({ item, active, onClick }) {
