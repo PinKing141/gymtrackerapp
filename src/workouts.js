@@ -92,14 +92,13 @@ export function getDefaultWorkoutPresets() {
 }
 
 export function normalizeWorkoutPresetList(presets) {
-  const defaults = getDefaultWorkoutPresets();
-  const list = Array.isArray(presets) && presets.length ? presets : defaults;
-  const normalized = list.map((preset, index) => normalizeWorkoutPreset(preset, index));
-  const existingIds = new Set(normalized.map((preset) => preset.id));
-  return [
-    ...defaults.filter((preset) => !existingIds.has(preset.id)),
-    ...normalized,
-  ];
+  // Presets are entirely user-owned now: a fresh account starts with an empty
+  // list and only the workouts the user builds show up. No built-in Orion
+  // presets are auto-injected.
+  if (!Array.isArray(presets)) {
+    return [];
+  }
+  return presets.map((preset, index) => normalizeWorkoutPreset(preset, index));
 }
 
 export function getWorkoutPresets(appOrPresets) {

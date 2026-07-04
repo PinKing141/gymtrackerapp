@@ -34,6 +34,20 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
         />
       )}
 
+      {!builderOpen && workoutPresets.length === 0 && (
+        <SurfaceCard style={{ textAlign: "center", padding: "26px 20px" }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(78,161,255,0.12)", border: `1px solid ${colors.accent}44` }}>
+            <Icon name="dumbbell" size={22} color={colors.accent} />
+          </div>
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: colors.textPrimary }}>No workouts yet</p>
+          <p style={{ margin: "6px 0 16px", ...typeScale.bodySm, color: colors.textSecondary }}>Build your first workout preset to start training. It’s saved to your account.</p>
+          <ActionButton type="button" fullWidth={false} onClick={() => setBuilderOpen(true)} style={{ width: "auto", padding: "11px 18px", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Icon name="plus" size={15} />
+            Create a workout
+          </ActionButton>
+        </SurfaceCard>
+      )}
+
       {workoutPresets.map((workout) => {
         const lastSession = [...app.sessions].reverse().find((s) => s.workoutId === workout.id);
         const isCustom = workout.source === "custom";
