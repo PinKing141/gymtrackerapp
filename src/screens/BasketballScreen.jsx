@@ -553,7 +553,7 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
             <h2 style={{ fontSize: 28, lineHeight: 1, fontWeight: 800, margin: 0 }}>{cardName}</h2>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 48, lineHeight: 0.9, fontWeight: 900, margin: 0 }}>{stats.overall || "--"}</p>
+            <p style={{ fontSize: 48, lineHeight: 0.9, fontWeight: 800, margin: 0 }}>{stats.overall || "--"}</p>
             <p style={{ ...typeScale.caption, color: colors.textMuted, margin: 0, textTransform: "uppercase" }}>Overall</p>
           </div>
         </div>
@@ -565,14 +565,24 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
             { label: "FREE THROW", val: stats.ft.rating },
           ].map((attr) => (
             <div key={attr.label}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900, color: colors.textSecondary }}><span>{attr.label}</span><span style={{ color: attr.val >= 80 ? "#3DDC97" : "#fff" }}>{attr.val || "--"}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 800, color: colors.textSecondary }}><span>{attr.label}</span><span style={{ color: attr.val >= 80 ? colors.success : "#fff" }}>{attr.val || "--"}</span></div>
               <div style={{ height: 6, borderRadius: radii.pill, background: "rgba(255,255,255,0.12)", marginTop: 5, overflow: "hidden" }}><div style={{ height: "100%", width: `${attr.val || 0}%`, background: BALL_ACCENT }} /></div>
             </div>
           ))}
         </div>
         <div style={{ position: "absolute", right: -28, bottom: -34, opacity: 0.07 }}><Icon name="trophy" size={150} color="#fff" /></div>
       </div>
-      {stats.weakestSpot && <div style={{ padding: 14, borderRadius: radii.lg, background: "rgba(141,71,225,0.12)", border: "1px solid rgba(141,71,225,0.22)", color: "#DDD6FE" }}><strong>Scouting Report:</strong> defenses will force shots from {stats.weakestSpot.name} ({stats.weakestSpot.percentage}%). Focus training here.</div>}
+      {!hasData ? (
+        <div style={{ padding: 16, borderRadius: radii.lg, background: colors.surface, border: `1px solid ${colors.border}`, textAlign: "center" }}>
+          <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: 0 }}>Your ratings are empty. Log a session to unlock your player card.</p>
+          <button onClick={() => setCurrentView("setup")} style={{ marginTop: 12, border: 0, borderRadius: radii.pill, padding: "10px 18px", background: BALL_ACCENT, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Start a session</button>
+        </div>
+      ) : stats.weakestSpot && (
+        <div style={{ padding: 14, borderRadius: radii.lg, background: colors.surface, border: `1px solid ${colors.border}` }}>
+          <p style={{ ...typeScale.overline, color: colors.accent, textTransform: "uppercase", margin: "0 0 5px" }}>Scouting report</p>
+          <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: 0 }}>Defences will target your {stats.weakestSpot.name} ({stats.weakestSpot.percentage}%). Focus your training there.</p>
+        </div>
+      )}
     </div>
   );
 
@@ -610,12 +620,12 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
     <div style={{ display: "grid", gap: 16, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 28px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={() => setCurrentView("setup")} style={{ border: 0, borderRadius: radii.pill, width: 40, height: 40, background: colors.surface, color: colors.textPrimary, cursor: "pointer" }}><Icon name="chevronLeft" /></button>
-        <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Builder</h1>
+        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Builder</h1>
       </div>
-      <input value={customName} onChange={(event) => setCustomName(event.target.value)} style={{ width: "100%", background: "transparent", border: 0, borderBottom: `2px solid ${colors.borderStrong}`, color: colors.textPrimary, padding: "8px 0 12px", fontSize: 22, fontWeight: 900, outline: "none" }} />
+      <input value={customName} onChange={(event) => setCustomName(event.target.value)} style={{ width: "100%", background: "transparent", border: 0, borderBottom: `2px solid ${colors.borderStrong}`, color: colors.textPrimary, padding: "8px 0 12px", fontSize: 22, fontWeight: 700, outline: "none" }} />
       {customDrills.map((drill, index) => (
         <div key={`${drill.name}-${index}`} style={{ display: "grid", gap: 11, padding: 14, borderRadius: radii.lg, background: colors.surface, border: `1px solid ${colors.border}` }}>
-          <p style={{ ...typeScale.bodySm, fontWeight: 900, margin: 0 }}>Drill {index + 1}</p>
+          <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", fontWeight: 700, margin: 0 }}>Drill {index + 1}</p>
           <input value={drill.name} onChange={(event) => updateCustomDrill(index, { name: event.target.value })} style={{ width: "100%", padding: 11, borderRadius: radii.md, border: `1px solid ${colors.border}`, background: colors.surfaceElevated, color: colors.textPrimary, fontWeight: 800 }} />
           <SelectField label="Spot" value={drill.zoneId} onChange={(event) => updateCustomDrill(index, { zoneId: event.target.value })}><ZoneOptions /></SelectField>
           <ShotZoneCourtPicker
@@ -629,8 +639,8 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
           </div>
         </div>
       ))}
-      <button onClick={() => setCustomDrills((previous) => [...previous, { name: `Drill ${previous.length + 1}`, zoneId: "under_basket", type: "Layup", targetMakes: 10 }])} style={{ padding: 14, borderRadius: radii.lg, border: `2px dashed ${colors.borderStrong}`, background: "transparent", color: colors.textSecondary, fontWeight: 900, cursor: "pointer" }}>+ Add Drill</button>
-      <button onClick={saveCustomTemplate} style={{ padding: 16, borderRadius: radii.lg, border: 0, background: BALL_ACCENT, color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE PROGRAMME</button>
+      <button onClick={() => setCustomDrills((previous) => [...previous, { name: `Drill ${previous.length + 1}`, zoneId: "under_basket", type: "Layup", targetMakes: 10 }])} style={{ padding: 14, borderRadius: radii.lg, border: `2px dashed ${colors.borderStrong}`, background: "transparent", color: colors.textSecondary, fontWeight: 700, cursor: "pointer" }}>+ Add drill</button>
+      <button onClick={saveCustomTemplate} style={{ padding: 16, borderRadius: radii.lg, border: 0, background: BALL_ACCENT, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Save programme</button>
     </div>
   );
 
@@ -654,10 +664,10 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
         <div style={{ position: "fixed", inset: 0, zIndex: 200, overflowY: "auto", background: "#07070B", display: "grid", placeItems: "center", padding: 24, textAlign: "center" }}>
           <div>
             <Icon name="trophy" size={82} color={BALL_ACCENT} />
-            <h1 style={{ fontSize: 38, lineHeight: 1, fontWeight: 950, margin: "20px 0 8px" }}>WORKOUT COMPLETE</h1>
+            <h1 style={{ fontSize: 32, lineHeight: 1.1, fontWeight: 800, margin: "20px 0 8px" }}>Workout complete</h1>
             <p style={{ color: colors.textSecondary, margin: "0 0 24px" }}>Great job. Your stats have been updated.</p>
             <div style={{ display: "flex", gap: 10, marginBottom: 24 }}><StatPill label="Makes" value={`${totalMakes}/${totalShots}`} /><StatPill label="Percent" value={`${getPercent(totalMakes, totalShots)}%`} /></div>
-            <button onClick={endSession} style={{ width: "100%", padding: 16, borderRadius: radii.lg, border: 0, background: BALL_ACCENT, color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE & RETURN</button>
+            <button onClick={endSession} style={{ width: "100%", padding: 16, borderRadius: radii.lg, border: 0, background: BALL_ACCENT, color: "#fff", fontWeight: 700, cursor: "pointer" }}>Save & return</button>
           </div>
         </div>
       );
@@ -667,26 +677,26 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
       <div style={{ position: "fixed", inset: 0, zIndex: 200, overflowY: "auto", display: "flex", flexDirection: "column", background: "#07070B" }}>
         <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", background: colors.surface, borderBottom: `1px solid ${colors.border}` }}>
           <p style={{ ...typeScale.overline, color: colors.textMuted, margin: 0, textTransform: "uppercase" }}>{isStructured ? `Drill ${drillIndex + 1} of ${activeSession.drills.length}` : "Free Shoot"}</p>
-          <button onClick={endSession} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,93,93,0.12)", color: "#FF9A9A", padding: "9px 12px", fontWeight: 900, cursor: "pointer" }}>END EARLY</button>
+          <button onClick={endSession} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,93,93,0.12)", color: "#FF9A9A", padding: "9px 12px", fontWeight: 700, cursor: "pointer" }}>End early</button>
         </div>
 
         {AUTO_SHOT_ENABLED && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
-            <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? BALL_ACCENT : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? BALL_ACCENT : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
-            <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? BALL_ACCENT : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? BALL_ACCENT : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Shot Tracking</button>
+            <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? BALL_ACCENT : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? `${BALL_ACCENT}2e` : colors.surface, color: shotInputMode === "manual" ? BALL_ACCENT : colors.textSecondary, fontWeight: 700, cursor: "pointer" }}>👆 Manual mode</button>
+            <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? BALL_ACCENT : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? `${BALL_ACCENT}2e` : colors.surface, color: shotInputMode === "auto" ? BALL_ACCENT : colors.textSecondary, fontWeight: 700, cursor: "pointer" }}>📷 Auto shot tracking</button>
           </div>
         )}
 
         {isStructured ? (
           <div style={{ padding: 22, textAlign: "center", borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
-            {pressureMode && activeSession.consecutiveMisses > 0 && <p style={{ margin: "0 0 8px", color: colors.danger, fontWeight: 950, letterSpacing: "0.08em" }}>⚠ 1 MISS... DANGER!</p>}
-            <h2 style={{ fontSize: 25, color: BALL_ACCENT, fontWeight: 950, margin: "0 0 4px" }}>{currentDrill.name}</h2>
+            {pressureMode && activeSession.consecutiveMisses > 0 && <p style={{ margin: "0 0 8px", color: colors.danger, fontWeight: 800, letterSpacing: "0.06em" }}>⚠ 1 miss… danger!</p>}
+            <h2 style={{ fontSize: 24, color: BALL_ACCENT, fontWeight: 800, margin: "0 0 4px" }}>{currentDrill.name}</h2>
             <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: "0 0 18px" }}>{ZONES[currentDrill.zoneId]?.name} • {currentDrill.type}</p>
             <div style={{ maxWidth: 340, margin: "0 auto" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", color: colors.textMuted, fontSize: 11, fontWeight: 900, marginBottom: 7 }}><span>PROGRESS</span><span style={{ color: drillMakes >= currentDrill.targetMakes ? colors.success : colors.textPrimary }}>{drillMakes} / {currentDrill.targetMakes} Makes</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", color: colors.textMuted, fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 7 }}><span>Progress</span><span style={{ color: drillMakes >= currentDrill.targetMakes ? colors.success : colors.textPrimary }}>{drillMakes} / {currentDrill.targetMakes} makes</span></div>
               <div style={{ height: 12, borderRadius: radii.pill, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}><div style={{ width: `${Math.min(100, (drillMakes / currentDrill.targetMakes) * 100)}%`, height: "100%", background: BALL_ACCENT, transition: "width 180ms ease" }} /></div>
             </div>
-            {drillMakes >= currentDrill.targetMakes && <button onClick={advanceDrill} style={{ marginTop: 18, border: 0, borderRadius: radii.pill, padding: "14px 20px", background: colors.success, color: "#04140D", fontWeight: 950, cursor: "pointer" }}>DRILL COMPLETE ›</button>}
+            {drillMakes >= currentDrill.targetMakes && <button onClick={advanceDrill} style={{ marginTop: 18, border: 0, borderRadius: radii.pill, padding: "14px 20px", background: colors.success, color: "#04140D", fontWeight: 800, cursor: "pointer" }}>Drill complete ›</button>}
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12, padding: 14, borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
@@ -711,7 +721,7 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
               disabled={isStructured && drillMakes >= currentDrill.targetMakes}
             />
           ) : (
-            !isStructured && <div><p style={{ fontSize: 72, lineHeight: 1, fontWeight: 950, margin: 0 }}>{getPercent(freeMakes, freeTotal)}<span style={{ fontSize: 32, color: colors.textMuted }}>%</span></p><p style={{ color: colors.textSecondary, fontWeight: 900, margin: "8px 0 0" }}>{freeMakes} / {freeTotal}</p></div>
+            !isStructured && <div><p style={{ fontSize: 72, lineHeight: 1, fontWeight: 800, margin: 0 }}>{getPercent(freeMakes, freeTotal)}<span style={{ fontSize: 32, color: colors.textMuted }}>%</span></p><p style={{ color: colors.textSecondary, fontWeight: 600, margin: "8px 0 0" }}>{freeMakes} / {freeTotal}</p></div>
           )}
         </div>
 
@@ -726,7 +736,7 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
               padding: "10px 12px",
               background: sessionShots.length === 0 ? "rgba(255,255,255,0.03)" : colors.surface,
               color: sessionShots.length === 0 ? colors.textMuted : colors.textPrimary,
-              fontWeight: 900,
+              fontWeight: 600,
               cursor: sessionShots.length === 0 ? "not-allowed" : "pointer",
               opacity: sessionShots.length === 0 ? 0.45 : 1,
             }}
@@ -734,8 +744,8 @@ export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
             ↶ Undo last shot
           </button>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, minHeight: 0 }}>
-            <button onClick={() => recordShot("make")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "8px solid #047857", borderRadius: 22, background: colors.success, color: "#062015", fontSize: 35, fontWeight: 950, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>MAKE</button>
-            <button onClick={() => recordShot("miss")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "8px solid #9F1239", borderRadius: 22, background: "#F43F5E", color: "#fff", fontSize: 35, fontWeight: 950, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>MISS</button>
+            <button onClick={() => recordShot("make")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "6px solid #1E9E70", borderRadius: 22, background: colors.success, color: "#062015", fontSize: 34, fontWeight: 800, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>Make</button>
+            <button onClick={() => recordShot("miss")} disabled={isStructured && drillMakes >= currentDrill.targetMakes} style={{ border: 0, borderBottom: "6px solid #B23B3B", borderRadius: 22, background: colors.danger, color: "#fff", fontSize: 34, fontWeight: 800, cursor: "pointer", opacity: isStructured && drillMakes >= currentDrill.targetMakes ? 0.25 : 1 }}>Miss</button>
           </div>
         </div>
       </div>
