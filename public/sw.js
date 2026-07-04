@@ -1,4 +1,5 @@
-const CACHE_NAME = "orion-gym-v5";
+const CACHE_NAME = "orion-gym-v6";
+const CACHE_PREFIX = "orion-gym-";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -23,7 +24,9 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    caches.keys().then((keys) => Promise.all(keys
+      .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+      .map((key) => caches.delete(key))))
   );
   self.clients.claim();
 });
@@ -40,14 +43,22 @@ self.addEventListener("fetch", (event) => {
 
   const isNavigation = event.request.mode === "navigate";
   const scopePath = new URL(self.registration.scope).pathname;
-  const shouldCache = isNavigation || url.pathname.startsWith(`${scopePath}assets/`) || url.pathname.startsWith(`${scopePath}data/`) || APP_SHELL.some((path) => new URL(path, self.registration.scope).pathname === url.pathname);
+  const isAppAsset = url.pathname.startsWith(`${scopePath}assets/`) || url.pathname.startsWith(`${scopePath}data/`);
+  const isShellAsset = APP_SHELL.some((path) => new URL(path, self.registration.scope).pathname === url.pathname);
+  const shouldCache = isNavigation || isAppAsset || isShellAsset;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
         if (shouldCache && response && response.status === 200) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          caches.open(CACHE_NAME).then((cache) => {
+            if (isNavigation) {
+              cache.put(new URL("./index.html", self.registration.scope).href, clone);
+              return;
+            }
+            cache.put(event.request, clone);
+          });
         }
         return response;
       })
@@ -57,7 +68,7 @@ self.addEventListener("fetch", (event) => {
           return cached;
         }
         if (isNavigation) {
-          return caches.match("./index.html");
+          return caches.match(new URL("./index.html", self.registration.scope).href);
         }
         return Response.error();
       })
