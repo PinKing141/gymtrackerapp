@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AutoShotMode } from "./AutoShotMode.jsx";
 import { ShotZoneCourtPicker } from "../components/ShotZoneCourtPicker.jsx";
+import { Avatar } from "../components/Avatar.jsx";
 import { Icon } from "../components/icons.jsx";
 import { loadRimCalibration } from "../lib/rimCalibration.js";
 import { saveBasketballSession } from "../services/basketballSync.js";
@@ -167,11 +168,15 @@ const BUILT_IN_TEMPLATES = [
 ];
 
 const viewTabs = [
-  { id: "dashboard", label: "Home", icon: "barChart" },
-  { id: "setup", label: "Workouts", icon: "target" },
-  { id: "stats", label: "Stats", icon: "pulse" },
-  { id: "card", label: "Player Card", icon: "trophy" },
+  { id: "dashboard", label: "Home" },
+  { id: "setup", label: "Workouts" },
+  { id: "stats", label: "Stats" },
+  { id: "card", label: "Card" },
 ];
+
+// The one accent this module uses, applied sparingly (like the per-workout
+// colour on the log screen) so basketball reads as part of the app.
+const BALL_ACCENT = "#FF7A1A";
 
 function getTemplateById(id, customTemplates) {
   return [...BUILT_IN_TEMPLATES, ...customTemplates].find((template) => template.id === id);
@@ -211,8 +216,15 @@ function ZoneOptions() {
   ));
 }
 
-export function BasketballScreen({ onExit, firebaseUser }) {
+// Auto shot tracking (camera detection) is temporarily disabled while its
+// on-device performance is worked on. Flip to true to bring it back; the
+// AutoShotMode flow is left intact.
+const AUTO_SHOT_ENABLED = false;
+
+export function BasketballScreen({ app, onExit, onOpenProfile, firebaseUser }) {
   const uid = firebaseUser?.uid || null;
+  const profile = app?.profile || {};
+  const profileFirstName = (profile.firstName || profile.name || "").trim().split(" ")[0];
   const [currentView, setCurrentView] = useState("dashboard");
   const [history, setHistory] = useState([]);
   const [customTemplates, setCustomTemplates] = useState([]);
@@ -454,53 +466,51 @@ export function BasketballScreen({ onExit, firebaseUser }) {
   };
 
   const dashboard = (
-    <div style={{ display: "grid", gap: 18, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 28px" }}>
+    <div style={{ display: "grid", gap: 18, padding: "14px 18px 28px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: "0 0 4px" }}>Hoop Tracker Pro</p>
-          <h1 style={{ fontSize: 28, lineHeight: 1.05, fontWeight: 900, color: colors.textPrimary, margin: 0 }}>Welcome back, {playerName}</h1>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ ...typeScale.overline, color: BALL_ACCENT, textTransform: "uppercase", margin: "0 0 4px" }}>Basketball</p>
+          <h1 style={{ fontSize: 26, lineHeight: 1.1, fontWeight: 800, color: colors.textPrimary, margin: 0 }}>Hey{profileFirstName ? `, ${profileFirstName}` : ""}</h1>
         </div>
-        {onExit && <button onClick={onExit} style={{ border: `1px solid ${colors.border}`, borderRadius: radii.pill, padding: "9px 12px", background: colors.surface, color: colors.textSecondary, fontWeight: 900, cursor: "pointer" }}>Gym</button>}
+        {onOpenProfile && <Avatar profile={profile} size={40} radius={13} fontSize={15} onClick={onOpenProfile} />}
       </div>
 
-      <div style={{ padding: 18, borderRadius: radii.xl, background: stats.recommendedWorkout ? "linear-gradient(135deg, rgba(88,80,236,0.95), rgba(141,71,225,0.88))" : "rgba(255,255,255,0.06)", border: `1px solid ${stats.recommendedWorkout ? "rgba(255,255,255,0.18)" : colors.border}` }}>
-        <p style={{ ...typeScale.overline, color: stats.recommendedWorkout ? "#DDD6FE" : colors.textMuted, margin: "0 0 8px", textTransform: "uppercase" }}>Adaptive Coaching</p>
-        <h2 style={{ fontSize: 20, margin: "0 0 6px", color: colors.textPrimary }}>{stats.recommendedWorkout?.name || "Build Your Shot Profile"}</h2>
-        <p style={{ ...typeScale.bodySm, color: stats.recommendedWorkout ? "rgba(255,255,255,0.82)" : colors.textSecondary, margin: "0 0 14px" }}>{stats.recommendedWorkout?.desc || "Complete more workouts to unlock personalised weakness analysis and coach-built programmes."}</p>
+      <div style={{ padding: 18, borderRadius: radii.xl, background: colors.surface, border: `1px solid ${stats.recommendedWorkout ? `${BALL_ACCENT}55` : colors.border}` }}>
+        <p style={{ ...typeScale.overline, color: BALL_ACCENT, margin: "0 0 8px", textTransform: "uppercase" }}>Adaptive coaching</p>
+        <h2 style={{ fontSize: 19, margin: "0 0 6px", fontWeight: 800, color: colors.textPrimary }}>{stats.recommendedWorkout?.name || "Build your shot profile"}</h2>
+        <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: "0 0 14px" }}>{stats.recommendedWorkout?.desc || "Complete more workouts to unlock personalised weakness analysis and coach-built programmes."}</p>
         {stats.recommendedWorkout && (
-          <button onClick={() => startSession(stats.recommendedWorkout)} style={{ border: 0, borderRadius: radii.md, padding: "10px 14px", fontWeight: 900, color: "#3B0764", background: "#fff", cursor: "pointer" }}>Start Programme</button>
+          <button onClick={() => startSession(stats.recommendedWorkout)} style={{ border: 0, borderRadius: radii.md, padding: "11px 15px", fontWeight: 800, color: "#fff", background: BALL_ACCENT, cursor: "pointer" }}>Start programme</button>
         )}
       </div>
 
       <div style={{ padding: 18, borderRadius: radii.xl, background: colors.surface, border: `1px solid ${colors.border}` }}>
         <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 5px" }}>Your Archetype</p>
-        <h2 style={{ fontSize: 24, color: "#FF9F1C", margin: "0 0 18px", fontWeight: 900 }}>{stats.archetype}</h2>
+        <h2 style={{ fontSize: 24, color: BALL_ACCENT, margin: "0 0 18px", fontWeight: 900 }}>{stats.archetype}</h2>
         <div style={{ display: "flex", gap: 8 }}>
-          <StatPill label="3PT %" value={`${stats.three.percentage}%`} accent="#FF9F1C" />
+          <StatPill label="3PT %" value={`${stats.three.percentage}%`} accent={BALL_ACCENT} />
           <StatPill label="Mid %" value={`${stats.mid.percentage}%`} />
           <StatPill label="Overall" value={stats.overall || "—"} accent="#3DDC97" />
         </div>
       </div>
 
-      <button onClick={() => setCurrentView("setup")} style={{ width: "100%", padding: 16, border: 0, borderRadius: radii.lg, background: "#FF7A1A", color: "#fff", fontSize: 16, fontWeight: 900, boxShadow: "0 14px 35px rgba(255,122,26,0.28)", cursor: "pointer" }}>VIEW TEMPLATES</button>
+      <button onClick={() => setCurrentView("setup")} style={{ width: "100%", padding: 15, border: 0, borderRadius: radii.md, background: BALL_ACCENT, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>View workout templates</button>
     </div>
   );
 
   const setup = (
-    <div style={{ display: "grid", gap: 16, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 28px" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <button onClick={() => setCurrentView("dashboard")} style={{ border: 0, borderRadius: radii.pill, width: 40, height: 40, background: colors.surface, color: colors.textPrimary, cursor: "pointer" }}><Icon name="chevronLeft" /></button>
-        <h1 style={{ flex: 1, fontSize: 26, fontWeight: 900, margin: 0 }}>Workouts</h1>
-        <button onClick={() => setCurrentView("builder")} style={{ border: `1px solid rgba(255,122,26,0.32)`, borderRadius: radii.pill, padding: "10px 12px", background: "rgba(255,122,26,0.1)", color: "#FF9F1C", fontWeight: 900, cursor: "pointer" }}>+ Build</button>
+    <div style={{ display: "grid", gap: 16, padding: "14px 18px 28px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+        <button onClick={() => setCurrentView("builder")} style={{ border: `1px solid ${BALL_ACCENT}52`, borderRadius: radii.pill, padding: "9px 14px", background: `${BALL_ACCENT}1a`, color: BALL_ACCENT, fontWeight: 800, cursor: "pointer" }}>+ Build a programme</button>
       </div>
       {[...BUILT_IN_TEMPLATES, ...customTemplates].map((template) => (
         <button key={template.id} onClick={() => startSession(template)} style={{ textAlign: "left", padding: 16, borderRadius: radii.xl, background: colors.surface, color: colors.textPrimary, border: `1px solid ${colors.border}`, cursor: "pointer" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
             <div>
-              <h2 style={{ fontSize: 18, fontWeight: 900, margin: "0 0 5px" }}>{template.name}</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 5px" }}>{template.name}</h2>
               <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: 0 }}>{template.desc}</p>
             </div>
-            <span style={{ width: 34, height: 34, borderRadius: radii.pill, background: "rgba(255,122,26,0.13)", color: "#FF9F1C", display: "grid", placeItems: "center", fontWeight: 900 }}>▶</span>
+            <span style={{ width: 34, height: 34, borderRadius: radii.pill, background: `${BALL_ACCENT}1f`, color: BALL_ACCENT, display: "grid", placeItems: "center", flexShrink: 0 }}><Icon name="arrowRight" size={16} /></span>
           </div>
           {template.isStructured && <p style={{ ...typeScale.caption, display: "inline-block", margin: "12px 0 0", padding: "5px 8px", borderRadius: radii.pill, color: colors.textMuted, background: "rgba(255,255,255,0.06)" }}>{template.drills?.length || 0} drills</p>}
         </button>
@@ -509,15 +519,14 @@ export function BasketballScreen({ onExit, firebaseUser }) {
   );
 
   const playerCard = (
-    <div style={{ display: "grid", gap: 18, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 28px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Player Card</h1>
-        <button onClick={() => setPlayerName(window.prompt("Enter Player Name:", playerName) || playerName)} style={{ background: "none", border: 0, color: "#FF9F1C", fontWeight: 900, cursor: "pointer" }}>Edit</button>
+    <div style={{ display: "grid", gap: 18, padding: "14px 18px 28px" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
+        <button onClick={() => setPlayerName(window.prompt("Enter card name:", playerName) || playerName)} style={{ background: "none", border: 0, color: BALL_ACCENT, fontWeight: 800, cursor: "pointer" }}>Edit name</button>
       </div>
       <div style={{ padding: 20, borderRadius: 28, background: "linear-gradient(145deg, #111827, #0F172A 55%, #111827)", border: `1px solid ${colors.borderStrong}`, color: "#fff", position: "relative", overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, paddingBottom: 16, marginBottom: 16, borderBottom: `1px solid ${colors.border}` }}>
           <div>
-            <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: "0 0 6px" }}>{stats.archetype}</p>
+            <p style={{ ...typeScale.overline, color: BALL_ACCENT, textTransform: "uppercase", margin: "0 0 6px" }}>{stats.archetype}</p>
             <h2 style={{ fontSize: 30, lineHeight: 1, fontWeight: 900, margin: 0 }}>{playerName}</h2>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -534,7 +543,7 @@ export function BasketballScreen({ onExit, firebaseUser }) {
           ].map((attr) => (
             <div key={attr.label}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 900, color: colors.textSecondary }}><span>{attr.label}</span><span style={{ color: attr.val >= 80 ? "#3DDC97" : "#fff" }}>{attr.val || "--"}</span></div>
-              <div style={{ height: 6, borderRadius: radii.pill, background: "rgba(255,255,255,0.12)", marginTop: 5, overflow: "hidden" }}><div style={{ height: "100%", width: `${attr.val || 0}%`, background: "#FF7A1A" }} /></div>
+              <div style={{ height: 6, borderRadius: radii.pill, background: "rgba(255,255,255,0.12)", marginTop: 5, overflow: "hidden" }}><div style={{ height: "100%", width: `${attr.val || 0}%`, background: BALL_ACCENT }} /></div>
             </div>
           ))}
         </div>
@@ -553,13 +562,12 @@ export function BasketballScreen({ onExit, firebaseUser }) {
   const pendingSyncCount = history.filter((session) => session.shots?.length && !session.synced).length;
 
   const statsView = (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 96px" }}>
-      <h1 style={{ fontSize: 26, fontWeight: 900, margin: 0 }}>Shot Stats</h1>
+    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 16, padding: "14px 18px 40px" }}>
       <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
         <StatPill label="Shots" value={statsTotal} />
         <StatPill label="Makes" value={statsMakes} accent="#3DDC97" />
         <StatPill label="Misses" value={statsTotal - statsMakes} accent="#F43F5E" />
-        <StatPill label="FG%" value={`${getPercent(statsMakes, statsTotal)}%`} accent="#FF9F1C" />
+        <StatPill label="FG%" value={`${getPercent(statsMakes, statsTotal)}%`} accent={BALL_ACCENT} />
       </div>
       <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "6px 0 0" }}>Where shots came from</p>
       <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
@@ -608,7 +616,7 @@ export function BasketballScreen({ onExit, firebaseUser }) {
         </div>
       ))}
       <button onClick={() => setCustomDrills((previous) => [...previous, { name: `Drill ${previous.length + 1}`, zoneId: "under_basket", type: "Layup", targetMakes: 10 }])} style={{ padding: 14, borderRadius: radii.lg, border: `2px dashed ${colors.borderStrong}`, background: "transparent", color: colors.textSecondary, fontWeight: 900, cursor: "pointer" }}>+ Add Drill</button>
-      <button onClick={saveCustomTemplate} style={{ padding: 16, borderRadius: radii.lg, border: 0, background: "#FF7A1A", color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE PROGRAMME</button>
+      <button onClick={saveCustomTemplate} style={{ padding: 16, borderRadius: radii.lg, border: 0, background: BALL_ACCENT, color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE PROGRAMME</button>
     </div>
   );
 
@@ -629,38 +637,40 @@ export function BasketballScreen({ onExit, firebaseUser }) {
 
     if (isWorkoutComplete) {
       return (
-        <div style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 24, textAlign: "center" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, overflowY: "auto", background: "#07070B", display: "grid", placeItems: "center", padding: 24, textAlign: "center" }}>
           <div>
-            <Icon name="trophy" size={82} color="#FF9F1C" />
+            <Icon name="trophy" size={82} color={BALL_ACCENT} />
             <h1 style={{ fontSize: 38, lineHeight: 1, fontWeight: 950, margin: "20px 0 8px" }}>WORKOUT COMPLETE</h1>
             <p style={{ color: colors.textSecondary, margin: "0 0 24px" }}>Great job. Your stats have been updated.</p>
-            <div style={{ display: "flex", gap: 10, marginBottom: 24 }}><StatPill label="Makes" value={`${totalMakes}/${totalShots}`} /><StatPill label="Percent" value={`${getPercent(totalMakes, totalShots)}%`} accent="#FF9F1C" /></div>
-            <button onClick={endSession} style={{ width: "100%", padding: 16, borderRadius: radii.lg, border: 0, background: "#FF7A1A", color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE & RETURN</button>
+            <div style={{ display: "flex", gap: 10, marginBottom: 24 }}><StatPill label="Makes" value={`${totalMakes}/${totalShots}`} /><StatPill label="Percent" value={`${getPercent(totalMakes, totalShots)}%`} accent={BALL_ACCENT} /></div>
+            <button onClick={endSession} style={{ width: "100%", padding: 16, borderRadius: radii.lg, border: 0, background: BALL_ACCENT, color: "#fff", fontWeight: 900, cursor: "pointer" }}>SAVE & RETURN</button>
           </div>
         </div>
       );
     }
 
     return (
-      <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "#07070B" }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 200, overflowY: "auto", display: "flex", flexDirection: "column", background: "#07070B" }}>
         <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 12px) 16px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", background: colors.surface, borderBottom: `1px solid ${colors.border}` }}>
           <p style={{ ...typeScale.overline, color: colors.textMuted, margin: 0, textTransform: "uppercase" }}>{isStructured ? `Drill ${drillIndex + 1} of ${activeSession.drills.length}` : "Free Shoot"}</p>
           <button onClick={endSession} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,93,93,0.12)", color: "#FF9A9A", padding: "9px 12px", fontWeight: 900, cursor: "pointer" }}>END EARLY</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
-          <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
-          <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Shot Tracking</button>
-        </div>
+        {AUTO_SHOT_ENABLED && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
+            <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? BALL_ACCENT : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? BALL_ACCENT : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
+            <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? BALL_ACCENT : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? BALL_ACCENT : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Shot Tracking</button>
+          </div>
+        )}
 
         {isStructured ? (
           <div style={{ padding: 22, textAlign: "center", borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
             {pressureMode && activeSession.consecutiveMisses > 0 && <p style={{ margin: "0 0 8px", color: colors.danger, fontWeight: 950, letterSpacing: "0.08em" }}>⚠ 1 MISS... DANGER!</p>}
-            <h2 style={{ fontSize: 25, color: "#FF9F1C", fontWeight: 950, margin: "0 0 4px" }}>{currentDrill.name}</h2>
+            <h2 style={{ fontSize: 25, color: BALL_ACCENT, fontWeight: 950, margin: "0 0 4px" }}>{currentDrill.name}</h2>
             <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: "0 0 18px" }}>{ZONES[currentDrill.zoneId]?.name} • {currentDrill.type}</p>
             <div style={{ maxWidth: 340, margin: "0 auto" }}>
               <div style={{ display: "flex", justifyContent: "space-between", color: colors.textMuted, fontSize: 11, fontWeight: 900, marginBottom: 7 }}><span>PROGRESS</span><span style={{ color: drillMakes >= currentDrill.targetMakes ? colors.success : colors.textPrimary }}>{drillMakes} / {currentDrill.targetMakes} Makes</span></div>
-              <div style={{ height: 12, borderRadius: radii.pill, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}><div style={{ width: `${Math.min(100, (drillMakes / currentDrill.targetMakes) * 100)}%`, height: "100%", background: "#FF7A1A", transition: "width 180ms ease" }} /></div>
+              <div style={{ height: 12, borderRadius: radii.pill, background: "rgba(255,255,255,0.1)", overflow: "hidden" }}><div style={{ width: `${Math.min(100, (drillMakes / currentDrill.targetMakes) * 100)}%`, height: "100%", background: BALL_ACCENT, transition: "width 180ms ease" }} /></div>
             </div>
             {drillMakes >= currentDrill.targetMakes && <button onClick={advanceDrill} style={{ marginTop: 18, border: 0, borderRadius: radii.pill, padding: "14px 20px", background: colors.success, color: "#04140D", fontWeight: 950, cursor: "pointer" }}>DRILL COMPLETE ›</button>}
           </div>
@@ -679,7 +689,7 @@ export function BasketballScreen({ onExit, firebaseUser }) {
         )}
 
         <div style={{ flex: 1, display: "grid", placeItems: "center", textAlign: "center", padding: 24 }}>
-          {shotInputMode === "auto" ? (
+          {AUTO_SHOT_ENABLED && shotInputMode === "auto" ? (
             <AutoShotMode
               onRecordShot={recordShot}
               currentZoneName={ZONES[isStructured ? currentDrill.zoneId : activeSession.currentZone]?.name}
@@ -718,24 +728,35 @@ export function BasketballScreen({ onExit, firebaseUser }) {
     );
   })() : dashboard;
 
+  const isTabView = ["dashboard", "setup", "stats", "card"].includes(currentView);
+
   return (
-    <div style={{ minHeight: "100dvh", background: currentView === "workout" ? "#07070B" : colors.background, color: colors.textPrimary }}>
+    <div style={{ minHeight: "100%", background: colors.background, color: colors.textPrimary }}>
+      {isTabView && (
+        <div style={{ padding: "calc(env(safe-area-inset-top, 0px) + 16px) 18px 0" }}>
+          <div style={{ display: "flex", gap: 6, padding: 4, borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}` }}>
+            {viewTabs.map((tab) => {
+              const activeTab = currentView === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setCurrentView(tab.id)}
+                  style={{ flex: 1, minWidth: 0, padding: "9px 4px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: activeTab ? `${BALL_ACCENT}26` : "transparent", color: activeTab ? BALL_ACCENT : colors.textMuted }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {currentView === "dashboard" && dashboard}
       {currentView === "setup" && setup}
       {currentView === "stats" && statsView}
       {currentView === "builder" && builder}
       {currentView === "card" && playerCard}
       {currentView === "workout" && workout}
-      {currentView !== "workout" && (
-        <nav style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 430, display: "flex", justifyContent: "space-around", padding: "7px 0 env(safe-area-inset-bottom, 7px)", background: "rgba(10,10,15,0.94)", borderTop: `1px solid ${colors.border}`, backdropFilter: "blur(20px)", zIndex: 10 }}>
-          {viewTabs.map((tab) => (
-            <button key={tab.id} onClick={() => setCurrentView(tab.id)} style={{ border: 0, background: currentView === tab.id ? "rgba(255,122,26,0.14)" : "transparent", color: currentView === tab.id ? "#FF9F1C" : colors.textMuted, borderRadius: radii.pill, padding: "7px 13px", display: "grid", justifyItems: "center", gap: 2, cursor: "pointer" }}>
-              <Icon name={tab.icon} size={20} />
-              <span style={{ ...typeScale.caption }}>{tab.label}</span>
-            </button>
-          ))}
-        </nav>
-      )}
     </div>
   );
 }
