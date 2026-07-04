@@ -4,7 +4,7 @@ import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceButton, Su
 import { IS, fd, today } from "../storage.js";
 import { colors, radii, typeScale } from "../theme.js";
 import { getFoodDisplayDetail, getFoodDisplayName, getFoodSourceLabel, getLoggedFoodParts, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
-import { lookupByBarcode, normalizeBarcode } from "../services/nutrition/openFoodFacts.js";
+import { lookupByBarcode, normalizeBarcode, searchOnline } from "../services/nutrition/openFoodFacts.js";
 import {
   MEAL_TYPES,
   createFoodLogEntry,
@@ -357,6 +357,9 @@ export function NutritionScreen({ app, setApp, onBack }) {
   const [barcodeStatus, setBarcodeStatus] = useState("idle");
   const [barcodeError, setBarcodeError] = useState("");
   const [incompleteProduct, setIncompleteProduct] = useState(null);
+  const [onlineResults, setOnlineResults] = useState([]);
+  const [onlineStatus, setOnlineStatus] = useState("idle");
+  const [onlineError, setOnlineError] = useState("");
 
   const nutrition = useMemo(() => normalizeNutrition(app?.nutrition), [app?.nutrition]);
   const logs = nutrition.foodLogs;
@@ -388,6 +391,14 @@ export function NutritionScreen({ app, setApp, onBack }) {
       active = false;
     };
   }, []);
+
+  // Clear online results whenever the query changes, so results always match the
+  // current text and the OFF request only ever fires from the button.
+  useEffect(() => {
+    setOnlineResults([]);
+    setOnlineStatus("idle");
+    setOnlineError("");
+  }, [query]);
 
   const updateNutrition = (updater) => NutritionStateUpdater(setApp, updater);
   const addLogs = (entries) => {
@@ -458,6 +469,25 @@ export function NutritionScreen({ app, setApp, onBack }) {
   const addProductManually = (product) => {
     setCustomDraft({ ...DEFAULT_CUSTOM_DRAFT, name: product?.food_name || "", brand: product?.brand || "" });
     setMode("custom");
+  };
+
+  const runOnlineSearch = async () => {
+    const q = query.trim();
+    if (q.length < 2 || onlineStatus === "loading") return;
+    setOnlineStatus("loading");
+    setOnlineError("");
+    const res = await searchOnline(q);
+    if (res.status === "ok") {
+      setOnlineResults(res.foods);
+      setOnlineStatus("done");
+    } else if (res.status === "empty") {
+      setOnlineResults([]);
+      setOnlineStatus("empty");
+    } else {
+      setOnlineResults([]);
+      setOnlineStatus("error");
+      setOnlineError(res.error || "Online search failed.");
+    }
   };
 
   const addSelectedFood = () => {
@@ -643,7 +673,32 @@ export function NutritionScreen({ app, setApp, onBack }) {
             {foodStatus === "error" && <SurfaceCard><p style={{ margin: 0, color: colors.danger, fontSize: 12 }}>{foodError}</p></SurfaceCard>}
             {results.map((food) => <FoodResultRow key={`${food.source}-${food.id || food.food_id}`} food={food} onClick={() => openFoodDetail(food)} />)}
             {foodStatus === "ready" && results.length === 0 && query.trim().length >= 2 && (
-              <SurfaceCard><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>No food matches found.</p></SurfaceCard>
+              <SurfaceCard><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>No local matches — try branded foods online below.</p></SurfaceCard>
+            )}
+
+            {query.trim().length >= 2 && (
+              <>
+                {onlineStatus !== "done" && (
+                  <ActionButton tone="tinted" color="#B58BFF" compact onClick={runOnlineSearch} disabled={onlineStatus === "loading"} style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                    <Icon name="search" size={15} color="#B58BFF" />
+                    {onlineStatus === "loading" ? "Searching Open Food Facts…" : "Search branded foods online"}
+                  </ActionButton>
+                )}
+                {onlineStatus === "error" && (
+                  <SurfaceCard style={{ marginTop: 8, borderColor: "rgba(255,93,93,0.3)", background: "rgba(255,93,93,0.06)" }}>
+                    <p style={{ margin: 0, ...typeScale.bodySm, color: colors.danger }}>{onlineError}</p>
+                  </SurfaceCard>
+                )}
+                {onlineStatus === "empty" && (
+                  <SurfaceCard style={{ marginTop: 8 }}><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>No branded matches on Open Food Facts.</p></SurfaceCard>
+                )}
+                {onlineResults.length > 0 && (
+                  <>
+                    <p style={sectionLabelStyle}>Branded · Open Food Facts</p>
+                    {onlineResults.map((food) => <FoodResultRow key={`off-${food.food_id}`} food={food} onClick={() => openFoodDetail(food)} />)}
+                  </>
+                )}
+              </>
             )}
           </>
         )}

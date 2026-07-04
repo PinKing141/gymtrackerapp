@@ -129,3 +129,53 @@ export async function lookupByBarcode(rawBarcode) {
   const { food, complete } = mapOffProduct(payload.product, barcode);
   return complete ? { status: "found", food } : { status: "incomplete", food };
 }
+
+const OFF_SEARCH = "https://world.openfoodfacts.org/api/v2/search";
+
+// One-shot text search — call this ONLY on an explicit button press, never as
+// the user types (OFF limits search to ~10 req/min/IP and will block abusers).
+// Returns { status: "ok", foods } | { status: "empty" } | { status: "error", error }.
+export async function searchOnline(query, { limit = 20 } = {}) {
+  const q = String(query || "").trim();
+  if (q.length < 2) {
+    return { status: "empty" };
+  }
+
+  const params = new URLSearchParams({
+    search_terms: q,
+    fields: `code,${OFF_FIELDS}`,
+    page_size: String(limit),
+    sort_by: "popularity_key",
+  });
+
+  let response;
+  try {
+    response = await fetch(`${OFF_SEARCH}?${params.toString()}`);
+  } catch {
+    return { status: "error", error: "Couldn't reach Open Food Facts. Check your connection." };
+  }
+  if (!response.ok) {
+    return { status: "error", error: "Open Food Facts returned an error. Try again shortly." };
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    return { status: "error", error: "Open Food Facts sent an unexpected response." };
+  }
+
+  const products = Array.isArray(payload?.products) ? payload.products : [];
+  const seen = new Set();
+  const foods = products
+    .map((product) => mapOffProduct(product, product.code || product._id))
+    .filter(({ food, complete }) => {
+      if (!complete || food.food_name === "Unnamed product") return false;
+      if (seen.has(food.food_id)) return false;
+      seen.add(food.food_id);
+      return true;
+    })
+    .map(({ food }) => food);
+
+  return foods.length ? { status: "ok", foods } : { status: "empty" };
+}
