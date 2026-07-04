@@ -74,5 +74,11 @@ export function getFoodMeta(food = {}) {
   if (food.source === "custom") {
     return [food.brand, "Custom food"].filter(Boolean).join(" · ");
   }
-  return food.food_group || (food.food_group_code ? `CoFID group ${food.food_group_code}` : "CoFID");
+
+  const group = String(food.food_group || "").trim();
+  if (group && !/^CoFID group\s+[A-Z0-9]+$/i.test(group)) {
+    return group;
+  }
+
+  return "Food database";
 }
