@@ -6,6 +6,7 @@ import { colors, radii, typeScale } from "../theme.js";
 import { getFoodDisplayDetail, getFoodDisplayName, getFoodSourceLabel, getLoggedFoodParts, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
 import { lookupByBarcode, normalizeBarcode, searchOnline } from "../services/nutrition/openFoodFacts.js";
 import { BarcodeScanner } from "../components/nutrition/BarcodeScanner.jsx";
+import { Avatar } from "../components/Avatar.jsx";
 import {
   MEAL_TYPES,
   createFoodLogEntry,
@@ -341,7 +342,7 @@ function Field({ label, children }) {
   );
 }
 
-export function NutritionScreen({ app, setApp, onBack }) {
+export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
   const [foods, setFoods] = useState([]);
   const [foodStatus, setFoodStatus] = useState("idle");
   const [foodError, setFoodError] = useState("");
@@ -866,7 +867,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
 
   return (
     <Screen>
-      <ScreenHeader action={headerAction} title="Nutrition" subtitle={`${Math.round(totals.calories).toLocaleString()} / ${targets.calorieTarget ? targets.calorieTarget.toLocaleString() : "-"} kcal`} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+      <ScreenHeader action={headerAction} title="Nutrition" subtitle={`${Math.round(totals.calories).toLocaleString()} / ${targets.calorieTarget ? targets.calorieTarget.toLocaleString() : "-"} kcal`} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" trailing={onOpenProfile && <Avatar profile={app.profile} size={40} radius={13} fontSize={15} onClick={onOpenProfile} />} />
       <DateSwitcher selectedDate={selectedDate} onChange={setSelectedDate} />
       <SummaryCard totals={totals} targets={targets} />
 
