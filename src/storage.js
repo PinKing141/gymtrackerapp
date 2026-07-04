@@ -37,6 +37,7 @@ const DEFAULT_PROFILE = {
   notes: "",
   enabledModules: { ...DEFAULT_ENABLED_MODULES },
   onboardingComplete: false,
+  avatar: null,
 };
 const DEFAULT_SOUND_CATEGORIES = {
   timers: true,

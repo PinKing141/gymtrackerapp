@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Spark } from "../components/WorkoutComponents.jsx";
 import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { Icon, WaterGlassIcon } from "../components/icons.jsx";
@@ -139,6 +139,7 @@ export function MoreScreen({
   setReviewForm,
   streakSummary,
 }) {
+  const avatarInputRef = useRef(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
@@ -379,6 +380,41 @@ export function MoreScreen({
 
   const displayName = getDisplayName(profile);
   const initials = getInitials(displayName);
+
+  // Read a chosen photo, centre-crop to a square and shrink it to ~256px so the
+  // resulting data URL is small enough to sync inside the Firestore doc.
+  const handleAvatarFile = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        const out = 256;
+        const canvas = document.createElement("canvas");
+        canvas.width = out;
+        canvas.height = out;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
+        setApp((current) => ({ ...current, profile: { ...(current.profile || {}), avatar: canvas.toDataURL("image/jpeg", 0.82) } }));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Photo if set, initials otherwise.
+  const renderAvatar = (size, radius, fontSize) => (
+    profile.avatar
+      ? <img src={profile.avatar} alt="" style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flexShrink: 0, display: "block" }} />
+      : <div style={{ width: size, height: size, borderRadius: radius, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize, fontWeight: 800 }}>{initials}</div>
+  );
+
   const goalLabel = getGoalLabel(profile.goal);
   const unitLabel = getUnitLabel(profile);
   const weightLabel = getWeightLabel(profile);
@@ -399,7 +435,7 @@ export function MoreScreen({
 
   if (["editProfile","bodyGoals","trackingModules","preferences","units","soundHaptics","appearance","notifications","account","dataBackup","dangerZone","about","importPreview","restorePreview"].includes(sectionView)) {
     return <Screen><Header onBack={goBackSection || closeSection} title={{editProfile:"Edit profile",bodyGoals:"Body & Goals",trackingModules:"What you track",preferences:"Preferences",units:"Units",soundHaptics:"Sound & Haptics",appearance:"Appearance",notifications:"Notifications",account:"Account",dataBackup:"Data & Backup",dangerZone:"Danger Zone",about:"About",importPreview:"Import preview",restorePreview:"Restore preview"}[sectionView]} subtitle={sectionView === "bodyGoals" ? "The better this is, the better your training targets work." : undefined} />
-      {sectionView === "editProfile" && <><Group title="Identity"><div style={{ display: "flex", alignItems: "center", gap: 12 }}><div style={{ width: 52, height: 52, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize: 19, fontWeight: 800 }}>{initials}</div><div style={{ minWidth: 0 }}><p style={{ margin: 0, color: "#fff", fontWeight: 800 }}>{displayName}</p><p style={{ margin: "3px 0 0", color: "#8A8F9C", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser?.email || "Signed out"}</p></div></div><Field label="Display name"><input style={IS} value={profile.name || ""} onChange={(e)=>setProfile({ name: e.target.value })} placeholder="Your name" /></Field><Field label="Personal notes"><TextAreaField value={profile.notes || ""} onChange={(e)=>setProfile({ notes: e.target.value })} placeholder="Injuries, schedule, preferences..." /></Field></Group></>}
+      {sectionView === "editProfile" && <><Group title="Identity"><div style={{ display: "flex", alignItems: "center", gap: 12 }}><button type="button" onClick={()=>avatarInputRef.current?.click()} style={{ position: "relative", border: "none", background: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0 }}>{renderAvatar(56, 18, 20)}<span style={{ position: "absolute", right: -3, bottom: -3, width: 22, height: 22, borderRadius: 999, background: "#4EA1FF", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #15151F" }}><Icon name="plus" size={12} color="#fff" strokeWidth={2.6} /></span></button><div style={{ minWidth: 0 }}><p style={{ margin: 0, color: "#fff", fontWeight: 800 }}>{displayName}</p><p style={{ margin: "3px 0 0", color: "#8A8F9C", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser?.email || "Signed out"}</p>{profile.avatar ? <button type="button" onClick={()=>setProfile({ avatar: null })} style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "#FF8A8A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Remove photo</button> : <button type="button" onClick={()=>avatarInputRef.current?.click()} style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "#4EA1FF", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Add photo</button>}</div></div><input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: "none" }} /><Field label="Display name"><input style={IS} value={profile.name || ""} onChange={(e)=>setProfile({ name: e.target.value })} placeholder="Your name" /></Field><Field label="Personal notes"><TextAreaField value={profile.notes || ""} onChange={(e)=>setProfile({ notes: e.target.value })} placeholder="Injuries, schedule, preferences..." /></Field></Group></>}
       {sectionView === "bodyGoals" && <><Group title="Body"><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Field label="Age"><input style={IS} type="number" value={profile.age || ""} onChange={(e)=>setProfile({ age:e.target.value })} /></Field><Field label="Sex"><select style={IS} value={profile.sex || "male"} onChange={(e)=>setProfile({ sex:e.target.value })}><option value="male">Male</option><option value="female">Female</option></select></Field>{unitSystem === "imperial" ? <><Field label="Height feet"><input style={IS} type="number" value={profileFeet || ""} onChange={(e)=>setProfile({ heightCm: feetInchesToCm(e.target.value, profileInches) })} /></Field><Field label="Height inches"><input style={IS} type="number" value={profileInches || ""} onChange={(e)=>setProfile({ heightCm: feetInchesToCm(profileFeet, e.target.value) })} /></Field><Field label="Current weight (lb)"><input style={IS} type="number" value={kgToPounds(profile.weightKg)} onChange={(e)=>setProfile({ weightKg:poundsToKg(e.target.value) })} /></Field><Field label="Target weight (lb)"><input style={IS} type="number" value={targetWeightDisplay} onChange={(e)=>setProfile({ targetWeightKg:poundsToKg(e.target.value) })} /></Field></> : <><Field label="Height (cm)"><input style={IS} type="number" value={profile.heightCm || ""} onChange={(e)=>setProfile({ heightCm:e.target.value })} /></Field><Field label="Current weight (kg)"><input style={IS} type="number" value={profile.weightKg || ""} onChange={(e)=>setProfile({ weightKg:e.target.value })} /></Field><Field label="Target weight (kg)"><input style={IS} type="number" value={profile.targetWeightKg || ""} onChange={(e)=>setProfile({ targetWeightKg:e.target.value })} /></Field></>}</div></Group><Group title="Goal"><select style={IS} value={profile.goal || "maintain"} onChange={(e)=>setProfile({ goal:e.target.value })}>{GOAL_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><select style={IS} value={profile.weeklyGoalRate || "moderate"} onChange={(e)=>setProfile({ weeklyGoalRate:e.target.value })}>{(profile.goal === "bulk" ? ["Slow lean bulk","Moderate gain","Aggressive gain"] : ["0.25 kg/week","0.5 kg/week","0.75 kg/week","1.0 kg/week"]).map(o=><option key={o} value={o}>{o}</option>)}</select><select style={IS} value={profile.activityLevel || "moderate"} onChange={(e)=>setProfile({ activityLevel:e.target.value })}>{ACTIVITY_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></Group><Group title="Nutrition target">{calorieStats ? <><p style={{margin:0,color:"#fff"}}>BMR estimate: <strong>{calorieStats.bmr}</strong> kcal/day</p><p style={{margin:0,color:"#fff"}}>Maintenance calories: <strong>{calorieStats.maintenance}</strong> kcal/day</p><p style={{margin:0,color:"#fff"}}>Goal calories: <strong>{calorieStats.target}</strong> kcal/day</p><p style={{margin:0,color:"#8BA6C9"}}>Protein target: <strong>{proteinRange}</strong></p></> : <p style={{margin:0,color:"#888"}}>Add age, height, and current weight to estimate calories and protein.</p>}</Group></>}
       {sectionView === "trackingModules" && <><Group title="Main modules">{mainModules.map(m=><div key={m.key} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><p style={{margin:0,color:"#fff",fontWeight:700}}>{m.label}{m.locked ? " · Core" : ""}</p><p style={{margin:"2px 0 0",color:"#8A8F9C",fontSize:11}}>{m.desc}</p></div><Toggle on={m.locked || enabledModules[m.key]} disabled={m.locked} onClick={()=>toggleModule(m.key)} /></div>)}</Group><Group title="Support modules">{supportModules.map(m=><div key={m.key} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><p style={{margin:0,color:"#fff",fontWeight:700}}>{m.label}</p><p style={{margin:"2px 0 0",color:"#8A8F9C",fontSize:11}}>{m.desc}</p></div><Toggle on={enabledModules[m.key]} onClick={()=>toggleModule(m.key)} /></div>)}</Group></>}
       {sectionView === "preferences" && <><ProfileRow icon="scale" label="Units" summary={unitLabel} onClick={()=>onOpenSection("units")} /><ProfileRow icon="pulse" label="Sound & Haptics" summary={`${devicePrefs.soundEnabled !== false ? "Sound on" : "Sound off"} · ${devicePrefs.hapticsEnabled !== false ? "Haptics on" : "Haptics off"}`} onClick={()=>onOpenSection("soundHaptics")} /><ProfileRow icon="spark" label="Appearance" summary="Dark" onClick={()=>onOpenSection("appearance")} /></>}
@@ -422,9 +458,10 @@ export function MoreScreen({
     <Screen>
       <div style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)", marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-          <div style={{ width: 60, height: 60, borderRadius: 20, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize: 22, fontWeight: 800 }}>{initials}</div>
+          <button type="button" onClick={()=>avatarInputRef.current?.click()} style={{ position: "relative", border: "none", background: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0 }}>{renderAvatar(60, 20, 22)}<span style={{ position: "absolute", right: -3, bottom: -3, width: 22, height: 22, borderRadius: 999, background: "#4EA1FF", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #0A0A0F" }}><Icon name="plus" size={12} color="#fff" strokeWidth={2.6} /></span></button>
           <div style={{ minWidth: 0 }}><h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</h1>{firebaseUser?.email && <p style={{ margin: "3px 0 0", fontSize: 12, color: "#8A8F9C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>}</div>
         </div>
+        <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: "none" }} />
         <div style={{ display: "flex", gap: 8 }}>{[{ label: "Goal", value: goalLabel }, { label: "Weight", value: weightLabel }, { label: "Streak", value: `${streakSummary?.currentStreak || 0} wk` }].map((stat) => <div key={stat.label} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "11px 6px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}><p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stat.value}</p><p style={{ margin: "2px 0 0", fontSize: 10, color: "#6C6F7B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{stat.label}</p></div>)}</div>
       </div>
       <SurfaceCard style={{ borderColor: "rgba(78,161,255,0.25)", background: "rgba(78,161,255,0.07)" }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}><div><p style={{ margin:0, color:"#fff", fontWeight:800 }}>{completionPercent >= 100 ? "Profile complete" : `Profile ${completionPercent}% complete`}</p><p style={{ margin:"4px 0 0", color:"#8BA6C9", fontSize:12 }}>Next: {nextAction}</p></div><div style={{ width:52, height:52, borderRadius:999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.06)", color:"#fff", fontWeight:800 }}>{completionPercent}%</div></div></SurfaceCard>
