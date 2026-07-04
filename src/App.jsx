@@ -226,7 +226,7 @@ export function App() {
     );
   }
   if (view === "basketball") {
-    content = <BasketballScreen onExit={goBackView} firebaseUser={firebaseUser} />;
+    content = <BasketballScreen app={app} onExit={goBackView} onOpenProfile={() => navigate("more")} firebaseUser={firebaseUser} />;
   }
   if (view === "nutrition") {
     content = <NutritionScreen app={app} setApp={setApp} onBack={canGoBackView ? goBackView : undefined} onOpenProfile={() => navigate("more")} />;
@@ -302,7 +302,7 @@ export function App() {
       >
         {content}
       </div>
-      {view !== "log" && view !== "basketball" && (
+      {view !== "log" && (
         <div
           style={{
             position: "fixed",
