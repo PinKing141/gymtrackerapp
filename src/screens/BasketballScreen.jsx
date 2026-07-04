@@ -211,6 +211,11 @@ function ZoneOptions() {
   ));
 }
 
+// Auto shot tracking (camera detection) is temporarily disabled while its
+// on-device performance is worked on. Flip to true to bring it back; the
+// AutoShotMode flow is left intact.
+const AUTO_SHOT_ENABLED = false;
+
 export function BasketballScreen({ onExit, firebaseUser }) {
   const uid = firebaseUser?.uid || null;
   const [currentView, setCurrentView] = useState("dashboard");
@@ -648,10 +653,12 @@ export function BasketballScreen({ onExit, firebaseUser }) {
           <button onClick={endSession} style={{ border: 0, borderRadius: radii.pill, background: "rgba(255,93,93,0.12)", color: "#FF9A9A", padding: "9px 12px", fontWeight: 900, cursor: "pointer" }}>END EARLY</button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
-          <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
-          <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Shot Tracking</button>
-        </div>
+        {AUTO_SHOT_ENABLED && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: "rgba(255,255,255,0.03)", borderBottom: `1px solid ${colors.border}` }}>
+            <button onClick={() => setShotInputMode("manual")} style={{ border: `1px solid ${shotInputMode === "manual" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "manual" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "manual" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>👆 Manual Mode</button>
+            <button onClick={() => setShotInputMode("auto")} style={{ border: `1px solid ${shotInputMode === "auto" ? "#FF9F1C" : colors.border}`, borderRadius: radii.pill, padding: "11px 12px", background: shotInputMode === "auto" ? "rgba(255,122,26,0.18)" : colors.surface, color: shotInputMode === "auto" ? "#FF9F1C" : colors.textSecondary, fontWeight: 950, cursor: "pointer" }}>📷 Auto Shot Tracking</button>
+          </div>
+        )}
 
         {isStructured ? (
           <div style={{ padding: 22, textAlign: "center", borderBottom: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)" }}>
@@ -679,7 +686,7 @@ export function BasketballScreen({ onExit, firebaseUser }) {
         )}
 
         <div style={{ flex: 1, display: "grid", placeItems: "center", textAlign: "center", padding: 24 }}>
-          {shotInputMode === "auto" ? (
+          {AUTO_SHOT_ENABLED && shotInputMode === "auto" ? (
             <AutoShotMode
               onRecordShot={recordShot}
               currentZoneName={ZONES[isStructured ? currentDrill.zoneId : activeSession.currentZone]?.name}
