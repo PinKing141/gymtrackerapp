@@ -223,7 +223,7 @@ function FoodResultRow({ food, onClick }) {
       <div style={{ minWidth: 0, flex: 1 }}>
         <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getFoodDisplayName(food)}</p>
         <p style={{ margin: "3px 0 0", ...typeScale.caption, color: colors.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {getFoodMeta(food)} · {formatPer100(food.calories_per_100g, "kcal")} · {formatPer100(food.protein_per_100g, "g")} protein /100g
+          {getFoodMeta(food)} · {formatPer100(food.calories_per_100g, "kcal")} · {formatPer100(food.protein_per_100g, "g")} protein per 100g
         </p>
       </div>
       <Icon name="chevronRight" size={16} color={colors.textMuted} />
@@ -467,10 +467,10 @@ export function NutritionScreen({ app, setApp, onBack }) {
   if (mode === "search") {
     return (
       <Screen>
-        <ScreenHeader action={headerAction} title="Add Food" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+        <ScreenHeader action={headerAction} title="Add food" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
         <div style={{ position: "relative", marginBottom: 12 }}>
           <Icon name="search" size={17} color={colors.textMuted} style={{ position: "absolute", left: 12, top: 12 }} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search CoFID and custom foods" autoFocus style={{ ...IS, padding: "11px 12px 11px 38px" }} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search foods or custom foods" autoFocus style={{ ...IS, padding: "11px 12px 11px 38px" }} />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -499,7 +499,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
         {query.trim().length > 0 && (
           <>
             <p style={sectionLabelStyle}>Results</p>
-            {foodStatus === "loading" && <SurfaceCard><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>Loading CoFID foods...</p></SurfaceCard>}
+            {foodStatus === "loading" && <SurfaceCard><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>Loading food database...</p></SurfaceCard>}
             {foodStatus === "error" && <SurfaceCard><p style={{ margin: 0, color: colors.danger, fontSize: 12 }}>{foodError}</p></SurfaceCard>}
             {results.map((food) => <FoodResultRow key={`${food.source}-${food.id || food.food_id}`} food={food} onClick={() => openFoodDetail(food)} />)}
             {foodStatus === "ready" && results.length === 0 && query.trim().length >= 2 && (
@@ -514,7 +514,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
   if (mode === "detail" && selectedFood) {
     return (
       <Screen>
-        <ScreenHeader action={headerAction} title="Food Detail" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+        <ScreenHeader action={headerAction} title="Food details" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
         <SurfaceCard>
           <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>{getFoodDisplayName(selectedFood)}</p>
           <p style={{ margin: "5px 0 0", ...typeScale.caption, color: colors.textMuted }}>{getFoodMeta(selectedFood)}</p>
@@ -562,7 +562,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
           </SurfaceCard>
         )}
 
-        <ActionButton onClick={addSelectedFood} disabled={Number(amount) <= 0}>Add to today</ActionButton>
+        <ActionButton onClick={addSelectedFood} disabled={Number(amount) <= 0}>Add food</ActionButton>
       </Screen>
     );
   }
@@ -570,13 +570,13 @@ export function NutritionScreen({ app, setApp, onBack }) {
   if (mode === "custom") {
     return (
       <Screen>
-        <ScreenHeader action={headerAction} title="Custom Food" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+        <ScreenHeader action={headerAction} title="Custom food" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
         <SurfaceCard>
           <div style={{ display: "grid", gap: 12 }}>
             <Field label="Food name">
               <input value={customDraft.name} onChange={(event) => setCustomDraft((current) => ({ ...current, name: event.target.value }))} style={IS} />
             </Field>
-            <Field label="Brand optional">
+            <Field label="Brand (optional)">
               <input value={customDraft.brand} onChange={(event) => setCustomDraft((current) => ({ ...current, brand: event.target.value }))} style={IS} />
             </Field>
             <Field label="Serving size (g)">
@@ -609,10 +609,10 @@ export function NutritionScreen({ app, setApp, onBack }) {
   if (mode === "quick") {
     return (
       <Screen>
-        <ScreenHeader action={headerAction} title="Quick Add" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+        <ScreenHeader action={headerAction} title="Quick add" subtitle={fd(selectedDate)} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
         <SurfaceCard>
           <div style={{ display: "grid", gap: 12 }}>
-            <Field label="Name optional">
+            <Field label="Name (optional)">
               <input value={quickDraft.name} onChange={(event) => setQuickDraft((current) => ({ ...current, name: event.target.value }))} style={IS} />
             </Field>
             <Field label="Meal">
