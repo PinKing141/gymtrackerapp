@@ -5,6 +5,7 @@ import { IS, fd, today } from "../storage.js";
 import { colors, radii, typeScale } from "../theme.js";
 import { getFoodDisplayDetail, getFoodDisplayName, getFoodSourceLabel, getLoggedFoodParts, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
 import { lookupByBarcode, normalizeBarcode, searchOnline } from "../services/nutrition/openFoodFacts.js";
+import { BarcodeScanner } from "../components/nutrition/BarcodeScanner.jsx";
 import {
   MEAL_TYPES,
   createFoodLogEntry,
@@ -357,6 +358,7 @@ export function NutritionScreen({ app, setApp, onBack }) {
   const [barcodeStatus, setBarcodeStatus] = useState("idle");
   const [barcodeError, setBarcodeError] = useState("");
   const [incompleteProduct, setIncompleteProduct] = useState(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [onlineResults, setOnlineResults] = useState([]);
   const [onlineStatus, setOnlineStatus] = useState("idle");
   const [onlineError, setOnlineError] = useState("");
@@ -430,8 +432,8 @@ export function NutritionScreen({ app, setApp, onBack }) {
     }));
   };
 
-  const runBarcodeLookup = async () => {
-    const barcode = normalizeBarcode(barcodeInput);
+  const lookupBarcodeValue = async (rawValue) => {
+    const barcode = normalizeBarcode(rawValue);
     if (barcode.length < 6) {
       setBarcodeStatus("error");
       setBarcodeError("Enter a full barcode number.");
@@ -464,6 +466,15 @@ export function NutritionScreen({ app, setApp, onBack }) {
       setBarcodeStatus("error");
       setBarcodeError(result.error || "Something went wrong.");
     }
+  };
+
+  const runBarcodeLookup = () => lookupBarcodeValue(barcodeInput);
+
+  const handleScan = (code) => {
+    setScannerOpen(false);
+    const normalized = normalizeBarcode(code);
+    setBarcodeInput(normalized);
+    lookupBarcodeValue(normalized);
   };
 
   const addProductManually = (product) => {
@@ -579,26 +590,33 @@ export function NutritionScreen({ app, setApp, onBack }) {
 
   if (mode === "barcode") {
     const canLookup = normalizeBarcode(barcodeInput).length >= 6 && barcodeStatus !== "loading";
+    const cameraAvailable = typeof navigator !== "undefined" && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
     return (
       <Screen>
+        {scannerOpen && <BarcodeScanner onDetected={handleScan} onClose={() => setScannerOpen(false)} />}
         <ScreenHeader action={<BackButton onClick={() => setMode("search")} label="Add food" />} title="Barcode lookup" subtitle="Find a branded product on Open Food Facts" titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+        {cameraAvailable && (
+          <ActionButton onClick={() => setScannerOpen(true)} color="#8B5CF6" style={{ marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <Icon name="search" size={17} color="#fff" />
+            Scan with camera
+          </ActionButton>
+        )}
         <SurfaceCard>
-          <Field label="Barcode number">
+          <Field label={cameraAvailable ? "Or enter the barcode number" : "Barcode number"}>
             <input
               value={barcodeInput}
               inputMode="numeric"
-              autoFocus
               placeholder="e.g. 5011321100000"
               onChange={(event) => setBarcodeInput(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter" && canLookup) runBarcodeLookup(); }}
               style={{ ...IS, fontSize: 18, letterSpacing: "0.06em", padding: 13 }}
             />
           </Field>
-          <ActionButton onClick={runBarcodeLookup} disabled={!canLookup} color="#8B5CF6" style={{ marginTop: 12 }}>
+          <ActionButton onClick={runBarcodeLookup} disabled={!canLookup} tone="secondary" style={{ marginTop: 12 }}>
             {barcodeStatus === "loading" ? "Looking up…" : "Look up product"}
           </ActionButton>
           <p style={{ margin: "10px 0 0", ...typeScale.caption, color: colors.textMuted }}>
-            Camera scanning is coming soon — for now, type the number printed under the barcode.
+            The number printed under the barcode works too — handy if a code won't scan.
           </p>
         </SurfaceCard>
 

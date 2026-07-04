@@ -11,6 +11,7 @@
   "dependencies": {
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow/tfjs": "^4.22.0",
+    "@zxing/browser": "^0.2.0",
     "firebase": "^12.15.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
