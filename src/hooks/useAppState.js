@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { haptic, playCue } from "../services/sound.js";
+import { enablePush, isPushConfigured } from "../services/push.js";
 import { NAV, WQ } from "../data.js";
 import {
   DB,
@@ -907,8 +908,15 @@ export function useAppState(firebaseUser) {
       reminderNotifications: permission === "granted" ? true : current.reminderNotifications && permission === "granted",
       lastReminderKey: permission === "granted" ? current.lastReminderKey : null,
     }));
+
+    // If the Web Push backend is configured, also register this device for
+    // background reminders that fire when the app is closed. No-op otherwise.
+    if (permission === "granted" && firebaseUid && isPushConfigured()) {
+      enablePush(firebaseUid, { thresholdDays: devicePrefs.reminderThresholdDays || 3 }).catch(() => {});
+    }
+
     return permission;
-  }, [notificationSupported, setDevicePrefs]);
+  }, [devicePrefs.reminderThresholdDays, firebaseUid, notificationSupported, setDevicePrefs]);
 
   const sendTestReminder = useCallback(() => {
     if (!notificationSupported || notificationPermission !== "granted") {

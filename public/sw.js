@@ -63,6 +63,27 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data ? event.data.text() : "" };
+  }
+
+  const title = payload.title || "Orion Gym";
+  const options = {
+    body: payload.body || "Time to check in on your training.",
+    tag: payload.tag || "orion-gym-push",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/favicon-32.png",
+    data: payload.data || {},
+    renotify: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 

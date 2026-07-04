@@ -1,0 +1,15 @@
+{
+  "name": "orion-gym-push-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scheduled Web Push reminder sender for Orion Gym Tracker.",
+  "scripts": {
+    "generate-keys": "node generate-vapid-keys.js",
+    "send-reminders": "node sendReminders.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "web-push": "^3.6.7"
+  }
+}
