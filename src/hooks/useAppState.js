@@ -111,9 +111,13 @@ export function useAppState(firebaseUser) {
   // had. In account mode we never load device data until we know which account is
   // signed in, so the app starts blank and hydrates in the auth effect below.
   const localOnly = !firebaseConfigured;
+  // Workout drafts are scoped per account, like the main app data. In account
+  // mode the scope isn't known until auth resolves, so the draft is restored in
+  // the auth effect below instead of at mount (where a read would hit the
+  // device-level key and could resurrect another account's unfinished workout).
   const initialDraftRef = useRef(undefined);
   if (initialDraftRef.current === undefined) {
-    initialDraftRef.current = draftLoad();
+    initialDraftRef.current = localOnly ? draftLoad() : null;
   }
   const initialDraft = initialDraftRef.current;
 
@@ -419,7 +423,11 @@ export function useAppState(firebaseUser) {
 
     if (!firebaseUid) {
       // Signed out: forget the previous account's data and detach its storage
-      // scope so the next account can't inherit or clobber it.
+      // scope so the next account can't inherit or clobber it. That includes any
+      // unfinished workout in memory — its draft stays saved under the previous
+      // account's scoped key, but must not survive into the next sign-in.
+      clearTimeout(draftSaveTimeoutRef.current);
+      clearTimeout(localSaveTimeoutRef.current);
       setStorageScope(null);
       firestoreReadyRef.current = false;
       clearTimeout(firestoreSaveTimeoutRef.current);
@@ -427,11 +435,37 @@ export function useAppState(firebaseUser) {
       setLegacyPrompt(null);
       setFirestoreSync({ status: "idle", lastSyncedAt: null, error: null });
       setAppState(DD());
+      setWorkoutId(null);
+      setSession(null);
+      setExpandedExercise(null);
+      setPrehabOpen(true);
+      setCoreOpen(false);
+      setSessionNotice(null);
+      setView("home");
+      setViewReturnStack([]);
+      setSectionView(null);
+      setSectionStack([]);
+      setHistoryDetailIndex(null);
       return undefined;
     }
 
     // Point every app-data read/write at this account before touching storage.
+    // Cancel any pending writes first so leftover state from the previous
+    // scope can't land in this account's namespace.
+    clearTimeout(draftSaveTimeoutRef.current);
+    clearTimeout(localSaveTimeoutRef.current);
     setStorageScope(firebaseUid);
+
+    // Restore this account's own workout draft (if any) from its scoped key,
+    // replacing whatever session state was in memory before the account switch.
+    const scopedDraft = draftLoad();
+    setWorkoutId(scopedDraft?.workoutId || null);
+    setSession(scopedDraft?.session || null);
+    setExpandedExercise(scopedDraft?.expandedExercise || null);
+    setPrehabOpen(scopedDraft ? scopedDraft.prehabOpen !== false : true);
+    setCoreOpen(Boolean(scopedDraft?.coreOpen));
+    setSessionNotice(scopedDraft ? "Draft restored from your last session." : null);
+    setView(scopedDraft ? "log" : "home");
 
     const freshSignup = consumeRecentSignup(firebaseUid);
     const scopedLocal = withDefaults(dbLoad());
