@@ -219,6 +219,7 @@ export function App() {
         sessionsThisWeek={sessionsThisWeek}
         getPhaseProgress={getPhaseProgress}
         onOpenRecovery={actions.openRecoveryFromHome}
+        onOpenBodyStats={() => { navigate("more"); openMoreSection("bodystats"); }}
         onOpenReview={actions.openReviewFromHome}
         onNavigate={navigate}
         streakSummary={streakSummary}
