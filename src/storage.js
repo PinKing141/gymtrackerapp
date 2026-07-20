@@ -111,12 +111,12 @@ const STORAGE_BASE = "orion-gym-v4";
 export const DRAFT_DB = "orion-gym-v4-draft";
 export const DEVICE_PREFS_DB = "orion-gym-v4-device";
 
-// App data (main + backup) is namespaced per signed-in account so one device can
-// hold several accounts without their data bleeding into each other. A `null`
-// scope means the legacy device-level namespace, used only in local-only mode
-// (no Firebase configured). The pre-scoping keys below hold whatever was written
-// before per-account scoping existed and are never adopted into an account
-// without an explicit user choice.
+// App data (main + backup + workout draft) is namespaced per signed-in account
+// so one device can hold several accounts without their data bleeding into each
+// other. A `null` scope means the legacy device-level namespace, used only in
+// local-only mode (no Firebase configured). The pre-scoping keys below hold
+// whatever was written before per-account scoping existed and are never adopted
+// into an account without an explicit user choice.
 const LEGACY_MAIN_KEY = STORAGE_BASE;
 const LEGACY_BACKUP_KEY = `${STORAGE_BASE}-backup`;
 
@@ -132,6 +132,7 @@ export function getStorageScope() {
 
 const mainKey = () => (storageScope ? `${STORAGE_BASE}:${storageScope}` : LEGACY_MAIN_KEY);
 const backupKey = () => (storageScope ? `${STORAGE_BASE}-backup:${storageScope}` : LEGACY_BACKUP_KEY);
+const draftKey = () => (storageScope ? `${DRAFT_DB}:${storageScope}` : DRAFT_DB);
 
 export const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
 export const isArr = (v) => Array.isArray(v);
@@ -420,7 +421,7 @@ function migrateDraftPayload(payload) {
 
 export function draftLoad() {
   try {
-    return migrateDraftPayload(safeParse(localStorage.getItem(DRAFT_DB) || ""));
+    return migrateDraftPayload(safeParse(localStorage.getItem(draftKey()) || ""));
   } catch (e) {
     return null;
   }
@@ -429,14 +430,14 @@ export function draftLoad() {
 export function draftSave(payload) {
   try {
     if (!payload) {
-      localStorage.removeItem(DRAFT_DB);
+      localStorage.removeItem(draftKey());
       return null;
     }
     const migrated = migrateDraftPayload(payload);
     if (!migrated) {
       return null;
     }
-    localStorage.setItem(DRAFT_DB, JSON.stringify({ ...migrated, savedAt: Date.now() }));
+    localStorage.setItem(draftKey(), JSON.stringify({ ...migrated, savedAt: Date.now() }));
     return migrated;
   } catch (e) {
     return null;
@@ -445,7 +446,7 @@ export function draftSave(payload) {
 
 export function draftClear() {
   try {
-    localStorage.removeItem(DRAFT_DB);
+    localStorage.removeItem(draftKey());
   } catch (e) {
     // Ignore draft cleanup failures.
   }
