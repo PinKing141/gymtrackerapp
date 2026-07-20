@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { deleteDoc, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
 
 export async function loadUserAppData(userId) {
@@ -26,5 +26,14 @@ export async function saveUserAppData(userId, appData) {
     { merge: true }
   );
 
+  return true;
+}
+
+// Must run while the user is still authenticated — security rules stop the
+// delete once the auth account is gone.
+export async function deleteUserAppData(userId) {
+  if (!userId || !db) return null;
+
+  await deleteDoc(doc(db, "users", userId));
   return true;
 }

@@ -26,8 +26,14 @@ import {
   withDefaults,
 } from "../storage.js";
 import { firebaseConfigured } from "../firebase.js";
-import { consumeRecentSignup } from "../services/firebaseAuth.js";
-import { loadUserAppData, saveUserAppData } from "../services/firestoreSync.js";
+import {
+  consumeRecentSignup,
+  deleteCurrentUser,
+  reauthenticateUser,
+  signOutUser,
+  waitForPendingRedirect,
+} from "../services/firebaseAuth.js";
+import { deleteUserAppData, loadUserAppData, saveUserAppData } from "../services/firestoreSync.js";
 import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
 import {
   createEmptySet,
@@ -467,31 +473,41 @@ export function useAppState(firebaseUser) {
     setSessionNotice(scopedDraft ? "Draft restored from your last session." : null);
     setView(scopedDraft ? "log" : "home");
 
-    const freshSignup = consumeRecentSignup(firebaseUid);
-    const scopedLocal = withDefaults(dbLoad());
-
-    if (freshSignup) {
-      // Brand-new account: start blank and go straight to onboarding without a
-      // cloud round-trip. Never adopt the device's previous local data; if any
-      // exists, offer it as an explicit import instead.
-      firestoreReadyRef.current = true;
-      firestoreSkipSaveRef.current = false;
-      setAppState(DD());
-      setLegacyPrompt(buildLegacyPrompt());
-      setBooted(true);
-      setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
-      return undefined;
-    }
-
     let active = true;
     firestoreReadyRef.current = false;
     setBooted(false);
     setLegacyPrompt(null);
-    // Seed memory with this account's own cache (empty on a device it hasn't used).
-    setAppState(scopedLocal);
     setFirestoreSync((current) => ({ ...current, status: "loading", error: null }));
 
     (async () => {
+      // A first-time Google sign-in is only identifiable from the redirect
+      // result, which races with the auth listener — wait for it so brand-new
+      // Google accounts get the instant blank boot instead of a cloud
+      // round-trip. Resolves immediately when no redirect is pending.
+      await waitForPendingRedirect();
+      if (!active) {
+        return;
+      }
+
+      const freshSignup = consumeRecentSignup(firebaseUid);
+      const scopedLocal = withDefaults(dbLoad());
+
+      if (freshSignup) {
+        // Brand-new account: start blank and go straight to onboarding without a
+        // cloud round-trip. Never adopt the device's previous local data; if any
+        // exists, offer it as an explicit import instead.
+        firestoreReadyRef.current = true;
+        firestoreSkipSaveRef.current = false;
+        setAppState(DD());
+        setLegacyPrompt(buildLegacyPrompt());
+        setBooted(true);
+        setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
+        return;
+      }
+
+      // Seed memory with this account's own cache (empty on a device it hasn't used).
+      setAppState(scopedLocal);
+
       try {
         const remote = await loadUserAppData(firebaseUid);
         if (!active) {
@@ -1088,6 +1104,35 @@ export function useAppState(firebaseUser) {
     setCelebration(null);
   }, []);
 
+  // "Remove this account from this device": wipe the account's local cache and
+  // draft (cloud data is untouched) and sign out. The auth effect handles the
+  // rest of the in-memory teardown when the uid goes null.
+  const removeAccountFromDevice = useCallback(async () => {
+    // Stop pending debounced writes from resurrecting the keys we're clearing.
+    clearTimeout(localSaveTimeoutRef.current);
+    clearTimeout(draftSaveTimeoutRef.current);
+    dbClear();
+    draftClear();
+    await signOutUser();
+  }, []);
+
+  // Full account deletion. Order matters: prove the sign-in first (wrong
+  // password must fail before anything is destroyed), then the cloud doc (needs
+  // auth — rules block it once the account is gone), then this device's copy,
+  // then the auth user itself. If that last step still fails with
+  // requires-recent-login, signing in again and retrying completes it.
+  const deleteAccountEverywhere = useCallback(async (currentPassword) => {
+    await reauthenticateUser(currentPassword);
+    firestoreReadyRef.current = false;
+    clearTimeout(firestoreSaveTimeoutRef.current);
+    clearTimeout(localSaveTimeoutRef.current);
+    clearTimeout(draftSaveTimeoutRef.current);
+    await deleteUserAppData(firebaseUid);
+    dbClear();
+    draftClear();
+    await deleteCurrentUser();
+  }, [firebaseUid]);
+
   const logCardioSession = useCallback((entry) => {
     if (!entry?.durationMin) {
       return;
@@ -1148,6 +1193,7 @@ export function useAppState(firebaseUser) {
       cancelWorkout,
       closeMoreSection,
       goBackMoreSection,
+      deleteAccountEverywhere,
       dismissCelebration,
       dismissLegacyData,
       exportData,
@@ -1159,6 +1205,7 @@ export function useAppState(firebaseUser) {
       deleteWorkoutPreset,
       openRecoveryFromHome,
       openReviewFromHome,
+      removeAccountFromDevice,
       requestReminderPermission,
       resetAllData,
       restoreBackup,

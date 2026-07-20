@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { IS } from "../storage.js";
 import { ActionButton } from "../components/ui.jsx";
 import { colors } from "../theme.js";
-import { getGoogleRedirectResult, signInWithEmail, signInWithGoogle, signUpWithEmail } from "../services/firebaseAuth.js";
+import { getGoogleRedirectResult, sendPasswordReset, signInWithEmail, signInWithGoogle, signUpWithEmail } from "../services/firebaseAuth.js";
 
 const ERROR_MESSAGES = {
   "auth/invalid-email": "That email address doesn't look right.",
@@ -14,6 +14,7 @@ const ERROR_MESSAGES = {
   "auth/weak-password": "Password must be at least 6 characters.",
   "auth/too-many-requests": "Too many attempts. Try again in a moment.",
   "auth/network-request-failed": "Network error. Check your connection.",
+  "auth/missing-email": "Enter your email address.",
   "auth/unauthorized-domain": "This site isn't authorized for Google sign-in yet. Add it in Firebase → Authentication → Settings → Authorized domains.",
   "auth/account-exists-with-different-credential": "You already have an account with this email. Sign in with your email and password.",
 };
@@ -29,8 +30,10 @@ export function AuthScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
 
   const isSignup = mode === "signup";
+  const isReset = mode === "reset";
 
   // After a Google redirect returns to the app, surface any error from the round
   // trip (a success is handled by the auth listener, which unmounts this screen).
@@ -49,6 +52,26 @@ export function AuthScreen() {
     if (submitting) return;
 
     const trimmedEmail = email.trim();
+
+    if (isReset) {
+      if (!trimmedEmail) {
+        setError("Enter your email address.");
+        return;
+      }
+      setSubmitting(true);
+      setError(null);
+      try {
+        await sendPasswordReset(trimmedEmail);
+        // Firebase doesn't reveal whether the email has an account (on purpose),
+        // so this reads the same either way.
+        setNotice(`If an account exists for ${trimmedEmail}, a reset link is on its way. Check your inbox and spam folder.`);
+      } catch (err) {
+        setError(messageForError(err));
+      }
+      setSubmitting(false);
+      return;
+    }
+
     if (!trimmedEmail || !password) {
       setError("Enter your email and password.");
       return;
@@ -87,6 +110,7 @@ export function AuthScreen() {
   const switchMode = (next) => {
     setMode(next);
     setError(null);
+    setNotice(null);
     setConfirmPassword("");
   };
 
@@ -139,10 +163,11 @@ export function AuthScreen() {
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 700, margin: 0, color: colors.textPrimary }}>Orion Gym</h1>
         <p style={{ fontSize: 13, color: colors.textSecondary, margin: "6px 0 0" }}>
-          {isSignup ? "Create an account to sync your training." : "Sign in to sync your training."}
+          {isReset ? "Enter your email and we'll send a password reset link." : isSignup ? "Create an account to sync your training." : "Sign in to sync your training."}
         </p>
       </div>
 
+      {!isReset && (
       <div
         style={{
           display: "flex",
@@ -179,6 +204,7 @@ export function AuthScreen() {
           </button>
         ))}
       </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <input
@@ -190,14 +216,16 @@ export function AuthScreen() {
           placeholder="Email"
           style={{ ...IS, marginBottom: 10, padding: "12px" }}
         />
-        <input
-          type="password"
-          autoComplete={isSignup ? "new-password" : "current-password"}
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Password"
-          style={{ ...IS, padding: "12px" }}
-        />
+        {!isReset && (
+          <input
+            type="password"
+            autoComplete={isSignup ? "new-password" : "current-password"}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Password"
+            style={{ ...IS, padding: "12px" }}
+          />
+        )}
         {isSignup && (
           <input
             type="password"
@@ -208,16 +236,43 @@ export function AuthScreen() {
             style={{ ...IS, marginTop: 10, padding: "12px" }}
           />
         )}
+        {mode === "signin" && (
+          <div style={{ textAlign: "right", marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => switchMode("reset")}
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700, color: colors.accent }}
+            >
+              Forgot password?
+            </button>
+          </div>
+        )}
 
         {error && (
           <p style={{ fontSize: 12, color: colors.danger, margin: "12px 2px 0" }}>{error}</p>
         )}
+        {notice && (
+          <p style={{ fontSize: 12, color: colors.textSecondary, margin: "12px 2px 0" }}>{notice}</p>
+        )}
 
         <ActionButton type="submit" disabled={submitting} style={{ marginTop: 18 }}>
-          {submitting ? "Working…" : isSignup ? "Create Account" : "Sign In"}
+          {submitting ? "Working…" : isReset ? "Send Reset Link" : isSignup ? "Create Account" : "Sign In"}
         </ActionButton>
       </form>
 
+      {isReset && (
+        <p style={{ fontSize: 11, color: colors.textMuted, textAlign: "center", margin: "20px 0 0" }}>
+          <button
+            type="button"
+            onClick={() => switchMode("signin")}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700, color: colors.accent }}
+          >
+            Back to sign in
+          </button>
+        </p>
+      )}
+
+      {!isReset && (<>
       <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 2px" }}>
         <span style={{ flex: 1, height: 1, background: colors.border }} />
         <span style={{ fontSize: 10, color: colors.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>or</span>
@@ -274,6 +329,7 @@ export function AuthScreen() {
           {isSignup ? "Sign in" : "Create one"}
         </button>
       </p>
+      </>)}
     </div>
   );
 }
