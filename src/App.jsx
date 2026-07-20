@@ -303,6 +303,8 @@ export function App() {
         firebaseUser={firebaseUser}
         firestoreSync={firestoreSync}
         onFirebaseSignOut={signOutUser}
+        onRemoveAccountFromDevice={actions.removeAccountFromDevice}
+        onDeleteAccount={actions.deleteAccountEverywhere}
         onResetAllData={actions.resetAllData}
         onRestoreBackup={actions.restoreBackup}
         recoveryForm={recoveryForm}
