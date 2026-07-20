@@ -265,20 +265,10 @@ export const withDefaults = (d) => {
 
   if (dataVersion < 4) {
     sessions = migrateTrackedSetShapes(sessions);
-    dataVersion = 4;
   }
 
-  if (dataVersion < 5) {
-    dataVersion = 5;
-  }
-
-  if (dataVersion < 6) {
-    dataVersion = 6;
-  }
-
-  if (dataVersion < 7) {
-    dataVersion = 7;
-  }
+  // Versions 5–7 only changed defaults; no stored-data migration is needed and
+  // meta.dataVersion below is always stamped with the current DATA_VERSION.
 
   return {
     ...b,

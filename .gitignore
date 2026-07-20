@@ -16,3 +16,7 @@ firebase-debug.*.log
 # Push backend secrets — never commit service-account keys
 serviceAccount*.json
 server/*service-account*.json
+
+# Playwright output
+test-results/
+playwright-report/
