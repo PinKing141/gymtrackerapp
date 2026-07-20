@@ -26,6 +26,7 @@ export function AuthScreen() {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -53,6 +54,21 @@ export function AuthScreen() {
       return;
     }
 
+    if (isSignup) {
+      if (password.length < 6) {
+        setError("Password must be at least 6 characters.");
+        return;
+      }
+      if (!confirmPassword) {
+        setError("Confirm your password.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords don't match.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -71,6 +87,7 @@ export function AuthScreen() {
   const switchMode = (next) => {
     setMode(next);
     setError(null);
+    setConfirmPassword("");
   };
 
   const handleGoogle = async () => {
@@ -181,6 +198,16 @@ export function AuthScreen() {
           placeholder="Password"
           style={{ ...IS, padding: "12px" }}
         />
+        {isSignup && (
+          <input
+            type="password"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            placeholder="Confirm password"
+            style={{ ...IS, marginTop: 10, padding: "12px" }}
+          />
+        )}
 
         {error && (
           <p style={{ fontSize: 12, color: colors.danger, margin: "12px 2px 0" }}>{error}</p>

@@ -39,9 +39,24 @@ export function getGoogleRedirectResult() {
   return getRedirectResult(auth);
 }
 
-export function signUpWithEmail(email, password) {
+// Tracks the uid of an account created in this session so the app can boot it as
+// a brand-new profile (blank + straight to onboarding) rather than reconciling it
+// against local/cloud data as if it were a returning user.
+let recentSignupUid = null;
+
+export function consumeRecentSignup(uid) {
+  if (uid && recentSignupUid === uid) {
+    recentSignupUid = null;
+    return true;
+  }
+  return false;
+}
+
+export async function signUpWithEmail(email, password) {
   if (!auth) return Promise.reject(firebaseUnavailableError());
-  return createUserWithEmailAndPassword(auth, email, password);
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  recentSignupUid = credential.user?.uid || null;
+  return credential;
 }
 
 export function signInWithEmail(email, password) {

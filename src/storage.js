@@ -107,10 +107,31 @@ export const DD = () => ({
   streakState: { ...DEFAULT_STREAK_STATE },
   meta: { lastSavedAt: null, dataVersion: DATA_VERSION, lastSyncedAt: null },
 });
-export const DB = "orion-gym-v4";
-export const DB_BACKUP = "orion-gym-v4-backup";
+const STORAGE_BASE = "orion-gym-v4";
 export const DRAFT_DB = "orion-gym-v4-draft";
 export const DEVICE_PREFS_DB = "orion-gym-v4-device";
+
+// App data (main + backup) is namespaced per signed-in account so one device can
+// hold several accounts without their data bleeding into each other. A `null`
+// scope means the legacy device-level namespace, used only in local-only mode
+// (no Firebase configured). The pre-scoping keys below hold whatever was written
+// before per-account scoping existed and are never adopted into an account
+// without an explicit user choice.
+const LEGACY_MAIN_KEY = STORAGE_BASE;
+const LEGACY_BACKUP_KEY = `${STORAGE_BASE}-backup`;
+
+let storageScope = null;
+
+export function setStorageScope(scope) {
+  storageScope = scope || null;
+}
+
+export function getStorageScope() {
+  return storageScope;
+}
+
+const mainKey = () => (storageScope ? `${STORAGE_BASE}:${storageScope}` : LEGACY_MAIN_KEY);
+const backupKey = () => (storageScope ? `${STORAGE_BASE}-backup:${storageScope}` : LEGACY_BACKUP_KEY);
 
 export const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
 export const isArr = (v) => Array.isArray(v);
@@ -282,11 +303,11 @@ export const safeParse = (raw) => { try { return JSON.parse(raw); } catch (e) { 
 
 export function dbLoad() {
   try {
-    const main = safeParse(localStorage.getItem(DB) || "");
+    const main = safeParse(localStorage.getItem(mainKey()) || "");
     if (isValidData(main)) return withDefaults(main);
-    const backup = safeParse(localStorage.getItem(DB_BACKUP) || "");
+    const backup = safeParse(localStorage.getItem(backupKey()) || "");
     if (isValidData(backup)) {
-      localStorage.setItem(DB, JSON.stringify(backup));
+      localStorage.setItem(mainKey(), JSON.stringify(backup));
       return withDefaults(backup);
     }
     return DD();
@@ -306,22 +327,74 @@ export function dbSave(d) {
       },
     });
     const s = JSON.stringify(payload);
-    localStorage.setItem(DB, s);
-    localStorage.setItem(DB_BACKUP, s);
+    localStorage.setItem(mainKey(), s);
+    localStorage.setItem(backupKey(), s);
     return payload;
   } catch (e) {
     return d;
   }
 }
 
+export function dbClear() {
+  try {
+    localStorage.removeItem(mainKey());
+    localStorage.removeItem(backupKey());
+  } catch (e) {
+    // Ignore local storage cleanup issues.
+  }
+}
+
 export function dbRestoreBackup() {
   try {
-    const backup = safeParse(localStorage.getItem(DB_BACKUP) || "");
+    const backup = safeParse(localStorage.getItem(backupKey()) || "");
     if (!isValidData(backup)) return null;
-    localStorage.setItem(DB, JSON.stringify(backup));
+    localStorage.setItem(mainKey(), JSON.stringify(backup));
     return withDefaults(backup);
   } catch (e) {
     return null;
+  }
+}
+
+// Read the current scope's backup (validated) for preview/restore UI. Returns the
+// parsed backup or null when there isn't a usable one.
+export function backupLoad() {
+  try {
+    const parsed = safeParse(localStorage.getItem(backupKey()) || "");
+    return isValidData(parsed) ? parsed : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Pre-scoping device data, if any. Read from the fixed legacy keys, never the
+// scoped ones, so it stays isolated from any account until the user chooses.
+export function legacyDataLoad() {
+  try {
+    const main = safeParse(localStorage.getItem(LEGACY_MAIN_KEY) || "");
+    if (isValidData(main)) return withDefaults(main);
+    const backup = safeParse(localStorage.getItem(LEGACY_BACKUP_KEY) || "");
+    if (isValidData(backup)) return withDefaults(backup);
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Legacy data is only worth surfacing if it carries real data or a named profile —
+// otherwise it's just empty defaults and prompting would be noise.
+export function legacyImportCandidate() {
+  const data = legacyDataLoad();
+  if (!data) return null;
+  const named = Boolean(data.profile?.firstName || data.profile?.name);
+  return hasAnyUserData(data) || data.profile?.onboardingComplete || named ? data : null;
+}
+
+export function legacyDataClear() {
+  try {
+    localStorage.removeItem(LEGACY_MAIN_KEY);
+    localStorage.removeItem(LEGACY_BACKUP_KEY);
+  } catch (e) {
+    // Ignore local storage cleanup issues.
   }
 }
 

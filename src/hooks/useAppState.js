@@ -4,9 +4,8 @@ import { haptic, playCue } from "../services/sound.js";
 import { enablePush, isPushConfigured } from "../services/push.js";
 import { NAV, WQ } from "../data.js";
 import {
-  DB,
-  DB_BACKUP,
   DD,
+  dbClear,
   devicePrefsLoad,
   devicePrefsReset,
   devicePrefsSave,
@@ -18,11 +17,16 @@ import {
   dbSave,
   hasAnyUserData,
   isValidData,
+  legacyDataClear,
+  legacyImportCandidate,
   parseStoredDate,
+  setStorageScope,
   stampAppData,
   today,
   withDefaults,
 } from "../storage.js";
+import { firebaseConfigured } from "../firebase.js";
+import { consumeRecentSignup } from "../services/firebaseAuth.js";
 import { loadUserAppData, saveUserAppData } from "../services/firestoreSync.js";
 import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
 import {
@@ -80,6 +84,19 @@ function getSessionStamp(app) {
   return app?.meta?.lastSavedAt || 0;
 }
 
+// Describe the device's pre-scoping data (if any is worth importing) for the
+// import/start-fresh prompt. Returns null when there's nothing to offer.
+function buildLegacyPrompt() {
+  const data = legacyImportCandidate();
+  if (!data) {
+    return null;
+  }
+  return {
+    name: data.profile?.firstName || data.profile?.name || null,
+    sessions: data.sessions?.length || 0,
+  };
+}
+
 function buildReminderBody(daysSinceLastSession, streakSummary) {
   const sessionsRemaining = Math.max(0, (streakSummary?.weeklyTarget || 0) - (streakSummary?.currentWeekCount || 0));
   if (sessionsRemaining === 0) {
@@ -90,13 +107,22 @@ function buildReminderBody(daysSinceLastSession, streakSummary) {
 
 export function useAppState(firebaseUser) {
   const firebaseUid = firebaseUser?.uid || null;
+  // Local-only mode (no Firebase) keeps the single device-level profile it always
+  // had. In account mode we never load device data until we know which account is
+  // signed in, so the app starts blank and hydrates in the auth effect below.
+  const localOnly = !firebaseConfigured;
   const initialDraftRef = useRef(undefined);
   if (initialDraftRef.current === undefined) {
     initialDraftRef.current = draftLoad();
   }
   const initialDraft = initialDraftRef.current;
 
-  const [app, setAppState] = useState(() => withDefaults(dbLoad()));
+  const [app, setAppState] = useState(() => (localOnly ? withDefaults(dbLoad()) : DD()));
+  // "Booted" gates persistence and the onboarding/main UI: in account mode it flips
+  // true only once this account's own data (local + cloud) has been resolved, so an
+  // empty pre-hydration snapshot can never be shown or written to another account.
+  const [booted, setBooted] = useState(localOnly);
+  const [legacyPrompt, setLegacyPrompt] = useState(null);
   const [view, setView] = useState(() => initialDraft ? "log" : "home");
   const [viewReturnStack, setViewReturnStack] = useState([]);
   const [workoutId, setWorkoutId] = useState(() => initialDraft?.workoutId || null);
@@ -122,6 +148,7 @@ export function useAppState(firebaseUser) {
   const firestoreSaveTimeoutRef = useRef(null);
   const firestoreSkipSaveRef = useRef(false);
   const firestoreReadyRef = useRef(false);
+  const bootedRef = useRef(localOnly);
   const draftSaveTimeoutRef = useRef(null);
   const appRef = useRef(app);
   const viewRef = useRef(view);
@@ -152,6 +179,10 @@ export function useAppState(firebaseUser) {
   useEffect(() => {
     appRef.current = app;
   }, [app]);
+
+  useEffect(() => {
+    bootedRef.current = booted;
+  }, [booted]);
 
   useEffect(() => {
     viewRef.current = view;
@@ -228,13 +259,19 @@ export function useAppState(firebaseUser) {
   }, [notificationPermission, notificationSupported]);
 
   useEffect(() => {
+    // Don't persist until this account's data has been resolved, otherwise the
+    // blank pre-hydration snapshot could overwrite the account's cached data.
+    if (!booted) {
+      return undefined;
+    }
+
     clearTimeout(localSaveTimeoutRef.current);
     localSaveTimeoutRef.current = setTimeout(() => {
       dbSave(app);
     }, 400);
 
     return () => clearTimeout(localSaveTimeoutRef.current);
-  }, [app]);
+  }, [app, booted]);
 
   useEffect(() => {
     clearTimeout(draftSaveTimeoutRef.current);
@@ -263,7 +300,9 @@ export function useAppState(firebaseUser) {
     }
 
     const flushLocalState = () => {
-      dbSave(appRef.current);
+      if (bootedRef.current) {
+        dbSave(appRef.current);
+      }
       const draftPayload = getDraftPayload();
       if (draftPayload) {
         draftSave(draftPayload);
@@ -365,20 +404,57 @@ export function useAppState(firebaseUser) {
       .catch(() => {});
   }, [devicePrefs.reminderNotifications, notificationPermission, notificationSupported, serviceWorkerSupported]);
 
-  // Firestore: on login, load the user's cloud document and reconcile it with
-  // local data (most recently saved wins), then mark sync ready so local edits
-  // start pushing up. The ready-gate prevents an early empty local snapshot
-  // from overwriting good cloud data while the initial load is still in flight.
+  // Account boot + Firestore reconcile. This is the single place that decides,
+  // per signed-in account, what data the app starts from:
+  //   - Brand-new signup: blank profile, straight to onboarding, no legacy adopt.
+  //   - Returning sign-in: this account's own cached data reconciled with cloud
+  //     (most recently saved wins).
+  // All app-data reads/writes are pointed at the account's namespace first, so one
+  // account can never read or overwrite another's data on a shared device.
   useEffect(() => {
+    if (localOnly) {
+      // No accounts: the device-level cache loaded at mount is the source of truth.
+      return undefined;
+    }
+
     if (!firebaseUid) {
+      // Signed out: forget the previous account's data and detach its storage
+      // scope so the next account can't inherit or clobber it.
+      setStorageScope(null);
       firestoreReadyRef.current = false;
       clearTimeout(firestoreSaveTimeoutRef.current);
+      setBooted(false);
+      setLegacyPrompt(null);
       setFirestoreSync({ status: "idle", lastSyncedAt: null, error: null });
+      setAppState(DD());
+      return undefined;
+    }
+
+    // Point every app-data read/write at this account before touching storage.
+    setStorageScope(firebaseUid);
+
+    const freshSignup = consumeRecentSignup(firebaseUid);
+    const scopedLocal = withDefaults(dbLoad());
+
+    if (freshSignup) {
+      // Brand-new account: start blank and go straight to onboarding without a
+      // cloud round-trip. Never adopt the device's previous local data; if any
+      // exists, offer it as an explicit import instead.
+      firestoreReadyRef.current = true;
+      firestoreSkipSaveRef.current = false;
+      setAppState(DD());
+      setLegacyPrompt(buildLegacyPrompt());
+      setBooted(true);
+      setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
       return undefined;
     }
 
     let active = true;
     firestoreReadyRef.current = false;
+    setBooted(false);
+    setLegacyPrompt(null);
+    // Seed memory with this account's own cache (empty on a device it hasn't used).
+    setAppState(scopedLocal);
     setFirestoreSync((current) => ({ ...current, status: "loading", error: null }));
 
     (async () => {
@@ -388,8 +464,9 @@ export function useAppState(firebaseUser) {
           return;
         }
 
-        const local = appRef.current;
+        const local = scopedLocal;
         const remoteApp = remote?.appData && isValidData(remote.appData) ? remote.appData : null;
+        let resolvedApp = local;
 
         if (!remoteApp) {
           if (hasAnyUserData(local)) {
@@ -402,6 +479,7 @@ export function useAppState(firebaseUser) {
           if (remoteStamp > localStamp) {
             firestoreSkipSaveRef.current = true;
             const merged = withDefaults(remoteApp);
+            resolvedApp = merged;
             applyApp(merged, { stamp: false });
             dbSave(merged);
           } else if (localStamp > remoteStamp || hasAnyUserData(local)) {
@@ -409,13 +487,21 @@ export function useAppState(firebaseUser) {
           }
         }
 
-        if (active) {
-          firestoreReadyRef.current = true;
-          setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
+        if (!active) {
+          return;
+        }
+        firestoreReadyRef.current = true;
+        setBooted(true);
+        setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
+        // If the account resolved empty but the device holds pre-scoping data,
+        // offer an explicit import rather than silently ignoring or adopting it.
+        if (!hasAnyUserData(resolvedApp) && !resolvedApp.profile?.onboardingComplete) {
+          setLegacyPrompt(buildLegacyPrompt());
         }
       } catch (error) {
         if (active) {
           firestoreReadyRef.current = true;
+          setBooted(true);
           setFirestoreSync({ status: "error", lastSyncedAt: null, error: error?.message || "Cloud sync failed." });
         }
       }
@@ -424,7 +510,7 @@ export function useAppState(firebaseUser) {
     return () => {
       active = false;
     };
-  }, [applyApp, firebaseUid]);
+  }, [applyApp, firebaseUid, localOnly]);
 
   // Firestore: push local changes up (debounced) once the initial load is done.
   useEffect(() => {
@@ -571,6 +657,29 @@ export function useAppState(firebaseUser) {
     applyApp(restored, { stamp: false });
     window.alert("Backup restored.");
   }, [applyApp]);
+
+  // Legacy prompt: the user explicitly chose to pull the device's pre-scoping data
+  // into this account. Adopt it, persist under this account's scope, and clear the
+  // legacy copy so it can't be offered again elsewhere.
+  const importLegacyData = useCallback(() => {
+    const data = legacyImportCandidate();
+    if (!data) {
+      setLegacyPrompt(null);
+      return;
+    }
+    const nextApp = stampAppData(withDefaults(data));
+    applyApp(nextApp, { stamp: false });
+    dbSave(nextApp);
+    legacyDataClear();
+    setLegacyPrompt(null);
+  }, [applyApp]);
+
+  // Legacy prompt: "start fresh". Leave the device's legacy data untouched (another
+  // account may want it) but dismiss the prompt; completing onboarding stops it
+  // from reappearing for this account.
+  const dismissLegacyData = useCallback(() => {
+    setLegacyPrompt(null);
+  }, []);
 
   const updateSet = useCallback((exerciseKey, setIndex, field, value) => {
     setSession((current) => {
@@ -880,13 +989,7 @@ export function useAppState(firebaseUser) {
 
   const resetAllData = useCallback(() => {
     // Confirmation is handled by the type-to-confirm modal in the Profile screen.
-    try {
-      localStorage.removeItem(DB);
-      localStorage.removeItem(DB_BACKUP);
-    } catch {
-      // Ignore local storage cleanup issues.
-    }
-
+    dbClear();
     draftClear();
     devicePrefsReset();
     setDevicePrefsState(devicePrefsLoad());
@@ -966,11 +1069,13 @@ export function useAppState(firebaseUser) {
 
   return {
     app,
+    booted,
     bodyStatsForm,
     celebration,
     canGoBackView: viewReturnStack.length > 0,
     coreOpen,
     devicePrefs,
+    legacyPrompt,
     expandedExercise,
     fileInputRef,
     firestoreSync,
@@ -1010,10 +1115,12 @@ export function useAppState(firebaseUser) {
       closeMoreSection,
       goBackMoreSection,
       dismissCelebration,
+      dismissLegacyData,
       exportData,
       exportStats,
       finishWorkout,
       importData,
+      importLegacyData,
       logCardioSession,
       deleteWorkoutPreset,
       openRecoveryFromHome,

@@ -6,6 +6,7 @@ import { AuthScreen } from "./screens/AuthScreen.jsx";
 import { BasketballScreen } from "./screens/BasketballScreen.jsx";
 import { CardioScreen } from "./screens/CardioScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
+import { LegacyDataPrompt } from "./screens/LegacyDataPrompt.jsx";
 import { LogScreen } from "./screens/LogScreen.jsx";
 import { MoreScreen } from "./screens/MoreScreen.jsx";
 import { NutritionScreen } from "./screens/NutritionScreen.jsx";
@@ -54,11 +55,13 @@ export function App() {
   const { user: firebaseUser, authLoading, isLoggedIn } = useFirebaseAuth();
   const {
     app,
+    booted,
     bodyStatsForm,
     celebration,
     canGoBackView,
     coreOpen,
     devicePrefs,
+    legacyPrompt,
     expandedExercise,
     fileInputRef,
     firestoreSync,
@@ -142,11 +145,53 @@ export function App() {
     );
   }
 
-  // Onboarding gate: logged in but profile not yet set up. Wait out the initial
-  // Firestore load so a returning user's cloud profile isn't overwritten by a
-  // premature onboarding flash.
-  const onboardingReady = firestoreSync?.status !== "loading";
-  if (onboardingReady && !app.profile?.onboardingComplete) {
+  // Signed in, but this account's data hasn't been resolved yet (local cache +
+  // cloud reconcile). Hold on a spinner rather than flashing empty state or the
+  // previous account's data. Brand-new signups boot instantly (no cloud wait).
+  if (!booted) {
+    return (
+      <div
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: colors.background,
+          color: colors.textMuted,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+          fontSize: 13,
+        }}
+      >
+        Loading…
+      </div>
+    );
+  }
+
+  // This device holds pre-scoping data but the account is starting empty. Ask
+  // before adopting it — never merge another profile in silently.
+  if (legacyPrompt) {
+    return (
+      <div
+        style={{
+          maxWidth: 430,
+          margin: "0 auto",
+          minHeight: "100dvh",
+          background: colors.background,
+          color: colors.textPrimary,
+          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
+        }}
+      >
+        <LegacyDataPrompt
+          prompt={legacyPrompt}
+          onImport={actions.importLegacyData}
+          onStartFresh={actions.dismissLegacyData}
+        />
+      </div>
+    );
+  }
+
+  // Onboarding gate: booted, but this account's profile isn't set up yet.
+  if (!app.profile?.onboardingComplete) {
     return (
       <div
         style={{

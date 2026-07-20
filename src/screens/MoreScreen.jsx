@@ -7,7 +7,7 @@ import { DangerRow, ProfileRow, SettingsField as Field, SettingsGroup as Group, 
 import { getPreferencesIncludedLabel, summarizeBackupData } from "../profileBackupPreview.js";
 import { getBodyGoalsSummary, getDataSummary, getDisplayName, getEnabledModuleSummary, getGoalLabel, getInitials, getNextProfileAction, getNotificationSummary, getProfileCompletion, getProteinRange, getSyncSummary, getUnitLabel, getWeightLabel } from "../profileSummary.js";
 import { PHASES, WQ } from "../data.js";
-import { DB_BACKUP, DD, IS, dbSave, fd, isValidData, today, withDefaults } from "../storage.js";
+import { DD, IS, backupLoad, dbSave, fd, isValidData, today, withDefaults } from "../storage.js";
 import { haptic, playCue, unlockAudio } from "../services/sound.js";
 import { readAvatarFile } from "../services/avatar.js";
 
@@ -417,7 +417,7 @@ export function MoreScreen({
 
   const applyImportedData = (data) => { const nextApp = withDefaults(data); dbSave(nextApp); setApp(nextApp); setImportPreview(null); goBackSection?.(); window.alert("Data imported successfully."); };
   const handleImportFile = (event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { const parsed = JSON.parse(reader.result); if (!isValidData(parsed)) { setImportError("Invalid backup file."); return; } setImportPreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) }); onOpenSection("importPreview"); } catch { setImportError("Could not read this backup file."); } }; reader.readAsText(file); event.target.value = ""; };
-  const openRestorePreview = () => { try { const parsed = JSON.parse(localStorage.getItem(DB_BACKUP) || ""); if (!isValidData(parsed)) { window.alert("No valid backup found."); return; } setRestorePreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) }); onOpenSection("restorePreview"); } catch { window.alert("No valid backup found."); } };
+  const openRestorePreview = () => { const parsed = backupLoad(); if (!parsed) { window.alert("No valid backup found."); return; } setRestorePreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) }); onOpenSection("restorePreview"); };
 
   if (["editProfile","bodyGoals","trackingModules","preferences","units","soundHaptics","appearance","notifications","account","dataBackup","dangerZone","about","importPreview","restorePreview"].includes(sectionView)) {
     return <Screen><Header onBack={goBackSection || closeSection} title={{editProfile:"Edit profile",bodyGoals:"Body & Goals",trackingModules:"What you track",preferences:"Preferences",units:"Units",soundHaptics:"Sound & Haptics",appearance:"Appearance",notifications:"Notifications",account:"Account",dataBackup:"Data & Backup",dangerZone:"Danger Zone",about:"About",importPreview:"Import preview",restorePreview:"Restore preview"}[sectionView]} subtitle={sectionView === "bodyGoals" ? "The better this is, the better your training targets work." : undefined} />
