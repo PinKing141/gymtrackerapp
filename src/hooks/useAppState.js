@@ -160,6 +160,9 @@ export function useAppState(firebaseUser) {
   const firestoreReadyRef = useRef(false);
   const bootedRef = useRef(localOnly);
   const draftSaveTimeoutRef = useRef(null);
+  // Set when the current account's local data is being removed on purpose
+  // (remove-from-device, deletion), so the sign-out flush doesn't re-save it.
+  const skipSignOutFlushRef = useRef(false);
   const appRef = useRef(app);
   const viewRef = useRef(view);
   const sessionRef = useRef(session);
@@ -427,13 +430,32 @@ export function useAppState(firebaseUser) {
       return undefined;
     }
 
+    // The previous account's scope is still active when this effect runs, so any
+    // changes sitting in the debounced save windows can be flushed into its own
+    // namespace before it is detached — unless that data was just removed or
+    // deleted on purpose.
+    const flushPreviousAccount = () => {
+      clearTimeout(draftSaveTimeoutRef.current);
+      clearTimeout(localSaveTimeoutRef.current);
+      if (!bootedRef.current || skipSignOutFlushRef.current) {
+        skipSignOutFlushRef.current = false;
+        return;
+      }
+      dbSave(appRef.current);
+      const draftPayload = getDraftPayload();
+      if (draftPayload) {
+        draftSave(draftPayload);
+      } else {
+        draftClear();
+      }
+    };
+
     if (!firebaseUid) {
       // Signed out: forget the previous account's data and detach its storage
       // scope so the next account can't inherit or clobber it. That includes any
       // unfinished workout in memory — its draft stays saved under the previous
       // account's scoped key, but must not survive into the next sign-in.
-      clearTimeout(draftSaveTimeoutRef.current);
-      clearTimeout(localSaveTimeoutRef.current);
+      flushPreviousAccount();
       setStorageScope(null);
       firestoreReadyRef.current = false;
       clearTimeout(firestoreSaveTimeoutRef.current);
@@ -456,10 +478,9 @@ export function useAppState(firebaseUser) {
     }
 
     // Point every app-data read/write at this account before touching storage.
-    // Cancel any pending writes first so leftover state from the previous
-    // scope can't land in this account's namespace.
-    clearTimeout(draftSaveTimeoutRef.current);
-    clearTimeout(localSaveTimeoutRef.current);
+    // Flushing first parks any leftover state from the previous scope in its
+    // own namespace so it can't land in this account's.
+    flushPreviousAccount();
     setStorageScope(firebaseUid);
 
     // Restore this account's own workout draft (if any) from its scoped key,
@@ -560,7 +581,7 @@ export function useAppState(firebaseUser) {
     return () => {
       active = false;
     };
-  }, [applyApp, firebaseUid, localOnly]);
+  }, [applyApp, firebaseUid, getDraftPayload, localOnly]);
 
   // Firestore: push local changes up (debounced) once the initial load is done.
   useEffect(() => {
@@ -1108,7 +1129,9 @@ export function useAppState(firebaseUser) {
   // draft (cloud data is untouched) and sign out. The auth effect handles the
   // rest of the in-memory teardown when the uid goes null.
   const removeAccountFromDevice = useCallback(async () => {
-    // Stop pending debounced writes from resurrecting the keys we're clearing.
+    // Stop pending debounced writes — and the sign-out flush — from
+    // resurrecting the keys we're clearing.
+    skipSignOutFlushRef.current = true;
     clearTimeout(localSaveTimeoutRef.current);
     clearTimeout(draftSaveTimeoutRef.current);
     dbClear();
@@ -1123,6 +1146,7 @@ export function useAppState(firebaseUser) {
   // requires-recent-login, signing in again and retrying completes it.
   const deleteAccountEverywhere = useCallback(async (currentPassword) => {
     await reauthenticateUser(currentPassword);
+    skipSignOutFlushRef.current = true;
     firestoreReadyRef.current = false;
     clearTimeout(firestoreSaveTimeoutRef.current);
     clearTimeout(localSaveTimeoutRef.current);
