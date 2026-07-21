@@ -44,6 +44,14 @@ describe("recurring weekly template", () => {
     expect(getPlanForDate(app, MON, MON)[0].title).toBe("Upper Strength");
   });
 
+  it("starts a recurring series the day it is added — no phantom missed weeks in the past", () => {
+    const plan = addPlanItem(undefined, { date: TUE, type: "gym", presetId: "p-lower", repeatWeekly: true });
+    const app = makeApp(plan);
+    expect(getPlanForDate(app, addDaysStr(TUE, -7), WED)).toHaveLength(0);
+    expect(getPlanForDate(app, TUE, WED)).toHaveLength(1);
+    expect(getPlanForDate(app, NEXT_TUE, WED)).toHaveLength(1);
+  });
+
   it("supports one-off items and rest days without touching the template", () => {
     let plan = weeklyPlan();
     plan = addPlanItem(plan, { date: WED, type: "rest", repeatWeekly: false });
