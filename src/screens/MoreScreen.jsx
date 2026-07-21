@@ -158,7 +158,7 @@ export function MoreScreen({
   if (sectionView === "recovery" && recoveryForm) {
     return (
       <Screen>
-        <ScreenHeader action={<BackButton onClick={closeSection} />} title="Recovery Log" subtitle={fd(today())} topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
+        <ScreenHeader action={<BackButton onClick={closeSection} />} title="Recovery log" subtitle={fd(today())} topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
 
         <SurfaceCard>
           <p style={{ fontSize: 12, color: "#999", margin: "0 0 8px" }}>Sleep (hours)</p>
@@ -223,7 +223,7 @@ export function MoreScreen({
           Save
         </ActionButton>
 
-        {app.recovery.length >= 2 && <SurfaceCard style={{ marginTop: 20 }}><p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: "0 0 6px" }}>Sleep Trend</p><Spark data={app.recovery.slice(-14).map((entry) => entry.sleep)} color="#2D7DD2" height={36} /></SurfaceCard>}
+        {app.recovery.length >= 2 && <SurfaceCard style={{ marginTop: 20 }}><p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: "0 0 6px" }}>Sleep trend</p><Spark data={app.recovery.slice(-14).map((entry) => entry.sleep)} color="#2D7DD2" height={36} /></SurfaceCard>}
       </Screen>
     );
   }
@@ -231,7 +231,7 @@ export function MoreScreen({
   if (sectionView === "bodystats" && bodyStatsForm) {
     return (
       <Screen>
-        <ScreenHeader action={<BackButton onClick={closeSection} />} title="Body Stats" topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
+        <ScreenHeader action={<BackButton onClick={closeSection} />} title="Body stats" topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
         <SurfaceCard style={{ marginTop: 20 }}>
           <p style={{ fontSize: 12, color: "#999", margin: "0 0 8px" }}>Bodyweight (lbs)</p>
           <input type="number" inputMode="decimal" value={bodyStatsForm.weight} onChange={(event) => setBodyStatsForm((current) => ({ ...current, weight: Number(event.target.value) }))} style={{ ...IS, fontSize: 22, textAlign: "center", padding: "14px" }} />
@@ -257,7 +257,7 @@ export function MoreScreen({
   if (sectionView === "review" && reviewForm) {
     return (
       <Screen>
-        <ScreenHeader action={<BackButton onClick={closeSection} />} title="Weekly Review" topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
+        <ScreenHeader action={<BackButton onClick={closeSection} />} title="Weekly review" topPadding="calc(env(safe-area-inset-top, 0px) + 20px)" />
 
         {WQ.map((question, index) => (
           <SurfaceCard key={question} style={{ marginBottom: 10 }}>

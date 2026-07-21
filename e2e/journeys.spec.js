@@ -113,7 +113,7 @@ test("training calendar: a missed workout can be moved to today", async ({ page 
 
   // The calendar shows the moved occurrence and can skip it for the day.
   await page.getByRole("button", { name: /calendar/i }).click();
-  await expect(page.getByText("Training Calendar")).toBeVisible();
+  await expect(page.getByText("Training calendar")).toBeVisible();
   await page.getByRole("button", { name: /row day/i }).first().click();
   await page.getByRole("button", { name: "Mark skipped" }).click();
   await expect(page.getByText("Skipped").first()).toBeVisible();

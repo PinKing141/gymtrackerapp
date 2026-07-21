@@ -7,7 +7,7 @@ export function PersonalBestsScreen({ app }) {
 
   return (
     <Screen>
-      <ScreenHeader title="Personal Bests" subtitle={`${records.length} records`} />
+      <ScreenHeader title="Personal bests" subtitle={`${records.length} records`} />
       {!records.length ? (
         <div style={{ textAlign: "center", paddingTop: 50 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>

@@ -48,7 +48,7 @@ export function ProgressScreen({ app }) {
       {weeklySessionTrend.length > 1 && (
         <SurfaceCard>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: "#fff" }}>Workout Frequency</p>
+            <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: "#fff" }}>Workout frequency</p>
             <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: "#2D7DD2" }}>{weeklySessionTrend[weeklySessionTrend.length - 1]} this week</p>
           </div>
           <div style={{ marginTop: 8 }}>
@@ -100,7 +100,7 @@ export function ProgressScreen({ app }) {
           <p style={L}>Bodyweight</p>
           <SurfaceCard>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <span style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>Weight Trend</span>
+              <span style={{ fontSize: 13, color: "#fff", fontWeight: 600 }}>Weight trend</span>
               <span style={{ fontSize: 15, fontWeight: 700, color: "#2D7DD2" }}>{app.bodyStats[app.bodyStats.length - 1].weight} lbs</span>
             </div>
             <div style={{ marginTop: 8 }}>
@@ -112,7 +112,7 @@ export function ProgressScreen({ app }) {
 
       {app.sessions.length >= 2 && app.sessions.some((session) => typeof session.painFlags?.shoulder === "number") && (
         <>
-          <p style={L}>Injury Trends</p>
+          <p style={L}>Injury trends</p>
           {["shoulder", "ankle", "hip"].map((part) => {
             const data = app.sessions.filter((session) => typeof session.painFlags?.[part] === "number").map((session) => session.painFlags[part]);
             if (data.length < 2) {

@@ -1,5 +1,7 @@
 import { ExerciseCard, LiveTimer } from "../components/WorkoutComponents.jsx";
 import { Icon } from "../components/icons.jsx";
+import { UndoToast } from "../components/UndoToast.jsx";
+import { useUndoToast } from "../hooks/useUndoToast.js";
 import { PREHAB } from "../data.js";
 import { ActionButton, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
 import { colors, radii, typeScale } from "../theme.js";
@@ -99,9 +101,22 @@ function ChecklistBlock({ title, iconName, done, open, onToggle, onDone, exercis
 }
 
 export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, sessionNotice, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout, onSetProgression }) {
+  // Called unconditionally (before the early return below) so hook order never
+  // shifts across renders where session/workoutId go from null to set.
+  const { toast: undoToast, showUndo, dismiss: dismissUndo, undo: runUndo } = useUndoToast();
+
   if (!session || !workoutId) {
     return null;
   }
+
+  const removeSet = (exerciseKey, setIndex) => {
+    const snapshot = session.sets[exerciseKey] || [];
+    const nextSets = snapshot.filter((_, index) => index !== setIndex);
+    setSession((current) => ({ ...current, sets: { ...current.sets, [exerciseKey]: nextSets } }));
+    showUndo("Set removed", () => {
+      setSession((current) => ({ ...current, sets: { ...current.sets, [exerciseKey]: snapshot } }));
+    });
+  };
 
   const workout = session.workoutSnapshot || getWorkoutById(workoutId, app.workoutPresets);
   if (!workout) {
@@ -207,7 +222,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
           color={workout.color}
         />
 
-        <SectionHeader title="Main work" subtitle="Performance Block" count={`${workout.performance.length} exercises`} />
+        <SectionHeader title="Main work" subtitle="Performance block" count={`${workout.performance.length} exercises`} />
         {workout.performance.map((exercise, index) => {
           const exerciseKey = `${index}-${exercise.name}`;
           return (
@@ -219,6 +234,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
               isOpen={expandedExercise === exerciseKey}
               onToggle={(key) => onToggleExercise(expandedExercise === key ? null : key)}
               onSet={onUpdateSet}
+              onRemoveSet={(setIndex) => removeSet(exerciseKey, setIndex)}
               color={workout.color}
               previousSets={previousSession?.sets?.[exerciseKey]}
               {...cardExtras(exercise, index)}
@@ -228,7 +244,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
 
         {workout.finisher.length > 0 && (
           <>
-            <SectionHeader title="Finisher" subtitle="Aesthetic Finisher" count={`${workout.finisher.length} exercises`} />
+            <SectionHeader title="Finisher" subtitle="Aesthetic finisher" count={`${workout.finisher.length} exercises`} />
             {workout.finisher.map((exercise, index) => {
               const exerciseIndex = workout.performance.length + index;
               const exerciseKey = `${exerciseIndex}-${exercise.name}`;
@@ -241,6 +257,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
                   isOpen={expandedExercise === exerciseKey}
                   onToggle={(key) => onToggleExercise(expandedExercise === key ? null : key)}
                   onSet={onUpdateSet}
+                  onRemoveSet={(setIndex) => removeSet(exerciseKey, setIndex)}
                   color={workout.color}
                   previousSets={previousSession?.sets?.[exerciseKey]}
                   {...cardExtras(exercise, exerciseIndex)}
@@ -273,6 +290,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
             Finish
           </ActionButton>
         </div>
+        <UndoToast toast={undoToast} onUndo={runUndo} onDismiss={dismissUndo} />
       </div>
     </div>
   );

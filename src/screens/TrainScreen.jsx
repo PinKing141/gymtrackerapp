@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fd, fdu } from "../storage.js";
+import { EmptyState } from "../components/EmptyState.jsx";
 import { Icon } from "../components/icons.jsx";
 import { Avatar } from "../components/Avatar.jsx";
 import { WorkoutPresetBuilder } from "../components/WorkoutPresetBuilder.jsx";
@@ -35,17 +36,13 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
       )}
 
       {!builderOpen && workoutPresets.length === 0 && (
-        <SurfaceCard style={{ textAlign: "center", padding: "26px 20px" }}>
-          <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 12px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(78,161,255,0.12)", border: `1px solid ${colors.accent}44` }}>
-            <Icon name="dumbbell" size={22} color={colors.accent} />
-          </div>
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: colors.textPrimary }}>No workouts yet</p>
-          <p style={{ margin: "6px 0 16px", ...typeScale.bodySm, color: colors.textSecondary }}>Build your first workout preset to start training. It’s saved to your account.</p>
-          <ActionButton type="button" fullWidth={false} onClick={() => setBuilderOpen(true)} style={{ width: "auto", padding: "11px 18px", display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <Icon name="plus" size={15} />
-            Create a workout
-          </ActionButton>
-        </SurfaceCard>
+        <EmptyState
+          icon="dumbbell"
+          title="No workouts yet"
+          subtitle="Build your first workout preset to start training. It's saved to your account."
+          actionLabel="Create a workout"
+          onAction={() => setBuilderOpen(true)}
+        />
       )}
 
       {workoutPresets.map((workout) => {
@@ -63,7 +60,7 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {isCustom && (
-                  <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteWorkoutPreset(workout.id); }} title="Delete custom preset" style={{ appearance: "none", WebkitAppearance: "none", width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(255,93,93,0.25)", background: "rgba(255,93,93,0.08)", color: colors.danger, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <button type="button" onClick={(e) => { e.stopPropagation(); onDeleteWorkoutPreset(workout.id); }} title="Delete custom preset" aria-label={`Delete ${workout.shortTitle}`} style={{ appearance: "none", WebkitAppearance: "none", width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(255,93,93,0.25)", background: "rgba(255,93,93,0.08)", color: colors.danger, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                     <Icon name="trash" size={14} />
                   </button>
                 )}

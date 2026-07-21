@@ -289,8 +289,8 @@ export function RimCalibrationScreen({ existingCalibration, onSave, onCancel }) 
           ✕ Cancel
         </button>
         <div style={{ textAlign: "center" }}>
-          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: 0 }}>Rim Setup</p>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>Auto Shot Tracking</h2>
+          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: 0 }}>Rim setup</p>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>Auto shot tracking</h2>
         </div>
         <div style={{ width: 70 }} />
       </div>

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Orion Gym">
@@ -27,6 +27,15 @@ input[type=number]{appearance:textfield;-moz-appearance:textfield;}
 .app-boot-card p{font-size:13px;line-height:1.4;color:#A7ABB8;margin:0;}
 .app-boot-spinner{width:32px;height:32px;margin:0 auto;border-radius:50%;border:3px solid rgba(255,255,255,.16);border-top-color:#4EA1FF;animation:app-boot-spin .9s linear infinite;}
 @keyframes app-boot-spin{to{transform:rotate(360deg)}}
+/* Keyboard focus is always visible, independent of any component's own styling. */
+:focus-visible{outline:2px solid #4EA1FF;outline-offset:2px;}
+@keyframes skeleton-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skeleton{background:linear-gradient(90deg,rgba(255,255,255,.06) 25%,rgba(255,255,255,.12) 37%,rgba(255,255,255,.06) 63%);background-size:400% 100%;animation:skeleton-shimmer 1.6s ease-in-out infinite;border-radius:10px;}
+/* Respect the OS-level "reduce motion" setting: stop shimmer/keyframe motion and
+   collapse transitions app-wide instead of auditing every animated component. */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important;}
+}
 </style>
 </head>
 <body>

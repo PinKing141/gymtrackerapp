@@ -27,6 +27,7 @@ const DEFAULT_NUTRITION = {
   savedMeals: [],
   favourites: [],
   barcodeCache: {},
+  recentSearches: [],
   targets: null,
 };
 const DEFAULT_PROFILE = {
@@ -119,7 +120,7 @@ export const DD = () => ({
   basketballPresets: [],
   basketballBenchmarks: [],
   basketballSettings: { playerName: "" },
-  nutrition: { ...DEFAULT_NUTRITION, favourites: [], barcodeCache: {} },
+  nutrition: { ...DEFAULT_NUTRITION, favourites: [], barcodeCache: {}, recentSearches: [] },
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   trainingPlan: DEFAULT_TRAINING_PLAN(),
@@ -270,6 +271,7 @@ function normalizeNutrition(value) {
     savedMeals: isArr(value?.savedMeals) ? value.savedMeals : [],
     favourites: isArr(value?.favourites) ? value.favourites : [],
     barcodeCache: isObj(value?.barcodeCache) ? value.barcodeCache : {},
+    recentSearches: isArr(value?.recentSearches) ? value.recentSearches : [],
     targets: isObj(value?.targets) ? value.targets : null,
   };
 }

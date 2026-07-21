@@ -288,7 +288,7 @@ export function LiveTimer({ color, timerState, onUpdate, title = "Workout", onCa
   );
 }
 
-function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet, workingNumber }) {
+function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet, onRemove, workingNumber }) {
   const baseColumns = getColumnConfig(exercise);
   // RPE fits when the row isn't already carrying per-side columns.
   const columns = baseColumns.length <= 2
@@ -307,8 +307,9 @@ function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet, workin
         <button
           type="button"
           title={warmup ? "Warm-up set — tap for working set" : "Tap to mark as warm-up"}
+          aria-label={warmup ? `Set ${setIndex + 1}: warm-up, tap for working set` : `Set ${setIndex + 1}: tap to mark as warm-up`}
           onClick={() => onSet(exerciseKey, setIndex, "warmup", !warmup)}
-          style={{ width: 26, height: 26, borderRadius: "50%", border: "none", cursor: "pointer", display: "grid", placeItems: "center", background: complete ? (warmup ? colors.warning : colors.success) : `${badgeColor}18`, color: complete ? colors.background : badgeColor, fontSize: 11, fontWeight: 900 }}
+          style={{ width: 32, height: 32, borderRadius: "50%", border: "none", cursor: "pointer", display: "grid", placeItems: "center", background: complete ? (warmup ? colors.warning : colors.success) : `${badgeColor}18`, color: complete ? colors.background : badgeColor, fontSize: 11, fontWeight: 900 }}
         >
           {warmup ? "W" : complete ? "✓" : workingNumber}
         </button>
@@ -343,12 +344,22 @@ function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet, workin
           {exercise.rest > 0 ? <RestTimer seconds={exercise.rest} color={color} autoStart={restTick} /> : <span style={{ ...typeScale.caption, color: colors.textMuted, textAlign: "center" }}>Full</span>}
           <button
             type="button"
-            aria-label="Set note"
+            aria-label="Add or edit set note"
             onClick={() => setNoteOpen((open) => !open)}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: resolved.note || noteOpen ? color : colors.textMuted, fontSize: 12 }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 10, margin: -6, minWidth: 32, minHeight: 32, color: resolved.note || noteOpen ? color : colors.textMuted, fontSize: 12 }}
           >
             ✎
           </button>
+          {onRemove && (
+            <button
+              type="button"
+              aria-label={`Remove set ${setIndex + 1}`}
+              onClick={onRemove}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 10, margin: -6, minWidth: 32, minHeight: 32, color: colors.textMuted, fontSize: 13 }}
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
       {(noteOpen || resolved.note) && (
@@ -370,6 +381,7 @@ export function ExerciseCard({
   isOpen,
   onToggle,
   onSet,
+  onRemoveSet,
   color,
   previousSets,
   groupLabel = null,
@@ -459,7 +471,17 @@ export function ExerciseCard({
               const isWarmup = Boolean(getResolvedSet(setData, exercise).warmup);
               if (!isWarmup) workingNumber += 1;
               return (
-                <SetRow key={`${exerciseKey}-s${setIndex}`} exerciseKey={exerciseKey} setIndex={setIndex} setData={setData} exercise={exercise} color={color} onSet={onSet} workingNumber={isWarmup ? "W" : workingNumber} />
+                <SetRow
+                  key={`${exerciseKey}-s${setIndex}`}
+                  exerciseKey={exerciseKey}
+                  setIndex={setIndex}
+                  setData={setData}
+                  exercise={exercise}
+                  color={color}
+                  onSet={onSet}
+                  onRemove={onRemoveSet && sets.length > 1 ? () => onRemoveSet(setIndex) : undefined}
+                  workingNumber={isWarmup ? "W" : workingNumber}
+                />
               );
             });
           })()}

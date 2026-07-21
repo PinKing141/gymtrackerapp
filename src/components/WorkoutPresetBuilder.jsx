@@ -30,8 +30,8 @@ const compactInput = {
 const iconButton = {
   appearance: "none",
   WebkitAppearance: "none",
-  width: 34,
-  height: 34,
+  width: 40,
+  height: 40,
   borderRadius: radii.sm,
   border: `1px solid ${colors.border}`,
   background: "rgba(255,255,255,0.04)",
@@ -130,10 +130,10 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
     <SurfaceCard style={{ marginBottom: 16, borderColor: `${color}55`, background: "rgba(255,255,255,0.035)" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
         <div>
-          <p style={{ ...typeScale.overline, color, margin: 0, textTransform: "uppercase" }}>New Preset</p>
-          <h2 style={{ ...typeScale.titleMd, margin: "3px 0 0", color: colors.textPrimary }}>Workout Builder</h2>
+          <p style={{ ...typeScale.overline, color, margin: 0, textTransform: "uppercase" }}>New preset</p>
+          <h2 style={{ ...typeScale.titleMd, margin: "3px 0 0", color: colors.textPrimary }}>Workout builder</h2>
         </div>
-        <button type="button" onClick={onCancel} title="Close builder" style={iconButton}>
+        <button type="button" onClick={onCancel} title="Close builder" aria-label="Close builder" style={iconButton}>
           <Icon name="x" size={16} />
         </button>
       </div>
@@ -156,6 +156,8 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
               type="button"
               onClick={() => setColor(option)}
               title={`Use ${option}`}
+              aria-label={`Use ${option} as the preset colour`}
+              aria-pressed={color === option}
               style={{
                 ...iconButton,
                 width: 32,
@@ -170,7 +172,7 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <span style={fieldLabel}>Exercise Library</span>
+        <span style={fieldLabel}>Exercise library</span>
         <div style={{ display: "grid", gap: 8 }}>
           <div style={{ position: "relative" }}>
             <Icon name="search" size={15} color={colors.textMuted} style={{ position: "absolute", left: 11, top: 12 }} />
@@ -236,7 +238,7 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
 
       {exercises.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <span style={fieldLabel}>Selected Exercises</span>
+          <span style={fieldLabel}>Selected exercises</span>
           <div style={{ display: "grid", gap: 8 }}>
             {exercises.map((exercise, index) => (
               <div key={`${exercise.exerciseId}-${index}`} style={{ border: `1px solid ${colors.border}`, borderRadius: radii.md, background: "rgba(255,255,255,0.03)", padding: 10 }}>
@@ -245,13 +247,13 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
                     <p style={{ margin: 0, fontSize: 13, fontWeight: 850, color: colors.textPrimary }}>{index + 1}. {exercise.name}</p>
                     <p style={{ margin: "2px 0 0", fontSize: 10, color: colors.textMuted }}>{exercise.type} · {exercise.libraryMeta?.trackBy || "Tracked manually"}</p>
                   </div>
-                  <button type="button" onClick={() => moveExercise(index, -1)} disabled={index === 0} title="Move up" style={{ ...iconButton, opacity: index === 0 ? 0.35 : 1 }}>
+                  <button type="button" onClick={() => moveExercise(index, -1)} disabled={index === 0} title="Move up" aria-label={`Move ${exercise.name} up`} style={{ ...iconButton, opacity: index === 0 ? 0.35 : 1 }}>
                     <Icon name="chevronUp" size={15} />
                   </button>
-                  <button type="button" onClick={() => moveExercise(index, 1)} disabled={index === exercises.length - 1} title="Move down" style={{ ...iconButton, opacity: index === exercises.length - 1 ? 0.35 : 1 }}>
+                  <button type="button" onClick={() => moveExercise(index, 1)} disabled={index === exercises.length - 1} title="Move down" aria-label={`Move ${exercise.name} down`} style={{ ...iconButton, opacity: index === exercises.length - 1 ? 0.35 : 1 }}>
                     <Icon name="chevronDown" size={15} />
                   </button>
-                  <button type="button" onClick={() => removeExercise(index)} title="Remove exercise" style={{ ...iconButton, color: colors.danger }}>
+                  <button type="button" onClick={() => removeExercise(index)} title="Remove exercise" aria-label={`Remove ${exercise.name}`} style={{ ...iconButton, color: colors.danger }}>
                     <Icon name="trash" size={15} />
                   </button>
                 </div>
@@ -324,7 +326,7 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 16 }}>
         <ActionButton type="button" tone="secondary" onClick={onCancel}>Cancel</ActionButton>
-        <ActionButton type="button" color={color} onClick={handleSave}>Save Preset</ActionButton>
+        <ActionButton type="button" color={color} onClick={handleSave}>Save preset</ActionButton>
       </div>
     </SurfaceCard>
   );

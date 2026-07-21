@@ -118,7 +118,7 @@ export function AutoShotInstructionScreen({ onClose }) {
 
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 16px calc(env(safe-area-inset-bottom, 0px) + 20px)", display: "grid", gap: 12 }}>
         <div style={{ padding: 16, borderRadius: radii.xl, background: "linear-gradient(135deg, rgba(255,122,26,0.18), rgba(88,80,236,0.14))", border: `1px solid ${colors.border}` }}>
-          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: "0 0 6px" }}>Read This First</p>
+          <p style={{ ...typeScale.overline, color: "#FF9F1C", textTransform: "uppercase", margin: "0 0 6px" }}>Read this first</p>
           <p style={{ margin: 0, color: colors.textPrimary, fontWeight: 900, fontSize: 18 }}>The app can now auto-detect the rim.</p>
           <p style={{ ...typeScale.bodySm, color: colors.textSecondary, margin: "8px 0 0" }}>
             Start with automatic rim detection first. Use manual calibration as the fallback if the hoop does not lock reliably.
