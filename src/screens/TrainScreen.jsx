@@ -1,12 +1,19 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import { fd, fdu } from "../storage.js";
 import { EmptyState } from "../components/EmptyState.jsx";
 import { Icon } from "../components/icons.jsx";
 import { Avatar } from "../components/Avatar.jsx";
-import { WorkoutPresetBuilder } from "../components/WorkoutPresetBuilder.jsx";
+import { Skeleton } from "../components/Skeleton.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { getWorkoutPresets } from "../workouts.js";
 import { colors, radii, typeScale } from "../theme.js";
+
+// The builder (drag-reorder, exercise library, colour picker) is only opened
+// from an explicit tap, so it's split into its own chunk instead of shipping
+// with every visit to Train.
+const WorkoutPresetBuilder = lazy(() =>
+  import("../components/WorkoutPresetBuilder.jsx").then((module) => ({ default: module.WorkoutPresetBuilder }))
+);
 
 const MODULE_TABS = [
   { key: "gym", label: "Gym" },
@@ -29,10 +36,12 @@ function GymSection({ app, onStartWorkout, onSaveWorkoutPreset, onDeleteWorkoutP
       </div>
 
       {builderOpen && (
-        <WorkoutPresetBuilder
-          onCancel={() => setBuilderOpen(false)}
-          onSave={(preset) => { onSaveWorkoutPreset(preset); setBuilderOpen(false); }}
-        />
+        <Suspense fallback={<Skeleton height={240} radius={16} />}>
+          <WorkoutPresetBuilder
+            onCancel={() => setBuilderOpen(false)}
+            onSave={(preset) => { onSaveWorkoutPreset(preset); setBuilderOpen(false); }}
+          />
+        </Suspense>
       )}
 
       {!builderOpen && workoutPresets.length === 0 && (

@@ -1,10 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AutoShotMode } from "./AutoShotMode.jsx";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { ShotZoneCourtPicker } from "../components/ShotZoneCourtPicker.jsx";
 import { ShotChart, getZoneStats } from "../components/ShotChart.jsx";
 import { Avatar } from "../components/Avatar.jsx";
 import { BackButton } from "../components/ui.jsx";
 import { Icon } from "../components/icons.jsx";
+import { Skeleton } from "../components/Skeleton.jsx";
+
+// Only pulled in once the camera-based Auto Shot flow is actually opened —
+// it drags in TensorFlow and the rim-calibration/instruction screens, none of
+// which a manual-logging user ever needs.
+const AutoShotMode = lazy(() =>
+  import("./AutoShotMode.jsx").then((module) => ({ default: module.AutoShotMode }))
+);
 import { loadRimCalibration } from "../lib/rimCalibration.js";
 import { haptic, playCue } from "../services/sound.js";
 import { colors, radii, typeScale } from "../theme.js";
@@ -908,12 +915,14 @@ export function BasketballScreen({ app, setApp, onExit, onOpenProfile, firebaseU
 
         <div style={{ flex: 1, display: "grid", placeItems: "center", textAlign: "center", padding: 24 }}>
           {AUTO_SHOT_ENABLED && shotInputMode === "auto" ? (
-            <AutoShotMode
-              onRecordShot={recordShot}
-              currentZoneName={ZONES[isStructured ? currentDrill.zoneId : activeSession.currentZone]?.name}
-              currentType={isStructured ? currentDrill.shotType : activeSession.currentType}
-              disabled={isStructured && drillProgress?.complete}
-            />
+            <Suspense fallback={<Skeleton height={280} radius={16} />}>
+              <AutoShotMode
+                onRecordShot={recordShot}
+                currentZoneName={ZONES[isStructured ? currentDrill.zoneId : activeSession.currentZone]?.name}
+                currentType={isStructured ? currentDrill.shotType : activeSession.currentType}
+                disabled={isStructured && drillProgress?.complete}
+              />
+            </Suspense>
           ) : isRepDrill ? (
             <div>
               <p style={{ fontSize: 72, lineHeight: 1, fontWeight: 800, margin: 0 }}>{drillReps}</p>

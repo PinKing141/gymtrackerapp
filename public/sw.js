@@ -1,4 +1,4 @@
-const CACHE_NAME = "orion-gym-v6";
+const CACHE_NAME = "orion-gym-v7";
 const CACHE_PREFIX = "orion-gym-";
 const APP_SHELL = [
   "./",
@@ -31,6 +31,35 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Serve whatever's cached instantly, then fetch a fresh copy in the background
+// to update the cache for next time. On a slow/flaky connection this means
+// the app never sits waiting on the network for something it already has —
+// the old strategy re-fetched every hashed asset and every navigation before
+// falling back to cache, which made a poor connection feel slower than the
+// cache alone would have been.
+function staleWhileRevalidate(request, event, cacheKey = request) {
+  return caches.open(CACHE_NAME).then(async (cache) => {
+    const cached = await cache.match(cacheKey);
+    const networkUpdate = fetch(request)
+      .then((response) => {
+        if (response && response.status === 200) {
+          cache.put(cacheKey, response.clone());
+        }
+        return response;
+      })
+      .catch(() => null);
+
+    if (cached) {
+      // Keep the worker alive long enough for the background refresh to
+      // finish, without making the response wait on it.
+      event.waitUntil(networkUpdate);
+      return cached;
+    }
+
+    return (await networkUpdate) || Response.error();
+  });
+}
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
     return;
@@ -45,33 +74,24 @@ self.addEventListener("fetch", (event) => {
   const scopePath = new URL(self.registration.scope).pathname;
   const isAppAsset = url.pathname.startsWith(`${scopePath}assets/`) || url.pathname.startsWith(`${scopePath}data/`);
   const isShellAsset = APP_SHELL.some((path) => new URL(path, self.registration.scope).pathname === url.pathname);
-  const shouldCache = isNavigation || isAppAsset || isShellAsset;
 
+  if (isNavigation) {
+    // Every navigation resolves to the same cached app shell, so it's always
+    // revalidated and stored under one fixed key regardless of the path.
+    const shellUrl = new URL("./index.html", self.registration.scope).href;
+    event.respondWith(staleWhileRevalidate(event.request, event, shellUrl));
+    return;
+  }
+
+  if (isAppAsset || isShellAsset) {
+    event.respondWith(staleWhileRevalidate(event.request, event));
+    return;
+  }
+
+  // Anything else same-origin (e.g. API-style calls) stays network-first with
+  // no caching, since it isn't part of the versioned app shell/assets.
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (shouldCache && response && response.status === 200) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            if (isNavigation) {
-              cache.put(new URL("./index.html", self.registration.scope).href, clone);
-              return;
-            }
-            cache.put(event.request, clone);
-          });
-        }
-        return response;
-      })
-      .catch(async () => {
-        const cached = await caches.match(event.request);
-        if (cached) {
-          return cached;
-        }
-        if (isNavigation) {
-          return caches.match(new URL("./index.html", self.registration.scope).href);
-        }
-        return Response.error();
-      })
+    fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || Response.error()))
   );
 });
 

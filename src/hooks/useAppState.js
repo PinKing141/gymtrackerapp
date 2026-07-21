@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as XLSX from "xlsx";
 import { haptic, playCue } from "../services/sound.js";
 import { enablePush, isPushConfigured } from "../services/push.js";
 import { NAV, WQ } from "../data.js";
@@ -35,6 +34,7 @@ import {
 } from "../services/firebaseAuth.js";
 import { deleteUserAppData, loadUserAppData, saveUserAppData } from "../services/firestoreSync.js";
 import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
+import { markBoot } from "../services/bootTiming.js";
 import { withPlanDefaults } from "../trainingPlan.js";
 import {
   createEmptySet,
@@ -537,65 +537,72 @@ export function useAppState(firebaseUser) {
 
     let active = true;
     firestoreReadyRef.current = false;
-    setBooted(false);
     setLegacyPrompt(null);
     setFirestoreSync((current) => ({ ...current, status: "loading", error: null }));
 
+    // Local-first boot: show this account's own cached data immediately (empty
+    // on a device it hasn't used, which is also the correct look for a
+    // brand-new signup) instead of gating the first paint on a cloud round
+    // trip. Everything below reconciles with Firestore behind the now-visible
+    // app rather than in front of it.
+    const scopedLocal = withDefaults(dbLoad());
+    setAppState(scopedLocal);
+    setBooted(true);
+    markBoot("uid-cache-loaded");
+
     (async () => {
       // A first-time Google sign-in is only identifiable from the redirect
-      // result, which races with the auth listener — wait for it so brand-new
-      // Google accounts get the instant blank boot instead of a cloud
-      // round-trip. Resolves immediately when no redirect is pending.
+      // result, which races with the auth listener. Awaiting it no longer
+      // blocks the first paint above — a fresh account's local cache is empty
+      // either way — it only decides whether to skip the Firestore round trip.
       await waitForPendingRedirect();
       if (!active) {
         return;
       }
 
       const freshSignup = consumeRecentSignup(firebaseUid);
-      const scopedLocal = withDefaults(dbLoad());
 
       if (freshSignup) {
-        // Brand-new account: start blank and go straight to onboarding without a
-        // cloud round-trip. Never adopt the device's previous local data; if any
-        // exists, offer it as an explicit import instead.
+        // Brand-new account: never adopt the device's previous local data; if
+        // any exists, offer it as an explicit import instead.
         firestoreReadyRef.current = true;
         firestoreSkipSaveRef.current = false;
-        setAppState(DD());
         setLegacyPrompt(buildLegacyPrompt());
-        setBooted(true);
         setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
         return;
       }
 
-      // Seed memory with this account's own cache (empty on a device it hasn't used).
-      setAppState(scopedLocal);
-
       try {
+        markBoot("firestore-request-started");
         const remote = await loadUserAppData(firebaseUid);
+        markBoot("firestore-response-received");
         if (!active) {
           return;
         }
 
-        const local = scopedLocal;
+        // Compare against the *live* app state, not the pre-fetch snapshot —
+        // the app has been interactive since the boot above, so the user may
+        // have already logged something while this round trip was in flight.
+        const liveApp = appRef.current;
         const remoteApp = remote?.appData && isValidData(remote.appData) ? remote.appData : null;
-        let resolvedApp = local;
+        let resolvedApp = liveApp;
 
         if (!remoteApp) {
-          if (hasAnyUserData(local)) {
-            await saveUserAppData(firebaseUid, toPlainAppData(local));
+          if (hasAnyUserData(liveApp)) {
+            await saveUserAppData(firebaseUid, toPlainAppData(liveApp));
           }
         } else {
           const remoteStamp = getSessionStamp(remoteApp);
-          const localStamp = getSessionStamp(local);
+          const liveStamp = getSessionStamp(liveApp);
 
-          if (remoteStamp > localStamp) {
+          if (remoteStamp > liveStamp) {
             firestoreSkipSaveRef.current = true;
             const merged = withDefaults(remoteApp);
             resolvedApp = merged;
             applyApp(merged, { stamp: false });
             dbSave(merged);
-          } else if (localStamp > remoteStamp || hasAnyUserData(local)) {
-            await saveUserAppData(firebaseUid, toPlainAppData(local));
+          } else if (liveStamp > remoteStamp || hasAnyUserData(liveApp)) {
+            await saveUserAppData(firebaseUid, toPlainAppData(liveApp));
           }
         }
 
@@ -603,7 +610,6 @@ export function useAppState(firebaseUser) {
           return;
         }
         firestoreReadyRef.current = true;
-        setBooted(true);
         setFirestoreSync({ status: "synced", lastSyncedAt: Date.now(), error: null });
         // If the account resolved empty but the device holds pre-scoping data,
         // offer an explicit import rather than silently ignoring or adopting it.
@@ -613,7 +619,6 @@ export function useAppState(firebaseUser) {
       } catch (error) {
         if (active) {
           firestoreReadyRef.current = true;
-          setBooted(true);
           setFirestoreSync({ status: "error", lastSyncedAt: null, error: error?.message || "Cloud sync failed." });
         }
       }
@@ -649,8 +654,11 @@ export function useAppState(firebaseUser) {
     return () => clearTimeout(firestoreSaveTimeoutRef.current);
   }, [app, firebaseUid]);
 
-  const exportStats = useCallback(() => {
+  const exportStats = useCallback(async () => {
     try {
+      // xlsx is a heavy library only this one export path needs, so it's kept
+      // out of the app's startup bundle and fetched on first use.
+      const XLSX = await import("xlsx");
       const workbook = XLSX.utils.book_new();
       const sessions = [...(app.sessions || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
       const recovery = [...(app.recovery || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
