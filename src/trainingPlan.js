@@ -109,6 +109,7 @@ export function getPlanForDate(app, date, todayDate = today()) {
   const items = [];
 
   (plan.template[weekdayIndex(date)] || []).forEach((slot) => {
+    if (slot.startDate && date < slot.startDate) return;
     const removal = dayEntries.find((entry) => entry.slotId === slot.id && entry.removed);
     if (removal) return;
     const override = dayEntries.find((entry) => entry.slotId === slot.id && !entry.removed && !entry.type);
@@ -176,7 +177,9 @@ export function addPlanItem(plan, { date, type, presetId = null, label = null, r
   const next = withPlanDefaults(plan);
   if (repeatWeekly) {
     const weekday = weekdayIndex(date);
-    const slot = { id: makeId("slot"), type, presetId, label };
+    // startDate keeps a new recurring plan from painting every past week as
+    // "missed" — the series begins the day it is added.
+    const slot = { id: makeId("slot"), type, presetId, label, startDate: date };
     return {
       ...next,
       template: { ...next.template, [weekday]: [...(next.template[weekday] || []), slot] },
