@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { PHASES } from "../data.js";
 import { fd, fdu, today } from "../storage.js";
 import { getChecklistProgress, getDailyChecklist, getMissedPrompt, getReadiness, getTodayPlan } from "../today.js";
@@ -6,6 +7,7 @@ import { Icon } from "../components/icons.jsx";
 import { Avatar } from "../components/Avatar.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { colors, typeScale } from "../theme.js";
+import { markBoot } from "../services/bootTiming.js";
 
 function greeting() {
   const h = new Date().getHours();
@@ -146,6 +148,10 @@ export function HomeScreen({
   const planItems = getTodayPlan(app);
   const checklist = getDailyChecklist(app);
   const missedPrompt = onUpdatePlan ? getMissedPrompt(app) : null;
+
+  useEffect(() => {
+    markBoot("home-rendered");
+  }, []);
 
   const openPlanItem = (item) => {
     if (item.view === "recovery") return onOpenRecovery();

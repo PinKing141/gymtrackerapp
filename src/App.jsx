@@ -1,25 +1,43 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { CelebrationOverlay } from "./components/ui.jsx";
 import { BootSkeleton } from "./components/Skeleton.jsx";
 import { Icon } from "./components/icons.jsx";
 import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
-import { AuthScreen } from "./screens/AuthScreen.jsx";
-import { BasketballScreen } from "./screens/BasketballScreen.jsx";
-import { CalendarScreen } from "./screens/CalendarScreen.jsx";
-import { CardioScreen } from "./screens/CardioScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
-import { LegacyDataPrompt } from "./screens/LegacyDataPrompt.jsx";
-import { LogScreen } from "./screens/LogScreen.jsx";
-import { MoreScreen } from "./screens/MoreScreen.jsx";
-import { NutritionScreen } from "./screens/NutritionScreen.jsx";
-import { OnboardingScreen } from "./screens/OnboardingScreen.jsx";
-import { ProgressHubScreen } from "./screens/ProgressHubScreen.jsx";
-import { TrainScreen } from "./screens/TrainScreen.jsx";
 import { useAppState } from "./hooks/useAppState.js";
 import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
 import { signOutUser } from "./services/firebaseAuth.js";
 import { unlockAudio } from "./services/sound.js";
+import { markBoot } from "./services/bootTiming.js";
 import { colors, radii, typeScale } from "./theme.js";
+
+// Only Home and this shell (nav, auth/onboarding gates) are needed at first
+// paint. Every other screen — including the auth/onboarding flows, which a
+// returning already-onboarded user never touches — is its own chunk, loaded
+// the first time its view is actually reached.
+function lazyScreen(loader, exportName) {
+  return lazy(() => loader().then((module) => ({ default: module[exportName] })));
+}
+
+const AuthScreen = lazyScreen(() => import("./screens/AuthScreen.jsx"), "AuthScreen");
+const BasketballScreen = lazyScreen(() => import("./screens/BasketballScreen.jsx"), "BasketballScreen");
+const CalendarScreen = lazyScreen(() => import("./screens/CalendarScreen.jsx"), "CalendarScreen");
+const CardioScreen = lazyScreen(() => import("./screens/CardioScreen.jsx"), "CardioScreen");
+const LegacyDataPrompt = lazyScreen(() => import("./screens/LegacyDataPrompt.jsx"), "LegacyDataPrompt");
+const LogScreen = lazyScreen(() => import("./screens/LogScreen.jsx"), "LogScreen");
+const MoreScreen = lazyScreen(() => import("./screens/MoreScreen.jsx"), "MoreScreen");
+const NutritionScreen = lazyScreen(() => import("./screens/NutritionScreen.jsx"), "NutritionScreen");
+const OnboardingScreen = lazyScreen(() => import("./screens/OnboardingScreen.jsx"), "OnboardingScreen");
+const ProgressHubScreen = lazyScreen(() => import("./screens/ProgressHubScreen.jsx"), "ProgressHubScreen");
+const TrainScreen = lazyScreen(() => import("./screens/TrainScreen.jsx"), "TrainScreen");
+
+function BootFallback() {
+  return (
+    <div style={{ maxWidth: 430, margin: "0 auto", fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif" }}>
+      <BootSkeleton />
+    </div>
+  );
+}
 
 const NAV_TABS = [
   { id: "home", label: "Home", icon: "home" },
@@ -111,12 +129,12 @@ export function App() {
     return () => window.removeEventListener("pointerdown", unlock);
   }, []);
 
+  useEffect(() => {
+    markBoot("js-app-mounted");
+  }, []);
+
   if (authLoading) {
-    return (
-      <div style={{ maxWidth: 430, margin: "0 auto", fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif" }}>
-        <BootSkeleton />
-      </div>
-    );
+    return <BootFallback />;
   }
 
   if (!isLoggedIn) {
@@ -131,20 +149,19 @@ export function App() {
           fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
         }}
       >
-        <AuthScreen />
+        <Suspense fallback={<BootFallback />}>
+          <AuthScreen />
+        </Suspense>
       </div>
     );
   }
 
   // Signed in, but this account's data hasn't been resolved yet (local cache +
   // cloud reconcile). Hold on a spinner rather than flashing empty state or the
-  // previous account's data. Brand-new signups boot instantly (no cloud wait).
+  // previous account's data. Local-first boot means this is normally a single
+  // render tick, not a network wait.
   if (!booted) {
-    return (
-      <div style={{ maxWidth: 430, margin: "0 auto", fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif" }}>
-        <BootSkeleton />
-      </div>
-    );
+    return <BootFallback />;
   }
 
   // This device holds pre-scoping data but the account is starting empty. Ask
@@ -161,11 +178,13 @@ export function App() {
           fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
         }}
       >
-        <LegacyDataPrompt
-          prompt={legacyPrompt}
-          onImport={actions.importLegacyData}
-          onStartFresh={actions.dismissLegacyData}
-        />
+        <Suspense fallback={<BootFallback />}>
+          <LegacyDataPrompt
+            prompt={legacyPrompt}
+            onImport={actions.importLegacyData}
+            onStartFresh={actions.dismissLegacyData}
+          />
+        </Suspense>
       </div>
     );
   }
@@ -183,10 +202,12 @@ export function App() {
           fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
         }}
       >
-        <OnboardingScreen
-          profile={app.profile}
-          onComplete={(patch) => setApp((current) => ({ ...current, profile: { ...current.profile, ...patch } }))}
-        />
+        <Suspense fallback={<BootFallback />}>
+          <OnboardingScreen
+            profile={app.profile}
+            onComplete={(patch) => setApp((current) => ({ ...current, profile: { ...current.profile, ...patch } }))}
+          />
+        </Suspense>
       </div>
     );
   }
@@ -342,7 +363,7 @@ export function App() {
           WebkitOverflowScrolling: "touch",
         }}
       >
-        {content}
+        <Suspense fallback={<BootSkeleton />}>{content}</Suspense>
       </div>
       {view !== "log" && (
         <div

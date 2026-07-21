@@ -87,9 +87,12 @@ describe("returning account boot", () => {
 
     const { result } = await renderBooted(USER_A);
 
-    expect(result.current.app.profile.firstName).toBe("CloudNew");
+    // Local-first boot: the app is immediately usable with the local cache,
+    // then reconciles with the cloud copy behind the scenes once it arrives.
+    expect(result.current.app.profile.firstName).toBe("LocalOld");
+    await waitFor(() => expect(result.current.app.profile.firstName).toBe("CloudNew"));
     // The winning copy is also written back to the scoped local cache.
-    expect(JSON.parse(localStorage.getItem("orion-gym-v4:uidA")).profile.firstName).toBe("CloudNew");
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("orion-gym-v4:uidA")).profile.firstName).toBe("CloudNew"));
   });
 
   it("prefers the local cache when it is newer than the cloud copy", async () => {
@@ -114,6 +117,9 @@ describe("fresh signups", () => {
 
     const { result } = await renderBooted({ uid: "uidNew", email: "new@example.com" });
 
+    // Local-first boot: booted flips true immediately, and the fresh-signup
+    // check (which decides the legacy prompt) resolves shortly after.
+    await waitFor(() => expect(result.current.legacyPrompt).toBeTruthy());
     expect(loadUserAppData).not.toHaveBeenCalled();
     expect(result.current.app.profile.onboardingComplete).toBeFalsy();
     expect(result.current.legacyPrompt?.name).toBe("OldFavour");
@@ -124,6 +130,7 @@ describe("fresh signups", () => {
     consumeRecentSignup.mockImplementation((uid) => uid === "uidNew");
 
     const { result } = await renderBooted({ uid: "uidNew", email: "new@example.com" });
+    await waitFor(() => expect(result.current.legacyPrompt).toBeTruthy());
     act(() => result.current.actions.importLegacyData());
 
     expect(result.current.app.profile.firstName).toBe("OldFavour");
@@ -136,6 +143,7 @@ describe("fresh signups", () => {
     consumeRecentSignup.mockImplementation((uid) => uid === "uidNew");
 
     const { result } = await renderBooted({ uid: "uidNew", email: "new@example.com" });
+    await waitFor(() => expect(result.current.legacyPrompt).toBeTruthy());
     act(() => result.current.actions.dismissLegacyData());
 
     expect(result.current.legacyPrompt).toBeNull();
