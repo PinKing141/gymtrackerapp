@@ -691,7 +691,7 @@ export function BasketballScreen({ app, setApp, onExit, onOpenProfile, firebaseU
   const builder = (
     <div style={{ display: "grid", gap: 16, padding: "calc(env(safe-area-inset-top, 0px) + 24px) 18px 28px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <button onClick={() => setCurrentView("setup")} style={{ border: 0, borderRadius: radii.pill, width: 40, height: 40, background: colors.surface, color: colors.textPrimary, cursor: "pointer" }}><Icon name="chevronLeft" /></button>
+        <button onClick={() => setCurrentView("setup")} aria-label="Back" style={{ border: 0, borderRadius: radii.pill, width: 40, height: 40, background: colors.surface, color: colors.textPrimary, cursor: "pointer" }}><Icon name="chevronLeft" /></button>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>Builder</h1>
       </div>
       <input value={customName} onChange={(event) => setCustomName(event.target.value)} style={{ width: "100%", background: "transparent", border: 0, borderBottom: `2px solid ${colors.borderStrong}`, color: colors.textPrimary, padding: "8px 0 12px", fontSize: 22, fontWeight: 700, outline: "none" }} />

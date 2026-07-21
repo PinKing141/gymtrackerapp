@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "../components/icons.jsx";
+import { UndoToast } from "../components/UndoToast.jsx";
+import { useUndoToast } from "../hooks/useUndoToast.js";
 import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { IS, fd, today } from "../storage.js";
 import { colors, radii, typeScale } from "../theme.js";
@@ -9,6 +11,7 @@ import { assessFoodQuality } from "../services/nutrition/quality.js";
 import { getWeeklyNutritionSummary } from "../services/nutrition/insights.js";
 import { computeAmount, getServingOptions } from "../services/nutrition/servings.js";
 import { createRecipeFood, getPerServing, getRecipeTotals, ingredientFromFood } from "../services/nutrition/recipes.js";
+import { addRecentSearch, removeRecentSearch } from "../services/nutrition/searchHistory.js";
 import { BarcodeScanner } from "../components/nutrition/BarcodeScanner.jsx";
 import { Avatar } from "../components/Avatar.jsx";
 import {
@@ -29,6 +32,7 @@ const EMPTY_NUTRITION = {
   savedMeals: [],
   favourites: [],
   barcodeCache: {},
+  recentSearches: [],
   targets: null,
 };
 
@@ -65,6 +69,7 @@ function normalizeNutrition(value) {
     savedMeals: Array.isArray(value?.savedMeals) ? value.savedMeals : [],
     favourites: Array.isArray(value?.favourites) ? value.favourites : [],
     barcodeCache: value?.barcodeCache && typeof value.barcodeCache === "object" ? value.barcodeCache : {},
+    recentSearches: Array.isArray(value?.recentSearches) ? value.recentSearches : [],
     targets: value?.targets && typeof value.targets === "object" ? value.targets : null,
   };
 }
@@ -435,6 +440,7 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
   const [onlineResults, setOnlineResults] = useState([]);
   const [onlineStatus, setOnlineStatus] = useState("idle");
   const [onlineError, setOnlineError] = useState("");
+  const { toast: undoToast, showUndo, dismiss: dismissUndo, undo: runUndo } = useUndoToast();
 
   const nutrition = useMemo(() => normalizeNutrition(app?.nutrition), [app?.nutrition]);
   const logs = nutrition.foodLogs;
@@ -503,6 +509,18 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
   }, [query]);
 
   const updateNutrition = (updater) => NutritionStateUpdater(setApp, updater);
+
+  // Record a search term once the user pauses typing, so "search history"
+  // reflects what they actually searched for rather than every keystroke.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return undefined;
+    const timeoutId = setTimeout(() => {
+      updateNutrition((current) => ({ ...current, recentSearches: addRecentSearch(current.recentSearches, trimmed) }));
+    }, 600);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
   const addLogs = (entries) => {
     updateNutrition((current) => ({
       ...current,
@@ -617,10 +635,17 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
   };
 
   const deleteLog = (id) => {
+    const snapshot = nutrition.foodLogs;
+    const deleted = snapshot.find((entry) => entry.id === id);
     updateNutrition((current) => ({
       ...current,
       foodLogs: current.foodLogs.filter((entry) => entry.id !== id),
     }));
+    if (deleted) {
+      showUndo(`Removed ${getLoggedFoodParts(deleted.foodName).title}`, () => {
+        updateNutrition((current) => ({ ...current, foodLogs: snapshot }));
+      });
+    }
   };
 
   const repeatLog = (entry) => {
@@ -779,6 +804,32 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
           <Icon name="search" size={17} color={colors.textMuted} style={{ position: "absolute", left: 12, top: 12 }} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search foods" autoFocus style={{ ...IS, padding: "11px 12px 11px 38px" }} />
         </div>
+
+        {!query.trim() && nutrition.recentSearches.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 14 }}>
+            {nutrition.recentSearches.map((term) => (
+              <button
+                key={term}
+                type="button"
+                onClick={() => setQuery(term)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: 34, padding: "6px 8px 6px 12px", borderRadius: radii.pill, border: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.04)", color: colors.textSecondary, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+              >
+                <Icon name="search" size={12} color={colors.textMuted} />
+                {term}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Remove "${term}" from recent searches`}
+                  onClick={(event) => { event.stopPropagation(); updateNutrition((current) => ({ ...current, recentSearches: removeRecentSearch(current.recentSearches, term) })); }}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); updateNutrition((current) => ({ ...current, recentSearches: removeRecentSearch(current.recentSearches, term) })); } }}
+                  style={{ display: "inline-flex", padding: 4, margin: -4, color: colors.textMuted, cursor: "pointer" }}
+                >
+                  ✕
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <ActionButton tone="tinted" color="#B58BFF" compact onClick={openBarcode} style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <Icon name="search" size={16} color="#B58BFF" />
@@ -1175,6 +1226,7 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
           onSaveMeal={saveMealFromType}
         />
       ))}
+      <UndoToast toast={undoToast} onUndo={runUndo} onDismiss={dismissUndo} />
     </Screen>
   );
 }

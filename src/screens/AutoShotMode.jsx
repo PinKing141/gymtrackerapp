@@ -608,7 +608,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
           ) : (
             <div>
               <p style={{ fontSize: 40, margin: "0 0 12px" }}>📷</p>
-              <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 950 }}>Camera Stopped</h3>
+              <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 950 }}>Camera stopped</h3>
               <p style={{ ...typeScale.bodySm, margin: "0 0 16px", color: colors.textSecondary }}>
                 Keep the phone in the calibrated position, then restart tracking.
               </p>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CelebrationOverlay } from "./components/ui.jsx";
+import { BootSkeleton } from "./components/Skeleton.jsx";
 import { Icon } from "./components/icons.jsx";
 import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
 import { AuthScreen } from "./screens/AuthScreen.jsx";
@@ -112,19 +113,8 @@ export function App() {
 
   if (authLoading) {
     return (
-      <div
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: colors.background,
-          color: colors.textMuted,
-          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
-          fontSize: 13,
-        }}
-      >
-        Loading…
+      <div style={{ maxWidth: 430, margin: "0 auto", fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif" }}>
+        <BootSkeleton />
       </div>
     );
   }
@@ -151,19 +141,8 @@ export function App() {
   // previous account's data. Brand-new signups boot instantly (no cloud wait).
   if (!booted) {
     return (
-      <div
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: colors.background,
-          color: colors.textMuted,
-          fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif",
-          fontSize: 13,
-        }}
-      >
-        Loading…
+      <div style={{ maxWidth: 430, margin: "0 auto", fontFamily: "'SF Pro Display',-apple-system,system-ui,sans-serif" }}>
+        <BootSkeleton />
       </div>
     );
   }

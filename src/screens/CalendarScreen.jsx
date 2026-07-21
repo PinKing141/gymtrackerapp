@@ -134,7 +134,7 @@ export function CalendarScreen({ app, onBack, onUpdatePlan, onStartWorkout }) {
     <Screen>
       <ScreenHeader
         action={<BackButton onClick={onBack} />}
-        title="Training Calendar"
+        title="Training calendar"
         topPadding="calc(env(safe-area-inset-top, 0px) + 20px)"
       />
 
@@ -241,7 +241,7 @@ export function CalendarScreen({ app, onBack, onUpdatePlan, onStartWorkout }) {
               setMovingKey(null);
               setAddForm({ type: "gym", presetId: presets[0]?.id || "", repeatWeekly: true });
             }}
-            style={{ width: 28, height: 28, borderRadius: 9, border: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.04)", color: colors.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{ width: 36, height: 36, borderRadius: 9, border: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.04)", color: colors.textSecondary, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             <Icon name="plus" size={14} color={colors.textSecondary} />
           </button>

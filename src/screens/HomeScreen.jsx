@@ -199,7 +199,7 @@ export function HomeScreen({
       <SurfaceCard style={{ marginBottom: 14, borderColor: "rgba(78,161,255,0.24)", background: "rgba(78,161,255,0.08)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <p style={{ ...typeScale.overline, color: colors.accent, textTransform: "uppercase", margin: 0 }}>Weekly Streak</p>
+            <p style={{ ...typeScale.overline, color: colors.accent, textTransform: "uppercase", margin: 0 }}>Weekly streak</p>
             <p style={{ margin: "4px 0 0", fontSize: 14, color: colors.textPrimary, fontWeight: 700 }}>
               {streakSummary.currentStreak} week{streakSummary.currentStreak === 1 ? "" : "s"} running
             </p>
@@ -226,7 +226,7 @@ export function HomeScreen({
 
       {new Date().getDay() === 0 && !app.weeklyReviews.find((review) => review.date === today()) && (
         <SurfaceButton onClick={onOpenReview} style={{ background: "rgba(246,183,60,0.06)", border: "1px solid rgba(246,183,60,0.2)", marginBottom: 10 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: colors.warning, display: "flex", alignItems: "center", gap: 6 }}><Icon name="clipboard" size={14} color={colors.warning} />Weekly Review Due</p>
+          <p style={{ fontSize: 13, fontWeight: 700, margin: 0, color: colors.warning, display: "flex", alignItems: "center", gap: 6 }}><Icon name="clipboard" size={14} color={colors.warning} />Weekly review due</p>
           <p style={{ ...typeScale.caption, color: colors.textSecondary, margin: "2px 0 0" }}>Answer 5 questions. Stay accountable.</p>
         </SurfaceButton>
       )}

@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { EmptyState } from "../components/EmptyState.jsx";
 import { Icon } from "../components/icons.jsx";
+import { UndoToast } from "../components/UndoToast.jsx";
+import { useUndoToast } from "../hooks/useUndoToast.js";
 import { IS, fd, ft, fdu } from "../storage.js";
 import { getExercisesForWorkout, getResolvedSet, getSetSummary, getWorkoutForSession, isSetStarted, recomputePersonalBests } from "../workouts.js";
 import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
@@ -20,6 +23,18 @@ const EDITABLE_FIELDS = [
 
 export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
   const [editing, setEditing] = useState(false);
+  const { toast: undoToast, showUndo, dismiss: dismissUndo, undo: runUndo } = useUndoToast();
+
+  const deleteSession = (index) => {
+    const sessionsSnapshot = app.sessions;
+    const personalBestsSnapshot = app.personalBests;
+    const nextSessions = sessionsSnapshot.filter((_, entryIndex) => entryIndex !== index);
+    setApp((current) => ({ ...current, sessions: nextSessions, personalBests: recomputePersonalBests(nextSessions) }));
+    setDetailIndex(null);
+    showUndo("Session deleted", () => {
+      setApp((current) => ({ ...current, sessions: sessionsSnapshot, personalBests: personalBestsSnapshot }));
+    });
+  };
 
   useEffect(() => {
     if (detailIndex !== null && !app.sessions[detailIndex]) {
@@ -156,8 +171,8 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
 
         {session.notes && <SurfaceCard><p style={{ fontSize: 10, color: "#555", margin: "0 0 3px" }}>Notes</p><p style={{ fontSize: 12, color: "#bbb", margin: 0 }}>{session.notes}</p></SurfaceCard>}
 
-        <ActionButton onClick={() => { setApp((current) => ({ ...current, sessions: current.sessions.filter((_, index) => index !== detailIndex) })); setDetailIndex(null); }} tone="danger" compact style={{ marginTop: 16 }}>
-          Delete Session
+        <ActionButton onClick={() => deleteSession(detailIndex)} tone="danger" compact style={{ marginTop: 16 }}>
+          Delete session
         </ActionButton>
       </Screen>
     );
@@ -167,12 +182,14 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
 
   if (!app.sessions.length && !cardioSessions.length) {
     return (
-      <div style={{ padding: "80px 20px", textAlign: "center" }}>
-        <div style={{ width: 52, height: 52, borderRadius: 14, margin: "0 auto 10px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <Icon name="clipboard" size={24} color="#777" />
-        </div>
-        <p style={{ fontSize: 14, color: "#555" }}>No sessions logged yet.</p>
-      </div>
+      <Screen>
+        <EmptyState
+          icon="clipboard"
+          title="No sessions logged yet"
+          subtitle="Finish a workout or cardio session and it'll show up here."
+        />
+        <UndoToast toast={undoToast} onUndo={runUndo} onDismiss={dismissUndo} />
+      </Screen>
     );
   }
 
@@ -210,6 +227,7 @@ export function HistoryScreen({ app, detailIndex, setDetailIndex, setApp }) {
           ))}
         </>
       )}
+      <UndoToast toast={undoToast} onUndo={runUndo} onDismiss={dismissUndo} />
     </Screen>
   );
 }
