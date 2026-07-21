@@ -256,7 +256,7 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
                   </button>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "0.65fr 1fr 0.8fr", gap: 7, marginTop: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "0.65fr 1fr 0.8fr 0.6fr", gap: 7, marginTop: 10 }}>
                   <Field label="Sets">
                     <input
                       type="number"
@@ -284,6 +284,20 @@ export function WorkoutPresetBuilder({ onCancel, onSave }) {
                       }}
                       style={compactInput}
                     />
+                  </Field>
+                  <Field label="Group">
+                    <button
+                      type="button"
+                      title="Superset/circuit group — exercises sharing a letter are performed together"
+                      onClick={() => {
+                        const cycle = [null, "A", "B", "C", "D"];
+                        const next = cycle[(cycle.indexOf(exercise.group || null) + 1) % cycle.length];
+                        updateExercise(index, { group: next });
+                      }}
+                      style={{ ...compactInput, cursor: "pointer", textAlign: "center", color: exercise.group ? color : colors.textMuted, fontWeight: 800 }}
+                    >
+                      {exercise.group || "–"}
+                    </button>
                   </Field>
                 </div>
 

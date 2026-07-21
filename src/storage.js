@@ -119,6 +119,8 @@ export const DD = () => ({
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   trainingPlan: DEFAULT_TRAINING_PLAN(),
+  // Per-exercise preferences keyed by exercise name (progression method etc.).
+  exerciseSettings: {},
   streakState: { ...DEFAULT_STREAK_STATE },
   meta: { lastSavedAt: null, dataVersion: DATA_VERSION, lastSyncedAt: null },
 });
@@ -298,6 +300,7 @@ export const withDefaults = (d) => {
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
     cardioSessions: isArr(d?.cardioSessions) ? d.cardioSessions : b.cardioSessions,
     trainingPlan: normalizeTrainingPlanShape(d?.trainingPlan),
+    exerciseSettings: isObj(d?.exerciseSettings) ? d.exerciseSettings : {},
     nutrition: normalizeNutrition(d?.nutrition),
     profile: {
       ...DEFAULT_PROFILE,

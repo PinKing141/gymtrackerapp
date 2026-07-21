@@ -271,6 +271,7 @@ export function App() {
         onUpdateSet={actions.updateSet}
         onFinishWorkout={actions.finishWorkout}
         onCancelWorkout={actions.cancelWorkout}
+        onSetProgression={actions.setExerciseProgression}
       />
     );
   }

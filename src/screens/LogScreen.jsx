@@ -3,7 +3,8 @@ import { Icon } from "../components/icons.jsx";
 import { PREHAB } from "../data.js";
 import { ActionButton, SurfaceButton, SurfaceCard, TextAreaField } from "../components/ui.jsx";
 import { colors, radii, typeScale } from "../theme.js";
-import { getWorkoutById, isSetComplete, isSetStarted } from "../workouts.js";
+import { getProgressionConfig, getProgressionSuggestion } from "../progression.js";
+import { getGroupLabels, getResolvedSet, getWorkoutById, isSetComplete, isSetStarted } from "../workouts.js";
 
 
 function getEnergyLabel(value) {
@@ -97,7 +98,7 @@ function ChecklistBlock({ title, iconName, done, open, onToggle, onDone, exercis
   );
 }
 
-export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, sessionNotice, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout }) {
+export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen, setPrehabOpen, coreOpen, setCoreOpen, session, sessionNotice, setSession, workoutId, onUpdateSet, onFinishWorkout, onCancelWorkout, onSetProgression }) {
   if (!session || !workoutId) {
     return null;
   }
@@ -108,11 +109,38 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
   }
   const previousSession = [...app.sessions].reverse().find((entry) => entry.workoutId === workoutId);
   const allExercises = [...workout.performance, ...(workout.finisher || [])];
+  const groupLabels = getGroupLabels(allExercises);
   const completedExercises = allExercises.filter((exercise, index) => {
     const exerciseKey = `${index}-${exercise.name}`;
-    const exerciseSets = session.sets[exerciseKey] || [];
+    const exerciseSets = (session.sets[exerciseKey] || []).filter((setData) => !getResolvedSet(setData, exercise).warmup);
     return exerciseSets.length > 0 && exerciseSets.filter((setData) => isSetComplete(setData, exercise)).length >= exercise.sets;
   }).length;
+
+  // Extra per-exercise card props: superset label, session-scoped notes and
+  // substitutions, and the transparent progression suggestion.
+  const cardExtras = (exercise, index) => {
+    const exerciseKey = `${index}-${exercise.name}`;
+    const substitution = session.substitutions?.[exerciseKey] || null;
+    const effectiveExercise = substitution ? { ...exercise, name: substitution } : exercise;
+    return {
+      groupLabel: groupLabels[index],
+      note: session.exerciseNotes?.[exerciseKey] || "",
+      onNoteChange: (value) => setSession((current) => ({
+        ...current,
+        exerciseNotes: { ...(current.exerciseNotes || {}), [exerciseKey]: value },
+      })),
+      substitution,
+      onSubstitute: (name) => setSession((current) => {
+        const substitutions = { ...(current.substitutions || {}) };
+        if (name && name !== exercise.name) substitutions[exerciseKey] = name;
+        else delete substitutions[exerciseKey];
+        return { ...current, substitutions };
+      }),
+      suggestion: exercise.tracked ? getProgressionSuggestion(app, effectiveExercise) : null,
+      progressionMethod: getProgressionConfig(app, effectiveExercise.name).method,
+      onProgressionMethodChange: onSetProgression ? (method) => onSetProgression(effectiveExercise.name, method) : undefined,
+    };
+  };
   const startedSetCount = allExercises.reduce((total, exercise, index) => {
     const exerciseKey = `${index}-${exercise.name}`;
     return total + (session.sets[exerciseKey] || []).filter((setData) => isSetStarted(setData, exercise)).length;
@@ -193,6 +221,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
               onSet={onUpdateSet}
               color={workout.color}
               previousSets={previousSession?.sets?.[exerciseKey]}
+              {...cardExtras(exercise, index)}
             />
           );
         })}
@@ -214,6 +243,7 @@ export function LogScreen({ app, expandedExercise, onToggleExercise, prehabOpen,
                   onSet={onUpdateSet}
                   color={workout.color}
                   previousSets={previousSession?.sets?.[exerciseKey]}
+                  {...cardExtras(exercise, exerciseIndex)}
                 />
               );
             })}
