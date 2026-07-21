@@ -25,6 +25,8 @@ const DEFAULT_NUTRITION = {
   foodLogs: [],
   customFoods: [],
   savedMeals: [],
+  favourites: [],
+  barcodeCache: {},
   targets: null,
 };
 const DEFAULT_PROFILE = {
@@ -110,12 +112,7 @@ export const DD = () => ({
   bodyStats: [],
   weeklyReviews: [],
   cardioSessions: [],
-  nutrition: {
-    foodLogs: [],
-    customFoods: [],
-    savedMeals: [],
-    targets: null,
-  },
+  nutrition: { ...DEFAULT_NUTRITION, favourites: [], barcodeCache: {} },
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   trainingPlan: DEFAULT_TRAINING_PLAN(),
@@ -261,6 +258,8 @@ function normalizeNutrition(value) {
     foodLogs: isArr(value?.foodLogs) ? value.foodLogs : [],
     customFoods: isArr(value?.customFoods) ? value.customFoods : [],
     savedMeals: isArr(value?.savedMeals) ? value.savedMeals : [],
+    favourites: isArr(value?.favourites) ? value.favourites : [],
+    barcodeCache: isObj(value?.barcodeCache) ? value.barcodeCache : {},
     targets: isObj(value?.targets) ? value.targets : null,
   };
 }
