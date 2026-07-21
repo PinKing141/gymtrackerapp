@@ -112,6 +112,13 @@ export const DD = () => ({
   bodyStats: [],
   weeklyReviews: [],
   cardioSessions: [],
+  basketballSessions: [],
+  // Custom skill-workout templates the athlete built, and monthly benchmark
+  // test results — kept in app data (not a separate localStorage blob) so
+  // they're per-account scoped, cloud-synced and backed up like everything else.
+  basketballPresets: [],
+  basketballBenchmarks: [],
+  basketballSettings: { playerName: "" },
   nutrition: { ...DEFAULT_NUTRITION, favourites: [], barcodeCache: {} },
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
@@ -164,6 +171,9 @@ export const hasAnyUserData = (app) => Boolean(
   app?.nutrition?.savedMeals?.length ||
   Object.keys(app?.trainingPlan?.template || {}).length ||
   app?.trainingPlan?.entries?.length ||
+  app?.basketballSessions?.length ||
+  app?.basketballPresets?.length ||
+  app?.basketballBenchmarks?.length ||
   app?.phaseStart
 );
 
@@ -298,6 +308,10 @@ export const withDefaults = (d) => {
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
     cardioSessions: isArr(d?.cardioSessions) ? d.cardioSessions : b.cardioSessions,
+    basketballSessions: isArr(d?.basketballSessions) ? d.basketballSessions : (b.basketballSessions || []),
+    basketballPresets: isArr(d?.basketballPresets) ? d.basketballPresets : (b.basketballPresets || []),
+    basketballBenchmarks: isArr(d?.basketballBenchmarks) ? d.basketballBenchmarks : (b.basketballBenchmarks || []),
+    basketballSettings: isObj(d?.basketballSettings) ? { playerName: "", ...d.basketballSettings } : { playerName: "" },
     trainingPlan: normalizeTrainingPlanShape(d?.trainingPlan),
     exerciseSettings: isObj(d?.exerciseSettings) ? d.exerciseSettings : {},
     nutrition: normalizeNutrition(d?.nutrition),

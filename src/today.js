@@ -1,4 +1,5 @@
 import { today } from "./storage.js";
+import { isHighLoadSession } from "./basketball.js";
 import { getNutritionTargets } from "./services/nutrition/nutritionTargets.js";
 import { getStreakSummary } from "./streaks.js";
 import { getMissedItems, getPlanForDate, isDeloadWeek } from "./trainingPlan.js";
@@ -60,11 +61,25 @@ export function getReadiness(app, date = today()) {
   const recent = latestWithin(app?.recovery, date, 1);
   const recovery = recent?.entry || null;
 
-  const lastThreeDays = (app?.sessions || []).filter((session) => {
-    const age = daysBetween(session?.date, date);
-    return age !== null && age >= 0 && age <= 2;
-  });
   const lastSession = latestWithin(app?.sessions, date, 2)?.entry || null;
+
+  // Training days over the last 3, gym and basketball combined — a hard
+  // basketball day (lots of jumping/sprinting) is real lower-body workload,
+  // not a rest day, so it counts toward "how much have you trained lately?"
+  // the same way a gym session would.
+  const trainingDays = new Set(
+    (app?.sessions || [])
+      .filter((session) => {
+        const age = daysBetween(session?.date, date);
+        return age !== null && age >= 0 && age <= 2;
+      })
+      .map((session) => session.date)
+  );
+  const recentHighLoadBasketball = (app?.basketballSessions || []).filter((session) => {
+    const age = daysBetween(session?.date, date);
+    return age !== null && age >= 0 && age <= 2 && isHighLoadSession(session);
+  });
+  recentHighLoadBasketball.forEach((session) => trainingDays.add(session.date));
 
   if (!recovery && !lastSession) {
     return {
@@ -118,12 +133,21 @@ export function getReadiness(app, date = today()) {
     }
   }
 
-  if (lastThreeDays.length >= 3) {
+  if (trainingDays.size >= 3) {
     score += 2;
-    reasons.push(`You've trained ${lastThreeDays.length} times in the last 3 days.`);
-  } else if (lastThreeDays.length === 2) {
+    reasons.push(`You've trained ${trainingDays.size} times in the last 3 days.`);
+  } else if (trainingDays.size === 2) {
     score += 1;
     reasons.push("You've trained on back-to-back days.");
+  }
+
+  const yesterdayHighLoadBasketball = recentHighLoadBasketball.find((session) => {
+    const age = daysBetween(session.date, date);
+    return age !== null && age <= 1;
+  });
+  if (yesterdayHighLoadBasketball) {
+    score += 1;
+    reasons.push("Your recent basketball session was high-load (lots of jumping/sprinting) — that's lower-body work, not rest.");
   }
 
   let level = "ready";
