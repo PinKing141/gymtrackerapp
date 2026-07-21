@@ -125,6 +125,47 @@ test("training calendar: a missed workout can be moved to today", async ({ page 
   expect(fmt(yesterday)).toBeTruthy();
 });
 
+test("basketball: logging a skill session connects to the rest of the app", async ({ page }) => {
+  const basketballApp = {
+    ...SEEDED_APP,
+    profile: { ...SEEDED_APP.profile, enabledModules: { gym: true, basketball: true } },
+  };
+  await seed(page, basketballApp);
+  await page.goto("/");
+
+  await page.locator('button[aria-label="Quick add"]').click();
+  await page.getByText("Shoot hoops").click();
+  await page.getByText("Workout programmes").click();
+  await page.getByText("Starter Shooter").click();
+
+  // Log enough makes to clear the first drill's target and advance.
+  const makeButton = page.getByRole("button", { name: "Make", exact: true });
+  for (let i = 0; i < 5; i += 1) {
+    await makeButton.click();
+  }
+  await expect(page.getByText(/\d+\/50 makes/)).toBeVisible();
+
+  await page.getByRole("button", { name: "End early" }).click();
+
+  // The finished session lands in the account's own app data (not a separate,
+  // unscoped localStorage blob) — this is what lets it show up on Today,
+  // count toward workload, and survive backup/restore like every other module.
+  await expect.poll(async () => page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("orion-gym-v4") || "{}");
+    return stored.basketballSessions?.length || 0;
+  })).toBe(1);
+
+  const workloadLevel = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("orion-gym-v4") || "{}");
+    return stored.basketballSessions?.[0]?.workload?.level;
+  });
+  expect(["low", "moderate", "high"]).toContain(workloadLevel);
+
+  // Shot stats screen shows the hot-zone shot chart for the logged shots.
+  await page.getByText("Shot stats & chart").click();
+  await expect(page.getByText("Shot chart")).toBeVisible();
+});
+
 test("backup export and import round-trips the data", async ({ page }) => {
   await seed(page);
   page.on("dialog", (dialog) => dialog.accept());

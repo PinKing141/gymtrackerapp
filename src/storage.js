@@ -25,6 +25,8 @@ const DEFAULT_NUTRITION = {
   foodLogs: [],
   customFoods: [],
   savedMeals: [],
+  favourites: [],
+  barcodeCache: {},
   targets: null,
 };
 const DEFAULT_PROFILE = {
@@ -110,15 +112,19 @@ export const DD = () => ({
   bodyStats: [],
   weeklyReviews: [],
   cardioSessions: [],
-  nutrition: {
-    foodLogs: [],
-    customFoods: [],
-    savedMeals: [],
-    targets: null,
-  },
+  basketballSessions: [],
+  // Custom skill-workout templates the athlete built, and monthly benchmark
+  // test results — kept in app data (not a separate localStorage blob) so
+  // they're per-account scoped, cloud-synced and backed up like everything else.
+  basketballPresets: [],
+  basketballBenchmarks: [],
+  basketballSettings: { playerName: "" },
+  nutrition: { ...DEFAULT_NUTRITION, favourites: [], barcodeCache: {} },
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
   trainingPlan: DEFAULT_TRAINING_PLAN(),
+  // Per-exercise preferences keyed by exercise name (progression method etc.).
+  exerciseSettings: {},
   streakState: { ...DEFAULT_STREAK_STATE },
   meta: { lastSavedAt: null, dataVersion: DATA_VERSION, lastSyncedAt: null },
 });
@@ -165,6 +171,9 @@ export const hasAnyUserData = (app) => Boolean(
   app?.nutrition?.savedMeals?.length ||
   Object.keys(app?.trainingPlan?.template || {}).length ||
   app?.trainingPlan?.entries?.length ||
+  app?.basketballSessions?.length ||
+  app?.basketballPresets?.length ||
+  app?.basketballBenchmarks?.length ||
   app?.phaseStart
 );
 
@@ -259,6 +268,8 @@ function normalizeNutrition(value) {
     foodLogs: isArr(value?.foodLogs) ? value.foodLogs : [],
     customFoods: isArr(value?.customFoods) ? value.customFoods : [],
     savedMeals: isArr(value?.savedMeals) ? value.savedMeals : [],
+    favourites: isArr(value?.favourites) ? value.favourites : [],
+    barcodeCache: isObj(value?.barcodeCache) ? value.barcodeCache : {},
     targets: isObj(value?.targets) ? value.targets : null,
   };
 }
@@ -297,7 +308,12 @@ export const withDefaults = (d) => {
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
     cardioSessions: isArr(d?.cardioSessions) ? d.cardioSessions : b.cardioSessions,
+    basketballSessions: isArr(d?.basketballSessions) ? d.basketballSessions : (b.basketballSessions || []),
+    basketballPresets: isArr(d?.basketballPresets) ? d.basketballPresets : (b.basketballPresets || []),
+    basketballBenchmarks: isArr(d?.basketballBenchmarks) ? d.basketballBenchmarks : (b.basketballBenchmarks || []),
+    basketballSettings: isObj(d?.basketballSettings) ? { playerName: "", ...d.basketballSettings } : { playerName: "" },
     trainingPlan: normalizeTrainingPlanShape(d?.trainingPlan),
+    exerciseSettings: isObj(d?.exerciseSettings) ? d.exerciseSettings : {},
     nutrition: normalizeNutrition(d?.nutrition),
     profile: {
       ...DEFAULT_PROFILE,

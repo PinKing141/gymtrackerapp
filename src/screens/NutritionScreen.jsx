@@ -5,6 +5,10 @@ import { IS, fd, today } from "../storage.js";
 import { colors, radii, typeScale } from "../theme.js";
 import { getFoodDisplayDetail, getFoodDisplayName, getFoodSourceLabel, getLoggedFoodParts, loadFoodDatabase, searchFoods } from "../services/nutrition/foodSearch.js";
 import { lookupByBarcode, normalizeBarcode, searchOnline } from "../services/nutrition/openFoodFacts.js";
+import { assessFoodQuality } from "../services/nutrition/quality.js";
+import { getWeeklyNutritionSummary } from "../services/nutrition/insights.js";
+import { computeAmount, getServingOptions } from "../services/nutrition/servings.js";
+import { createRecipeFood, getPerServing, getRecipeTotals, ingredientFromFood } from "../services/nutrition/recipes.js";
 import { BarcodeScanner } from "../components/nutrition/BarcodeScanner.jsx";
 import { Avatar } from "../components/Avatar.jsx";
 import {
@@ -23,6 +27,8 @@ const EMPTY_NUTRITION = {
   foodLogs: [],
   customFoods: [],
   savedMeals: [],
+  favourites: [],
+  barcodeCache: {},
   targets: null,
 };
 
@@ -57,6 +63,8 @@ function normalizeNutrition(value) {
     foodLogs: Array.isArray(value?.foodLogs) ? value.foodLogs : [],
     customFoods: Array.isArray(value?.customFoods) ? value.customFoods : [],
     savedMeals: Array.isArray(value?.savedMeals) ? value.savedMeals : [],
+    favourites: Array.isArray(value?.favourites) ? value.favourites : [],
+    barcodeCache: value?.barcodeCache && typeof value.barcodeCache === "object" ? value.barcodeCache : {},
     targets: value?.targets && typeof value.targets === "object" ? value.targets : null,
   };
 }
@@ -218,6 +226,7 @@ function SummaryCard({ totals, targets }) {
 }
 
 const SOURCE_ACCENT = {
+  recipe: { color: "#F5A623", bg: "rgba(246,183,60,0.12)", border: "rgba(246,183,60,0.35)", icon: "clipboard", tag: "Recipe" },
   custom: { color: colors.success, bg: "rgba(61,220,151,0.12)", border: "rgba(61,220,151,0.3)", icon: "spark", tag: "Custom" },
   open_food_facts: { color: "#B58BFF", bg: "rgba(139,92,246,0.14)", border: "rgba(139,92,246,0.4)", icon: "search", tag: "Branded" },
   default: { color: colors.accent, bg: "rgba(78,161,255,0.12)", border: "rgba(78,161,255,0.3)", icon: "clipboard", tag: "Database" },
@@ -227,7 +236,7 @@ function sourceAccent(source) {
   return SOURCE_ACCENT[source] || SOURCE_ACCENT.default;
 }
 
-function FoodResultRow({ food, onClick }) {
+function FoodResultRow({ food, onClick, pinned = false, onTogglePin, warning = false }) {
   const accent = sourceAccent(food.source);
   const detail = getFoodDisplayDetail(food);
   const perUnit = food.serving_unit === "ml" ? "per 100ml" : "per 100g";
@@ -246,7 +255,20 @@ function FoodResultRow({ food, onClick }) {
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-        <Pill color={accent.color} background={accent.bg} border={`1px solid ${accent.border}`}>{accent.tag}</Pill>
+        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {warning && <span title="Data quality warning" style={{ fontSize: 12 }}>⚠️</span>}
+          {onTogglePin && (
+            <span
+              role="button"
+              aria-label={pinned ? "Unpin food" : "Pin food"}
+              onClick={(event) => { event.stopPropagation(); onTogglePin(); }}
+              style={{ fontSize: 15, color: pinned ? colors.warning : colors.textMuted, cursor: "pointer", lineHeight: 1 }}
+            >
+              {pinned ? "★" : "☆"}
+            </span>
+          )}
+          <Pill color={accent.color} background={accent.bg} border={`1px solid ${accent.border}`}>{accent.tag}</Pill>
+        </span>
         <Icon name="chevronRight" size={16} color={colors.textMuted} />
       </div>
     </SurfaceButton>
@@ -333,6 +355,52 @@ function MealSection({ meal, entries, onDelete, onSaveMeal }) {
   );
 }
 
+// Weekly view: averages beat daily noise. Every number states its basis.
+function WeeklyCard({ summary }) {
+  const [basisOpen, setBasisOpen] = useState(false);
+  if (!summary.loggedDayCount) {
+    return null;
+  }
+  return (
+    <SurfaceCard style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <p style={{ margin: 0, ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase" }}>Last 7 days</p>
+        <span style={{ display: "flex", gap: 3 }}>
+          {summary.days.map((day) => (
+            <span key={day.date} title={day.date} style={{ width: 7, height: 7, borderRadius: 999, background: day.logged ? colors.success : "rgba(255,255,255,0.12)" }} />
+          ))}
+        </span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+        <div>
+          <p style={{ margin: 0, ...typeScale.caption, color: colors.textMuted }}>Avg kcal</p>
+          <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 900, color: colors.textPrimary }}>{summary.avgCalories.toLocaleString()}</p>
+        </div>
+        <div>
+          <p style={{ margin: 0, ...typeScale.caption, color: colors.textMuted }}>Avg protein</p>
+          <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 900, color: colors.success }}>{summary.avgProtein}g</p>
+        </div>
+        <div>
+          <p style={{ margin: 0, ...typeScale.caption, color: colors.textMuted }}>Consistency</p>
+          <p style={{ margin: "2px 0 0", fontSize: 15, fontWeight: 900, color: summary.consistencyPercent >= 70 ? colors.success : colors.warning }}>{summary.consistencyPercent}%</p>
+        </div>
+      </div>
+      {summary.trend && (
+        <p style={{ margin: "10px 0 0", ...typeScale.caption, color: colors.textSecondary }}>
+          Estimated weight trend: <strong style={{ color: summary.trend.kgPerWeek > 0 ? colors.warning : colors.accent }}>{summary.trend.text}</strong>
+          {" "}
+          <button type="button" onClick={() => setBasisOpen((open) => !open)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", ...typeScale.caption, color: colors.textMuted, textDecoration: "underline" }}>
+            {basisOpen ? "hide basis" : "how?"}
+          </button>
+        </p>
+      )}
+      {summary.trend && basisOpen && (
+        <p style={{ margin: "6px 0 0", ...typeScale.caption, color: colors.textMuted, lineHeight: 1.5 }}>{summary.trend.basis}</p>
+      )}
+    </SurfaceCard>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <label style={{ display: "grid", gap: 6, fontSize: 11, color: colors.textMuted, fontWeight: 800 }}>
@@ -350,7 +418,11 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
   const [selectedDate, setSelectedDate] = useState(today());
   const [query, setQuery] = useState("");
   const [selectedFood, setSelectedFood] = useState(null);
-  const [amount, setAmount] = useState(100);
+  const [qty, setQty] = useState(100);
+  const [unitId, setUnitId] = useState("g");
+  const [unitGrams, setUnitGrams] = useState("");
+  const [recipeDraft, setRecipeDraft] = useState({ name: "", cookedWeightG: "", servings: "2", ingredients: [] });
+  const [recipeQuery, setRecipeQuery] = useState("");
   const [mealType, setMealType] = useState(() => getDefaultMealType());
   const [customDraft, setCustomDraft] = useState(DEFAULT_CUSTOM_DRAFT);
   const [quickDraft, setQuickDraft] = useState(() => createEmptyQuickDraft());
@@ -373,7 +445,34 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
   const targets = useMemo(() => getNutritionTargets(app?.profile || {}, nutrition.targets), [app?.profile, nutrition.targets]);
   const recentFoods = useMemo(() => getRecentFoodLogs(logs), [logs]);
   const results = useMemo(() => searchFoods({ foods, customFoods, query }), [foods, customFoods, query]);
+  const servingOptions = useMemo(() => (selectedFood ? getServingOptions(selectedFood) : []), [selectedFood]);
+  const activeServing = servingOptions.find((option) => option.id === unitId) || servingOptions[0] || null;
+  const amount = activeServing ? computeAmount(qty, activeServing, unitGrams) : 0;
   const preview = useMemo(() => (selectedFood ? nutritionForAmount(selectedFood, amount) : null), [selectedFood, amount]);
+  const weeklySummary = useMemo(() => getWeeklyNutritionSummary(app, selectedDate), [app, selectedDate]);
+  const foodKey = (food) => String(food?.id ?? food?.food_id ?? "");
+  const isPinned = (food) => nutrition.favourites.includes(foodKey(food));
+  const togglePin = (food) => {
+    const key = foodKey(food);
+    if (!key) return;
+    updateNutrition((current) => ({
+      ...current,
+      favourites: (current.favourites || []).includes(key)
+        ? (current.favourites || []).filter((id) => id !== key)
+        : [...(current.favourites || []), key],
+    }));
+  };
+  // Resolve pinned ids back to food objects from every pool we know about.
+  const pinnedFoods = useMemo(() => {
+    const pools = [...customFoods, ...Object.values(nutrition.barcodeCache || {}), ...foods];
+    return nutrition.favourites
+      .map((id) => pools.find((food) => String(food?.id ?? food?.food_id ?? "") === id))
+      .filter(Boolean);
+  }, [customFoods, foods, nutrition.barcodeCache, nutrition.favourites]);
+  const recipeResults = useMemo(
+    () => (recipeQuery.trim().length >= 2 ? searchFoods({ foods, customFoods, query: recipeQuery }).slice(0, 5) : []),
+    [foods, customFoods, recipeQuery]
+  );
 
   useEffect(() => {
     let active = true;
@@ -413,7 +512,14 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
 
   const openFoodDetail = (food) => {
     setSelectedFood(food);
-    setAmount(100);
+    if (Number(food?.serving_size) > 0) {
+      setUnitId("serving");
+      setQty(1);
+    } else {
+      setUnitId(food?.serving_unit === "ml" ? "ml" : "g");
+      setQty(100);
+    }
+    setUnitGrams("");
     setMealType(getDefaultMealType());
     setMode("detail");
   };
@@ -563,6 +669,22 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
     openFoodDetail(customFood);
   };
 
+  const addRecipeIngredient = (food) => {
+    setRecipeDraft((current) => ({ ...current, ingredients: [...current.ingredients, ingredientFromFood(food, 100)] }));
+    setRecipeQuery("");
+  };
+
+  const saveRecipe = () => {
+    const recipeFood = createRecipeFood(recipeDraft);
+    if (!recipeFood) return;
+    updateNutrition((current) => ({
+      ...current,
+      customFoods: [recipeFood, ...current.customFoods],
+    }));
+    setRecipeDraft({ name: "", cookedWeightG: "", servings: "2", ingredients: [] });
+    openFoodDetail(recipeFood);
+  };
+
   const saveMealFromType = (type) => {
     const meal = MEAL_TYPES.find((item) => item.id === type);
     setSaveMealDraft({ mealType: type, name: `${meal?.label || "Meal"} ${fd(selectedDate)}` });
@@ -662,14 +784,26 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
           <Icon name="search" size={16} color="#B58BFF" />
           Scan or enter a barcode
         </ActionButton>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
           <ActionButton tone="secondary" compact onClick={() => setMode("custom")}>
-            Create custom
+            Custom
           </ActionButton>
           <ActionButton tone="secondary" compact onClick={openQuickAdd}>
             Quick add
           </ActionButton>
+          <ActionButton tone="tinted" color="#F5A623" compact onClick={() => setMode("recipe")}>
+            Recipe
+          </ActionButton>
         </div>
+
+        {!query.trim() && pinnedFoods.length > 0 && (
+          <>
+            <p style={sectionLabelStyle}>Pinned</p>
+            {pinnedFoods.map((food) => (
+              <FoodResultRow key={`pin-${foodKey(food)}`} food={food} onClick={() => openFoodDetail(food)} pinned onTogglePin={() => togglePin(food)} />
+            ))}
+          </>
+        )}
 
         {!query.trim() && savedMeals.length > 0 && (
           <>
@@ -690,7 +824,7 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
             <p style={sectionLabelStyle}>Results</p>
             {foodStatus === "loading" && <SurfaceCard><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>Loading food database...</p></SurfaceCard>}
             {foodStatus === "error" && <SurfaceCard><p style={{ margin: 0, color: colors.danger, fontSize: 12 }}>{foodError}</p></SurfaceCard>}
-            {results.map((food) => <FoodResultRow key={`${food.source}-${food.id || food.food_id}`} food={food} onClick={() => openFoodDetail(food)} />)}
+            {results.map((food) => <FoodResultRow key={`${food.source}-${food.id || food.food_id}`} food={food} onClick={() => openFoodDetail(food)} pinned={isPinned(food)} onTogglePin={() => togglePin(food)} />)}
             {foodStatus === "ready" && results.length === 0 && query.trim().length >= 2 && (
               <SurfaceCard><p style={{ margin: 0, color: colors.textMuted, fontSize: 12 }}>No local matches — try branded foods online below.</p></SurfaceCard>
             )}
@@ -714,7 +848,7 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
                 {onlineResults.length > 0 && (
                   <>
                     <p style={sectionLabelStyle}>Branded · Open Food Facts</p>
-                    {onlineResults.map((food) => <FoodResultRow key={`off-${food.food_id}`} food={food} onClick={() => openFoodDetail(food)} />)}
+                    {onlineResults.map((food) => <FoodResultRow key={`off-${food.food_id}`} food={food} onClick={() => openFoodDetail(food)} pinned={isPinned(food)} onTogglePin={() => togglePin(food)} warning={assessFoodQuality(food).status === "warning"} />)}
                   </>
                 )}
               </>
@@ -732,6 +866,14 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
         <SurfaceCard>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
             <p style={{ margin: 0, fontSize: 17, fontWeight: 900, color: colors.textPrimary }}>{getFoodDisplayName(selectedFood)}</p>
+            <button
+              type="button"
+              aria-label={isPinned(selectedFood) ? "Unpin food" : "Pin food"}
+              onClick={() => togglePin(selectedFood)}
+              style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 19, lineHeight: 1, color: isPinned(selectedFood) ? colors.warning : colors.textMuted }}
+            >
+              {isPinned(selectedFood) ? "★" : "☆"}
+            </button>
             <Pill
               color={sourceAccent(selectedFood.source).color}
               background={sourceAccent(selectedFood.source).bg}
@@ -759,10 +901,52 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
           </div>
         </SurfaceCard>
 
+        {(() => {
+          const quality = assessFoodQuality(selectedFood);
+          if (quality.status === "warning") {
+            return (
+              <SurfaceCard style={{ borderColor: "rgba(246,183,60,0.35)", background: "rgba(246,183,60,0.07)" }}>
+                <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: colors.warning }}>⚠️ Check this product's data</p>
+                {quality.issues.map((issue) => (
+                  <p key={issue} style={{ margin: "0 0 4px", ...typeScale.caption, color: "#FFCA8A", lineHeight: 1.5 }}>· {issue}</p>
+                ))}
+                <p style={{ margin: "4px 0 0", ...typeScale.caption, color: colors.textMuted }}>Community data can be wrong — compare with the label before trusting it.</p>
+              </SurfaceCard>
+            );
+          }
+          if (quality.verifiedLooking && selectedFood.source === "open_food_facts") {
+            return <p style={{ margin: "0 0 10px", ...typeScale.caption, color: colors.success }}>✓ {quality.note}</p>;
+          }
+          return null;
+        })()}
+
         <SurfaceCard>
-          <Field label={selectedFood.serving_unit === "ml" ? "Amount (millilitres)" : "Amount (grams)"}>
-            <input type="number" min="1" inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} style={{ ...IS, fontSize: 22, textAlign: "center", padding: 14 }} />
-          </Field>
+          <p style={{ margin: "0 0 7px", fontSize: 11, color: colors.textMuted, fontWeight: 800 }}>Amount</p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="number" min="0" inputMode="decimal" value={qty} onChange={(event) => setQty(event.target.value)} style={{ ...IS, fontSize: 22, textAlign: "center", padding: 14, width: 110, flexShrink: 0 }} />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {servingOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => { setUnitId(option.id); if (option.id !== activeServing?.id) setUnitGrams(""); }}
+                  style={{ background: activeServing?.id === option.id ? "rgba(78,161,255,0.16)" : "rgba(255,255,255,0.04)", border: `1px solid ${activeServing?.id === option.id ? colors.accent : colors.border}`, borderRadius: 999, color: activeServing?.id === option.id ? colors.accent : colors.textMuted, fontFamily: "inherit", fontSize: 11, fontWeight: 700, padding: "6px 10px", cursor: "pointer" }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {activeServing?.editable && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+              <span style={{ ...typeScale.caption, color: colors.textMuted }}>One {activeServing.label} weighs</span>
+              <input type="number" inputMode="decimal" value={unitGrams || activeServing.gramsPerUnit} onChange={(event) => setUnitGrams(event.target.value)} style={{ ...IS, width: 74, padding: "6px 8px", fontSize: 13 }} />
+              <span style={{ ...typeScale.caption, color: colors.textMuted }}>{selectedFood.serving_unit === "ml" ? "ml" : "g"}</span>
+            </div>
+          )}
+          {activeServing && activeServing.gramsPerUnit !== 1 && (
+            <p style={{ margin: "8px 0 0", ...typeScale.caption, color: colors.textSecondary }}>= {amount}{selectedFood.serving_unit === "ml" ? "ml" : "g"} total</p>
+          )}
           <div style={{ marginTop: 14 }}>
             <p style={{ margin: "0 0 7px", fontSize: 11, color: colors.textMuted, fontWeight: 800 }}>Meal</p>
             <MealTabs value={mealType} onChange={setMealType} />
@@ -789,6 +973,95 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
         )}
 
         <ActionButton onClick={addSelectedFood} disabled={Number(amount) <= 0}>Add food</ActionButton>
+      </Screen>
+    );
+  }
+
+  if (mode === "recipe") {
+    const { totals, rawWeightG } = getRecipeTotals(recipeDraft.ingredients);
+    const previewRecipe = createRecipeFood(recipeDraft);
+    const perServing = previewRecipe ? getPerServing(previewRecipe) : null;
+    return (
+      <Screen>
+        <ScreenHeader action={headerAction} title="New recipe" subtitle="Homemade meals, per-serving accurate" titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" />
+
+        <SurfaceCard>
+          <Field label="Recipe name">
+            <input value={recipeDraft.name} onChange={(event) => setRecipeDraft((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Chicken & rice prep" style={IS} />
+          </Field>
+        </SurfaceCard>
+
+        <SurfaceCard>
+          <p style={{ margin: "0 0 8px", fontSize: 11, color: colors.textMuted, fontWeight: 800 }}>INGREDIENTS (RAW WEIGHTS)</p>
+          {recipeDraft.ingredients.map((ingredient, index) => (
+            <div key={`${ingredient.name}-${index}`} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: colors.textPrimary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ingredient.name}</p>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={ingredient.grams}
+                onChange={(event) => setRecipeDraft((current) => ({
+                  ...current,
+                  ingredients: current.ingredients.map((item, itemIndex) => (itemIndex === index ? { ...item, grams: event.target.value } : item)),
+                }))}
+                style={{ ...IS, width: 72, padding: "7px 8px", fontSize: 13 }}
+              />
+              <span style={{ ...typeScale.caption, color: colors.textMuted }}>g</span>
+              <button
+                type="button"
+                aria-label={`Remove ${ingredient.name}`}
+                onClick={() => setRecipeDraft((current) => ({ ...current, ingredients: current.ingredients.filter((_, itemIndex) => itemIndex !== index) }))}
+                style={{ background: "none", border: "none", cursor: "pointer", color: colors.danger, fontSize: 15, padding: 2 }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <input
+            value={recipeQuery}
+            onChange={(event) => setRecipeQuery(event.target.value)}
+            placeholder="Search foods to add…"
+            style={{ ...IS, marginTop: recipeDraft.ingredients.length ? 4 : 0 }}
+          />
+          {recipeResults.map((food) => (
+            <button
+              key={`ri-${food.source}-${food.id || food.food_id}`}
+              type="button"
+              onClick={() => addRecipeIngredient(food)}
+              style={{ width: "100%", textAlign: "left", marginTop: 6, background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.sm, padding: "8px 10px", color: colors.textSecondary, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              + {getFoodDisplayName(food)} <span style={{ color: colors.textMuted, fontWeight: 600 }}>({formatPer100(food.calories_per_100g, "kcal")}/100g)</span>
+            </button>
+          ))}
+        </SurfaceCard>
+
+        <SurfaceCard>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <Field label={`Cooked weight (g)${rawWeightG ? ` · raw ${Math.round(rawWeightG)}g` : ""}`}>
+              <input type="number" inputMode="decimal" value={recipeDraft.cookedWeightG} placeholder={rawWeightG ? String(Math.round(rawWeightG)) : "0"} onChange={(event) => setRecipeDraft((current) => ({ ...current, cookedWeightG: event.target.value }))} style={IS} />
+            </Field>
+            <Field label="Servings">
+              <input type="number" inputMode="numeric" min="1" value={recipeDraft.servings} onChange={(event) => setRecipeDraft((current) => ({ ...current, servings: event.target.value }))} style={IS} />
+            </Field>
+          </div>
+          <p style={{ margin: "8px 0 0", ...typeScale.caption, color: colors.textMuted, lineHeight: 1.5 }}>
+            Weigh the finished dish — cooking changes weight but not nutrition. Leave blank to use the raw total.
+          </p>
+        </SurfaceCard>
+
+        {perServing && (
+          <SurfaceCard style={{ borderColor: "rgba(246,183,60,0.3)", background: "rgba(246,183,60,0.05)" }}>
+            <p style={{ margin: "0 0 8px", ...typeScale.overline, color: colors.warning, textTransform: "uppercase" }}>Per serving ({perServing.grams}g)</p>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: colors.textPrimary }}>
+              {perServing.calories} kcal · {perServing.protein}g protein · {perServing.carbs}g carbs · {perServing.fat}g fat
+            </p>
+            <p style={{ margin: "6px 0 0", ...typeScale.caption, color: colors.textMuted }}>
+              Whole recipe: {Math.round(totals.calories)} kcal across {recipeDraft.ingredients.length} ingredient{recipeDraft.ingredients.length === 1 ? "" : "s"}.
+            </p>
+          </SurfaceCard>
+        )}
+
+        <ActionButton onClick={saveRecipe} disabled={!previewRecipe}>Save recipe</ActionButton>
       </Screen>
     );
   }
@@ -870,6 +1143,7 @@ export function NutritionScreen({ app, setApp, onBack, onOpenProfile }) {
       <ScreenHeader action={headerAction} title="Nutrition" subtitle={`${Math.round(totals.calories).toLocaleString()} / ${targets.calorieTarget ? targets.calorieTarget.toLocaleString() : "-"} kcal`} titleAs="h1" topPadding="calc(env(safe-area-inset-top, 0px) + 24px)" trailing={onOpenProfile && <Avatar profile={app.profile} size={40} radius={13} fontSize={15} onClick={onOpenProfile} />} />
       <DateSwitcher selectedDate={selectedDate} onChange={setSelectedDate} />
       <SummaryCard totals={totals} targets={targets} />
+      <WeeklyCard summary={weeklySummary} />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: "14px 0" }}>
         <ActionButton compact onClick={() => setMode("search")}>Add food</ActionButton>

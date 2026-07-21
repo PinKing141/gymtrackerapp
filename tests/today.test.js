@@ -75,6 +75,31 @@ describe("readiness", () => {
     const app = makeApp({ recovery: [{ date: YESTERDAY, sleep: 4, jointCondition: 4 }] });
     expect(getReadiness(app, TODAY).level).toBe("recovery");
   });
+
+  it("counts a high-load basketball day toward recent training frequency", () => {
+    const app = makeApp({
+      recovery: [{ date: TODAY, sleep: 8 }],
+      sessions: [{ date: "2026-07-18", workoutId: "W1", painFlags: {} }],
+      basketballSessions: [
+        { date: "2026-07-19", shots: Array.from({ length: 30 }, () => ({ category: "finishing", level: "gameSpeed", result: "make" })) },
+      ],
+    });
+    const readiness = getReadiness(app, TODAY);
+    expect(readiness.reasons.join(" ")).toMatch(/trained on back-to-back days/i);
+    expect(readiness.reasons.join(" ")).toMatch(/high-load.*not rest/i);
+  });
+
+  it("does not treat a light, low-load basketball session as meaningful workload", () => {
+    const app = makeApp({
+      recovery: [{ date: TODAY, sleep: 8 }],
+      basketballSessions: [
+        { date: "2026-07-19", shots: Array.from({ length: 10 }, () => ({ category: "freeThrow", level: "stationary", result: "make" })) },
+      ],
+    });
+    const readiness = getReadiness(app, TODAY);
+    expect(readiness.level).toBe("ready");
+    expect(readiness.reasons).toHaveLength(0);
+  });
 });
 
 describe("today's plan", () => {

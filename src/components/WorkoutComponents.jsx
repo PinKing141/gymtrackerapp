@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { colors, radii, typeScale } from "../theme.js";
 import { getExerciseInputConfig, getResolvedSet, getSetSummary, isSetComplete, isSetStarted } from "../workouts.js";
+import { PROGRESSION_METHODS } from "../progression.js";
+import { calculatePlates } from "../lib/plates.js";
 import { haptic, playCue, unlockAudio } from "../services/sound.js";
 import { notifyIfHidden } from "../services/notify.js";
 import { Icon } from "./icons.jsx";
+import { IS } from "../storage.js";
 
 function NumberInput({ value, onChange, placeholder, inputMode = "numeric" }) {
   return (
@@ -94,24 +97,19 @@ function copyPreviousSet(exercise, exerciseKey, previousSets, onSet) {
   });
 }
 
-export function RestTimer({ seconds, color }) {
+export function RestTimer({ seconds, color, autoStart = 0 }) {
   const [remaining, setRemaining] = useState(seconds);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef(null);
 
   useEffect(() => () => clearInterval(intervalRef.current), []);
 
-  const toggleTimer = () => {
-    if (running) {
-      clearInterval(intervalRef.current);
-      setRunning(false);
-      setRemaining(seconds);
-      return;
-    }
-
+  const begin = () => {
+    clearInterval(intervalRef.current);
     setRunning(true);
     setRemaining(seconds);
-    // Unlock audio within this tap so the interval-driven end cue can play on iOS.
+    // Unlock audio within the triggering tap so the interval-driven end cue
+    // can play on iOS (set completion is also a tap).
     unlockAudio();
     intervalRef.current = setInterval(() => {
       setRemaining((value) => {
@@ -130,6 +128,26 @@ export function RestTimer({ seconds, color }) {
         return value - 1;
       });
     }, 1000);
+  };
+
+  const beginRef = useRef(begin);
+  beginRef.current = begin;
+
+  // Completing a set auto-starts this set's rest countdown.
+  useEffect(() => {
+    if (autoStart > 0) {
+      beginRef.current();
+    }
+  }, [autoStart]);
+
+  const toggleTimer = () => {
+    if (running) {
+      clearInterval(intervalRef.current);
+      setRunning(false);
+      setRemaining(seconds);
+      return;
+    }
+    begin();
   };
 
   const minutes = Math.floor(remaining / 60);
@@ -270,45 +288,116 @@ export function LiveTimer({ color, timerState, onUpdate, title = "Workout", onCa
   );
 }
 
-function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet }) {
-  const columns = getColumnConfig(exercise);
+function SetRow({ exerciseKey, setIndex, setData, exercise, color, onSet, workingNumber }) {
+  const baseColumns = getColumnConfig(exercise);
+  // RPE fits when the row isn't already carrying per-side columns.
+  const columns = baseColumns.length <= 2
+    ? [...baseColumns, { field: "rpe", label: "RPE", inputMode: "decimal", placeholder: "–" }]
+    : baseColumns;
   const resolved = getResolvedSet(setData, exercise);
   const complete = isSetComplete(setData, exercise);
+  const warmup = Boolean(resolved.warmup);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [restTick, setRestTick] = useState(0);
+  const badgeColor = warmup ? colors.warning : color;
 
   return (
-    <div style={{ position: "relative", overflow: "hidden", minHeight: 54, display: "grid", gridTemplateColumns: `34px ${columns.map(() => "minmax(0,1fr)").join(" ")} auto`, gap: 8, alignItems: "center", padding: 8, borderRadius: radii.md, border: `1px solid ${complete ? `${colors.success}4d` : colors.border}`, background: complete ? `${colors.success}10` : "rgba(255,255,255,0.035)" }}>
-      <span style={{ width: 26, height: 26, borderRadius: "50%", display: "grid", placeItems: "center", background: complete ? colors.success : `${color}18`, color: complete ? colors.background : color, fontSize: 12, fontWeight: 900 }}>{complete ? "✓" : setIndex + 1}</span>
-      {columns.map((column) => (
-        <label key={`${exerciseKey}-${setIndex}-${column.field}`} style={{ minWidth: 0, position: "relative" }}>
-          <NumberInput
-            value={resolved[column.field]}
-            inputMode={column.inputMode}
-            placeholder={column.placeholder}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              const wasComplete = isSetComplete(setData, exercise);
-              onSet(exerciseKey, setIndex, column.field, nextValue);
-              if (!wasComplete && isSetComplete({ ...setData, [column.field]: nextValue }, exercise)) {
-                playCue("setLogged");
-                haptic("light");
-              }
-            }}
-          />
-          <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", ...typeScale.caption, color: colors.textMuted, pointerEvents: "none" }}>{column.label.toLowerCase()}</span>
-        </label>
-      ))}
-      {exercise.rest > 0 ? <RestTimer seconds={exercise.rest} color={color} /> : <span style={{ ...typeScale.caption, color: colors.textMuted, textAlign: "center" }}>Full</span>}
+    <div style={{ position: "relative", overflow: "hidden", borderRadius: radii.md, border: `1px solid ${complete ? (warmup ? `${colors.warning}4d` : `${colors.success}4d`) : colors.border}`, background: complete ? (warmup ? `${colors.warning}0d` : `${colors.success}10`) : "rgba(255,255,255,0.035)" }}>
+      <div style={{ minHeight: 54, display: "grid", gridTemplateColumns: `34px ${columns.map((column) => (column.field === "rpe" ? "56px" : "minmax(0,1fr)")).join(" ")} auto`, gap: 8, alignItems: "center", padding: 8 }}>
+        <button
+          type="button"
+          title={warmup ? "Warm-up set — tap for working set" : "Tap to mark as warm-up"}
+          onClick={() => onSet(exerciseKey, setIndex, "warmup", !warmup)}
+          style={{ width: 26, height: 26, borderRadius: "50%", border: "none", cursor: "pointer", display: "grid", placeItems: "center", background: complete ? (warmup ? colors.warning : colors.success) : `${badgeColor}18`, color: complete ? colors.background : badgeColor, fontSize: 11, fontWeight: 900 }}
+        >
+          {warmup ? "W" : complete ? "✓" : workingNumber}
+        </button>
+        {columns.map((column) => (
+          <label key={`${exerciseKey}-${setIndex}-${column.field}`} style={{ minWidth: 0, position: "relative" }}>
+            <NumberInput
+              value={resolved[column.field]}
+              inputMode={column.inputMode}
+              placeholder={column.placeholder}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                const wasComplete = isSetComplete(setData, exercise);
+                onSet(exerciseKey, setIndex, column.field, nextValue);
+                if (column.field !== "rpe" && !wasComplete && isSetComplete({ ...setData, [column.field]: nextValue }, exercise)) {
+                  playCue("setLogged");
+                  haptic("light");
+                  if (exercise.rest > 0) {
+                    setRestTick((tick) => tick + 1);
+                  }
+                }
+              }}
+            />
+            {column.field !== "rpe" && (
+              <span style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", ...typeScale.caption, color: colors.textMuted, pointerEvents: "none" }}>{column.label.toLowerCase()}</span>
+            )}
+            {column.field === "rpe" && (
+              <span style={{ position: "absolute", right: 6, top: 2, fontSize: 8, color: colors.textMuted, pointerEvents: "none" }}>rpe</span>
+            )}
+          </label>
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          {exercise.rest > 0 ? <RestTimer seconds={exercise.rest} color={color} autoStart={restTick} /> : <span style={{ ...typeScale.caption, color: colors.textMuted, textAlign: "center" }}>Full</span>}
+          <button
+            type="button"
+            aria-label="Set note"
+            onClick={() => setNoteOpen((open) => !open)}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: resolved.note || noteOpen ? color : colors.textMuted, fontSize: 12 }}
+          >
+            ✎
+          </button>
+        </div>
+      </div>
+      {(noteOpen || resolved.note) && (
+        <input
+          value={resolved.note || ""}
+          onChange={(event) => onSet(exerciseKey, setIndex, "note", event.target.value)}
+          placeholder="Set note — grip, tempo, pain…"
+          style={{ ...IS, borderRadius: 0, borderLeft: "none", borderRight: "none", borderBottom: "none", background: "rgba(255,255,255,0.03)", fontSize: 12, fontWeight: 600, padding: "8px 12px" }}
+        />
+      )}
     </div>
   );
 }
 
-export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, onSet, color, previousSets }) {
-  const completedSets = sets.filter((setData) => isSetComplete(setData, exercise)).length;
+export function ExerciseCard({
+  exercise,
+  exerciseKey,
+  sets,
+  isOpen,
+  onToggle,
+  onSet,
+  color,
+  previousSets,
+  groupLabel = null,
+  note = "",
+  onNoteChange,
+  substitution = null,
+  onSubstitute,
+  suggestion = null,
+  progressionMethod = "double",
+  onProgressionMethodChange,
+}) {
+  // Warm-ups never count toward the working-set target.
+  const workingSets = sets.filter((setData) => !getResolvedSet(setData, exercise).warmup);
+  const completedSets = workingSets.filter((setData) => isSetComplete(setData, exercise)).length;
   const startedSets = sets.filter((setData) => isSetStarted(setData, exercise)).length;
-  const done = completedSets === exercise.sets;
+  const done = completedSets >= exercise.sets;
   const tags = getTrackingTags(exercise);
   const previousSummaries = (previousSets || []).map((setData) => getSetSummary(setData, exercise)).filter(Boolean);
   const statusColor = done ? colors.success : startedSets > 0 || isOpen ? color : colors.textMuted;
+  const displayName = substitution || exercise.name;
+  const [whyOpen, setWhyOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
+  const [swapText, setSwapText] = useState(displayName);
+  const [platesOpen, setPlatesOpen] = useState(false);
+  const isBarbell = /barbell|trap bar/i.test(`${exercise.type} ${displayName}`);
+  const topWeight = Math.max(0, ...sets.map((setData) => Number(getResolvedSet(setData, exercise).kg) || 0));
+  const [plateTarget, setPlateTarget] = useState("");
+  const plates = platesOpen ? calculatePlates(plateTarget || topWeight) : null;
 
   return (
     <div style={{ position: "relative", padding: 0, overflow: "hidden", background: isOpen ? colors.surfaceElevated : done ? `${colors.success}0d` : colors.surface, border: `1px solid ${done ? `${colors.success}4d` : isOpen ? `${color}42` : colors.border}`, borderRadius: radii.lg, marginBottom: 12, opacity: done && !isOpen ? 0.78 : 1, boxShadow: isOpen ? `0 12px 30px rgba(0,0,0,0.24), 0 0 0 1px ${color}14 inset` : "none" }}>
@@ -316,9 +405,11 @@ export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, on
       <button onClick={() => onToggle(exerciseKey)} style={{ width: "100%", textAlign: "left", background: "none", border: "none", color: colors.textPrimary, padding: "14px 14px 14px 18px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {groupLabel && <span style={{ ...typeScale.caption, fontWeight: 900, color, background: `${color}1a`, border: `1px solid ${color}40`, borderRadius: 6, padding: "1px 6px" }}>{groupLabel}</span>}
             {done && <Icon name="check" size={15} color={colors.success} />}
-            <span style={{ ...typeScale.body, fontWeight: 800, color: done ? colors.success : colors.textPrimary }}>{exercise.name}</span>
+            <span style={{ ...typeScale.body, fontWeight: 800, color: done ? colors.success : colors.textPrimary }}>{displayName}</span>
           </div>
+          {substitution && <p style={{ ...typeScale.caption, color: colors.warning, margin: "2px 0 0" }}>Swapped from {exercise.name}</p>}
           <p style={{ ...typeScale.caption, color: colors.textSecondary, margin: "3px 0 0" }}>{exercise.type} · {exercise.sets}×{exercise.reps}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
             {exercise.restLabel && <span style={{ ...typeScale.caption, color: colors.textSecondary, background: "rgba(255,255,255,0.05)", border: `1px solid ${colors.border}`, borderRadius: radii.pill, padding: "3px 7px" }}>◷ {exercise.restLabel}</span>}
@@ -339,17 +430,102 @@ export function ExerciseCard({ exercise, exerciseKey, sets, isOpen, onToggle, on
       </button>
       {isOpen && (
         <div style={{ padding: "0 14px 14px 18px", display: "grid", gap: 8 }}>
-          {sets.map((setData, setIndex) => (
-            <SetRow key={`${exerciseKey}-s${setIndex}`} exerciseKey={exerciseKey} setIndex={setIndex} setData={setData} exercise={exercise} color={color} onSet={onSet} />
-          ))}
-          <div style={{ display: "grid", gridTemplateColumns: previousSummaries.length > 0 ? "1fr 1fr" : "1fr", gap: 8, marginTop: 2 }}>
+          {suggestion && (
+            <div style={{ borderRadius: radii.md, border: `1px solid ${color}30`, background: `${color}0d`, padding: "9px 11px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ ...typeScale.caption, fontWeight: 800, color }}>Target: {suggestion.target}</span>
+                <button type="button" onClick={() => setWhyOpen((open) => !open)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", ...typeScale.caption, fontWeight: 700, color: colors.textMuted, textDecoration: "underline" }}>
+                  {whyOpen ? "hide why" : "why?"}
+                </button>
+                {onProgressionMethodChange && (
+                  <select
+                    value={progressionMethod}
+                    onChange={(event) => onProgressionMethodChange(event.target.value)}
+                    style={{ marginLeft: "auto", background: "rgba(255,255,255,0.06)", border: `1px solid ${colors.border}`, borderRadius: 7, color: colors.textSecondary, fontSize: 10, fontWeight: 700, padding: "3px 5px" }}
+                  >
+                    {PROGRESSION_METHODS.map((method) => (
+                      <option key={method.id} value={method.id}>{method.label}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {whyOpen && <p style={{ margin: "6px 0 0", ...typeScale.caption, color: colors.textSecondary, lineHeight: 1.5 }}>{suggestion.reason} It's a suggestion — log whatever you actually do.</p>}
+            </div>
+          )}
+
+          {(() => {
+            let workingNumber = 0;
+            return sets.map((setData, setIndex) => {
+              const isWarmup = Boolean(getResolvedSet(setData, exercise).warmup);
+              if (!isWarmup) workingNumber += 1;
+              return (
+                <SetRow key={`${exerciseKey}-s${setIndex}`} exerciseKey={exerciseKey} setIndex={setIndex} setData={setData} exercise={exercise} color={color} onSet={onSet} workingNumber={isWarmup ? "W" : workingNumber} />
+              );
+            });
+          })()}
+
+          <div style={{ display: "grid", gridTemplateColumns: previousSummaries.length > 0 ? "1fr 1fr 1fr" : "1fr 1fr", gap: 8, marginTop: 2 }}>
             {previousSummaries.length > 0 && (
-              <button onClick={() => copyPreviousSet(exercise, exerciseKey, previousSets, onSet)} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.md, padding: "10px", color: colors.textSecondary, ...typeScale.bodySm, cursor: "pointer", fontWeight: 700 }}>
-                Copy last <span style={{ color: colors.textMuted }}>{previousSummaries.slice(0, 1).join(" · ")}</span>
+              <button onClick={() => copyPreviousSet(exercise, exerciseKey, previousSets, onSet)} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.md, padding: "10px 6px", color: colors.textSecondary, ...typeScale.caption, cursor: "pointer", fontWeight: 700 }}>
+                Copy last
               </button>
             )}
-            <button onClick={() => onSet(exerciseKey, sets.length, getColumnConfig(exercise)[0]?.field || "reps", "")} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.md, padding: "10px", color: colors.textSecondary, ...typeScale.bodySm, cursor: "pointer", fontWeight: 700 }}>+ Add set</button>
+            <button onClick={() => onSet(exerciseKey, sets.length, "warmup", true)} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.md, padding: "10px 6px", color: colors.warning, ...typeScale.caption, cursor: "pointer", fontWeight: 700 }}>+ Warm-up</button>
+            <button onClick={() => onSet(exerciseKey, sets.length, getColumnConfig(exercise)[0]?.field || "reps", "")} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.md, padding: "10px 6px", color: colors.textSecondary, ...typeScale.caption, cursor: "pointer", fontWeight: 700 }}>+ Add set</button>
           </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {isBarbell && (
+              <button type="button" onClick={() => { setPlatesOpen((open) => !open); setPlateTarget(String(topWeight || "")); }} style={{ background: platesOpen ? `${color}18` : "rgba(255,255,255,0.04)", border: `1px solid ${platesOpen ? color : colors.border}`, borderRadius: radii.pill, padding: "5px 10px", color: platesOpen ? color : colors.textSecondary, ...typeScale.caption, fontWeight: 700, cursor: "pointer" }}>
+                Plates
+              </button>
+            )}
+            {onSubstitute && (
+              <button type="button" onClick={() => { setSwapOpen((open) => !open); setSwapText(displayName); }} style={{ background: swapOpen ? `${colors.warning}18` : "rgba(255,255,255,0.04)", border: `1px solid ${swapOpen ? colors.warning : colors.border}`, borderRadius: radii.pill, padding: "5px 10px", color: swapOpen ? colors.warning : colors.textSecondary, ...typeScale.caption, fontWeight: 700, cursor: "pointer" }}>
+                Swap exercise
+              </button>
+            )}
+          </div>
+
+          {platesOpen && (
+            <div style={{ borderRadius: radii.md, border: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)", padding: "9px 11px", display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...typeScale.caption, color: colors.textMuted }}>Target</span>
+                <input type="number" inputMode="decimal" value={plateTarget} onChange={(event) => setPlateTarget(event.target.value)} style={{ ...IS, width: 84, padding: "6px 8px", fontSize: 13 }} />
+                <span style={{ ...typeScale.caption, color: colors.textMuted }}>kg · 20kg bar</span>
+              </div>
+              {plates?.valid ? (
+                <p style={{ margin: 0, ...typeScale.caption, color: colors.textPrimary, fontWeight: 700 }}>
+                  Each side: {plates.perSideLabel}
+                  {!plates.exact && <span style={{ color: colors.warning, fontWeight: 600 }}> · closest loadable: {plates.loadedKg}kg</span>}
+                </p>
+              ) : (
+                <p style={{ margin: 0, ...typeScale.caption, color: colors.textMuted }}>{plates?.reason}</p>
+              )}
+            </div>
+          )}
+
+          {swapOpen && (
+            <div style={{ borderRadius: radii.md, border: `1px solid ${colors.border}`, background: "rgba(255,255,255,0.03)", padding: "9px 11px", display: "grid", gap: 6 }}>
+              <input value={swapText} onChange={(event) => setSwapText(event.target.value)} placeholder="e.g. Dumbbell Bench Press" style={{ ...IS, fontSize: 13 }} />
+              <p style={{ margin: 0, ...typeScale.caption, color: colors.textMuted }}>Keep the same movement pattern (press for press, row for row). Applies to this session; history credits the movement you actually did.</p>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" onClick={() => { onSubstitute(swapText.trim()); setSwapOpen(false); }} disabled={!swapText.trim()} style={{ background: `${colors.warning}18`, border: `1px solid ${colors.warning}55`, borderRadius: radii.md, padding: "7px 12px", color: colors.warning, ...typeScale.caption, fontWeight: 800, cursor: "pointer" }}>Swap</button>
+                {substitution && (
+                  <button type="button" onClick={() => { onSubstitute(null); setSwapOpen(false); }} style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${colors.border}`, borderRadius: radii.md, padding: "7px 12px", color: colors.textSecondary, ...typeScale.caption, fontWeight: 700, cursor: "pointer" }}>Back to {exercise.name}</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {onNoteChange && (
+            <input
+              value={note}
+              onChange={(event) => onNoteChange(event.target.value)}
+              placeholder="Exercise cue — e.g. pause at chest, elbows 45°"
+              style={{ ...IS, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.03)" }}
+            />
+          )}
         </div>
       )}
     </div>

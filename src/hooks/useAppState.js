@@ -73,8 +73,48 @@ function createWorkoutSession(workoutId, workoutPresets) {
     prehabDone: false,
     coreDone: false,
     notes: "",
+    exerciseNotes: {},
+    substitutions: {},
     painFlags: { shoulder: 1, ankle: 1, hip: 1 },
     timer: { running: false, startedAt: null, lastResumedAt: null, accumulated: 0 },
+  };
+}
+
+// Apply this session's exercise substitutions into its snapshot (and re-key the
+// logged sets to match), so history and personal bests credit the movement the
+// athlete actually performed instead of the one originally planned.
+function applySubstitutionsToSession(finishedSession, substitutions) {
+  const snapshot = finishedSession.workoutSnapshot;
+  if (!snapshot || !substitutions || !Object.keys(substitutions).length) {
+    return finishedSession;
+  }
+
+  const performance = snapshot.performance || [];
+  const finisher = snapshot.finisher || [];
+  const sets = { ...finishedSession.sets };
+
+  const renameList = (list, indexOffset) => list.map((exercise, listIndex) => {
+    const index = indexOffset + listIndex;
+    const key = `${index}-${exercise.name}`;
+    const newName = substitutions[key];
+    if (!newName || newName === exercise.name) {
+      return exercise;
+    }
+    if (sets[key]) {
+      sets[`${index}-${newName}`] = sets[key];
+      delete sets[key];
+    }
+    return { ...exercise, name: newName, substitutedFrom: exercise.name };
+  });
+
+  return {
+    ...finishedSession,
+    sets,
+    workoutSnapshot: {
+      ...snapshot,
+      performance: renameList(performance, 0),
+      finisher: renameList(finisher, performance.length),
+    },
   };
 }
 
@@ -832,7 +872,7 @@ export function useAppState(firebaseUser) {
     const timer = session.timer;
     const currentSeconds = timer.running && timer.lastResumedAt ? Math.floor((Date.now() - timer.lastResumedAt) / 1000) : 0;
     const duration = Math.round((timer.accumulated + currentSeconds) / 60);
-    const finishedSession = {
+    let finishedSession = {
       ...session,
       workoutSnapshot: session.workoutSnapshot || createWorkoutSnapshot(getWorkoutById(session.workoutId, currentApp.workoutPresets)),
       duration,
@@ -840,6 +880,8 @@ export function useAppState(firebaseUser) {
       finishedAt: Date.now(),
     };
     delete finishedSession.timer;
+    finishedSession = applySubstitutionsToSession(finishedSession, session.substitutions);
+    delete finishedSession.substitutions;
 
     const workout = finishedSession.workoutSnapshot || getWorkoutById(finishedSession.workoutId, currentApp.workoutPresets);
     const personalBests = { ...currentApp.personalBests };
@@ -1126,6 +1168,19 @@ export function useAppState(firebaseUser) {
     setCelebration(null);
   }, []);
 
+  // Per-exercise progression method (double / fixed / quality / off), keyed by
+  // exercise name so it follows the movement across presets.
+  const setExerciseProgression = useCallback((exerciseName, method) => {
+    if (!exerciseName) return;
+    applyApp((current) => ({
+      ...current,
+      exerciseSettings: {
+        ...(current.exerciseSettings || {}),
+        [exerciseName]: { ...(current.exerciseSettings?.[exerciseName] || {}), progressionMethod: method },
+      },
+    }));
+  }, [applyApp]);
+
   // Training calendar mutations: `updater(plan, app)` returns the next plan.
   // Callers compose the pure helpers from trainingPlan.js.
   const updateTrainingPlan = useCallback((updater) => {
@@ -1245,6 +1300,7 @@ export function useAppState(firebaseUser) {
       restoreBackup,
       sendTestReminder,
       saveWorkoutPreset,
+      setExerciseProgression,
       startWorkout,
       updateSet,
       updateTrainingPlan,

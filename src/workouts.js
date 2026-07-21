@@ -50,6 +50,9 @@ export function normalizeWorkoutExercise(exercise = {}) {
     rest,
     restLabel: exercise.restLabel || formatRestLabel(rest),
     tracked: Boolean(exercise.tracked),
+    // Optional superset/circuit group: exercises sharing a letter ("A", "B"…)
+    // are performed together (A1/A2…).
+    group: exercise.group ? String(exercise.group).trim().toUpperCase().slice(0, 1) : null,
     libraryMeta: exercise.libraryMeta ? { ...exercise.libraryMeta } : undefined,
   };
 }
@@ -138,6 +141,11 @@ export function getExerciseTrackingMode(exercise) {
 export function createEmptySet(exercise) {
   const { loadMode, metricMode, perSideMetric } = getExerciseTrackingMode(exercise);
   return {
+    // Difficulty + context fields. RPE is optional everywhere; warm-up sets
+    // never count toward volume, completion targets or personal bests.
+    rpe: "",
+    warmup: false,
+    note: "",
     kg: "",
     leftKg: loadMode === "paired" ? "" : undefined,
     rightKg: loadMode === "paired" ? "" : undefined,
@@ -238,8 +246,9 @@ export function getExerciseInputConfig(exercise) {
     metricPlaceholder: metricMode === "duration"
       ? "0"
       : metricMode === "distance"
-        ? String((exercise?.reps || "").replace(/[^0-9.]/g, "") || "0")
-        : String((exercise?.reps || "").replace(/[^0-9]/g, "") || "0"),
+        ? String((exercise?.reps || "").match(/\d+(\.\d+)?/)?.[0] || "0")
+        // For a range like "8-12", suggest the bottom of the range.
+        : String((exercise?.reps || "").match(/\d+/)?.[0] || "0"),
   };
 }
 
@@ -273,7 +282,8 @@ function getMetricComparisonValue(resolved, exercise) {
 
 export function getExerciseRecordCandidate(setData, exercise) {
   const resolved = getResolvedSet(setData, exercise);
-  if (!isSetComplete(resolved, exercise)) {
+  // Warm-up sets are preparation, not performance — never PB material.
+  if (resolved.warmup || !isSetComplete(resolved, exercise)) {
     return null;
   }
 
@@ -309,6 +319,13 @@ export function getSetSummary(setData, exercise) {
   if (!isSetStarted(resolved, exercise)) {
     return "";
   }
+
+  const suffix = `${resolved.warmup ? " (warm-up)" : ""}${hasValue(resolved.rpe) ? ` @${resolved.rpe}` : ""}`;
+  const base = buildSetSummaryBase(resolved, exercise, { loadMode, metricMode, perSideMetric, metricUnit });
+  return `${base}${suffix}`;
+}
+
+function buildSetSummaryBase(resolved, exercise, { loadMode, metricMode, perSideMetric, metricUnit }) {
 
   if (loadMode === "paired" && perSideMetric) {
     return `L${resolved.leftKg || "–"}kg × ${resolved.leftReps || resolved.leftDuration || "–"}${metricUnit} · R${resolved.rightKg || "–"}kg × ${resolved.rightReps || resolved.rightDuration || "–"}${metricUnit}`;
@@ -380,4 +397,42 @@ export function getExercisesForWorkout(workout) {
     return [];
   }
   return [...(workout.performance || []), ...(workout.finisher || [])];
+}
+
+// A1/A2-style labels for superset groups; exercises without a group get none.
+export function getGroupLabels(exercises) {
+  const counters = {};
+  return exercises.map((exercise) => {
+    if (!exercise?.group) return null;
+    counters[exercise.group] = (counters[exercise.group] || 0) + 1;
+    return `${exercise.group}${counters[exercise.group]}`;
+  });
+}
+
+// Rebuild the personal-best table from every logged session. Used after a past
+// session is edited, so corrections propagate instead of leaving stale PBs.
+export function recomputePersonalBests(sessions) {
+  const personalBests = {};
+  (sessions || []).forEach((session) => {
+    const workout = session?.workoutSnapshot || getWorkoutById(session?.workoutId);
+    if (!workout) return;
+    getExercisesForWorkout(workout).forEach((exercise, index) => {
+      const exerciseKey = `${index}-${exercise.name}`;
+      (session.sets?.[exerciseKey] || []).forEach((setData) => {
+        const candidate = getExerciseRecordCandidate(setData, exercise);
+        const currentBest = Number(personalBests[exercise.name]?.value ?? 0);
+        if (candidate && candidate.value > currentBest) {
+          personalBests[exercise.name] = {
+            value: candidate.value,
+            unit: candidate.unit,
+            kg: candidate.unit === "kg" ? candidate.value : 0,
+            reps: candidate.reps,
+            summary: candidate.summary,
+            date: session.date,
+          };
+        }
+      });
+    });
+  });
+  return personalBests;
 }
