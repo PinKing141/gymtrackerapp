@@ -88,6 +88,43 @@ test("the app starts with no network access (offline-first)", async ({ page }) =
   await expect(page.getByRole("button", { name: "Train", exact: true })).toBeVisible();
 });
 
+test("training calendar: a missed workout can be moved to today", async ({ page }) => {
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const mondayIndexed = (d) => (d.getDay() + 6) % 7;
+
+  // Recurring "Row Day" on yesterday's weekday → yesterday's occurrence is missed.
+  const appWithPlan = {
+    ...SEEDED_APP,
+    trainingPlan: {
+      template: { [mondayIndexed(yesterday)]: [{ id: "slot-1", type: "gym", presetId: "custom-rowday" }] },
+      entries: [],
+      deloadWeeks: [],
+    },
+  };
+  await seed(page, appWithPlan);
+  await page.goto("/");
+
+  // Home asks instead of silently dropping the session.
+  await expect(page.getByText(/you missed row day/i)).toBeVisible();
+  await page.getByRole("button", { name: "Move to today" }).click();
+  await expect(page.getByText(/you missed/i)).not.toBeVisible();
+  await expect(page.getByText(/scheduled today · moved from/i)).toBeVisible();
+
+  // The calendar shows the moved occurrence and can skip it for the day.
+  await page.getByRole("button", { name: /calendar/i }).click();
+  await expect(page.getByText("Training Calendar")).toBeVisible();
+  await page.getByRole("button", { name: /row day/i }).first().click();
+  await page.getByRole("button", { name: "Mark skipped" }).click();
+  await expect(page.getByText("Skipped").first()).toBeVisible();
+
+  // The move only touched one occurrence — verify the stored plan kept the
+  // recurring slot on its original weekday.
+  const template = await page.evaluate(() => JSON.parse(localStorage.getItem("orion-gym-v4") || "{}").trainingPlan?.template || {});
+  expect(Object.values(template).flat().some((slot) => slot.presetId === "custom-rowday")).toBe(true);
+  expect(fmt(yesterday)).toBeTruthy();
+});
+
 test("backup export and import round-trips the data", async ({ page }) => {
   await seed(page);
   page.on("dialog", (dialog) => dialog.accept());

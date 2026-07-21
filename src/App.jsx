@@ -4,6 +4,7 @@ import { Icon } from "./components/icons.jsx";
 import { QuickAddSheet } from "./components/QuickAddSheet.jsx";
 import { AuthScreen } from "./screens/AuthScreen.jsx";
 import { BasketballScreen } from "./screens/BasketballScreen.jsx";
+import { CalendarScreen } from "./screens/CalendarScreen.jsx";
 import { CardioScreen } from "./screens/CardioScreen.jsx";
 import { HomeScreen } from "./screens/HomeScreen.jsx";
 import { LegacyDataPrompt } from "./screens/LegacyDataPrompt.jsx";
@@ -221,6 +222,8 @@ export function App() {
         onOpenRecovery={actions.openRecoveryFromHome}
         onOpenBodyStats={() => { navigate("more"); openMoreSection("bodystats"); }}
         onOpenReview={actions.openReviewFromHome}
+        onOpenCalendar={() => pushView("calendar")}
+        onUpdatePlan={actions.updateTrainingPlan}
         onNavigate={navigate}
         streakSummary={streakSummary}
       />
@@ -268,6 +271,16 @@ export function App() {
         onUpdateSet={actions.updateSet}
         onFinishWorkout={actions.finishWorkout}
         onCancelWorkout={actions.cancelWorkout}
+      />
+    );
+  }
+  if (view === "calendar") {
+    content = (
+      <CalendarScreen
+        app={app}
+        onBack={goBackView}
+        onUpdatePlan={actions.updateTrainingPlan}
+        onStartWorkout={actions.startWorkout}
       />
     );
   }
@@ -406,6 +419,7 @@ export function App() {
         onClose={() => setQuickAddOpen(false)}
         items={[
           { key: "workout", label: "Start a workout", desc: "Gym session", icon: "dumbbell", onClick: () => navigate("train") },
+          { key: "calendar", label: "Training calendar", desc: "Plan your week", icon: "calendar", onClick: () => pushView("calendar") },
           ...(app.profile?.enabledModules?.cardio ? [{ key: "cardio", label: "Cardio session", desc: "Bike, treadmill, run", icon: "pulse", onClick: () => pushView("cardio") }] : []),
           ...(app.profile?.enabledModules?.basketball ? [{ key: "ball", label: "Shoot hoops", desc: "Basketball session", icon: "basketball", onClick: () => pushView("basketball") }] : []),
           { key: "recovery", label: "Log recovery", desc: "Sleep, hydration, mobility", icon: "pulse", onClick: () => actions.openRecoveryFromHome() },

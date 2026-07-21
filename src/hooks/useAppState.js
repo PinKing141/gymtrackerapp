@@ -35,6 +35,7 @@ import {
 } from "../services/firebaseAuth.js";
 import { deleteUserAppData, loadUserAppData, saveUserAppData } from "../services/firestoreSync.js";
 import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
+import { withPlanDefaults } from "../trainingPlan.js";
 import {
   createEmptySet,
   createWorkoutSnapshot,
@@ -1125,6 +1126,15 @@ export function useAppState(firebaseUser) {
     setCelebration(null);
   }, []);
 
+  // Training calendar mutations: `updater(plan, app)` returns the next plan.
+  // Callers compose the pure helpers from trainingPlan.js.
+  const updateTrainingPlan = useCallback((updater) => {
+    applyApp((current) => ({
+      ...current,
+      trainingPlan: updater(withPlanDefaults(current.trainingPlan), current),
+    }));
+  }, [applyApp]);
+
   // "Remove this account from this device": wipe the account's local cache and
   // draft (cloud data is untouched) and sign out. The auth effect handles the
   // rest of the in-memory teardown when the uid goes null.
@@ -1237,6 +1247,7 @@ export function useAppState(firebaseUser) {
       saveWorkoutPreset,
       startWorkout,
       updateSet,
+      updateTrainingPlan,
       useCurrentWeekFreeze,
     },
     navItems: NAV,

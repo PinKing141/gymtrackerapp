@@ -1,9 +1,10 @@
 import { PHASES } from "../data.js";
 import { fd, fdu, today } from "../storage.js";
-import { getChecklistProgress, getDailyChecklist, getReadiness, getTodayPlan } from "../today.js";
+import { getChecklistProgress, getDailyChecklist, getMissedPrompt, getReadiness, getTodayPlan } from "../today.js";
+import { moveOccurrence, setOccurrenceStatus } from "../trainingPlan.js";
 import { Icon } from "../components/icons.jsx";
 import { Avatar } from "../components/Avatar.jsx";
-import { Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
+import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { colors, typeScale } from "../theme.js";
 
 function greeting() {
@@ -38,10 +39,40 @@ function ReadinessCard({ readiness }) {
   );
 }
 
-function TodayPlan({ items, onOpenItem }) {
+// "You missed Lower Power on Tuesday. Move it to today or mark it skipped?"
+// Missing a day never breaks the programme — the athlete decides.
+function MissedWorkoutCard({ prompt, onMoveToToday, onSkip }) {
+  return (
+    <SurfaceCard style={{ marginBottom: 14, border: "1px solid rgba(246,183,60,0.3)", background: "rgba(246,183,60,0.06)" }}>
+      <p style={{ ...typeScale.overline, color: colors.warning, textTransform: "uppercase", margin: 0 }}>Missed session</p>
+      <p style={{ margin: "6px 0 0", fontSize: 13, color: colors.textPrimary, fontWeight: 700, lineHeight: 1.5 }}>{prompt.question}</p>
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <ActionButton compact tone="tinted" color="#2D7DD2" onClick={onMoveToToday}>Move to today</ActionButton>
+        <ActionButton compact tone="secondary" onClick={onSkip}>Mark skipped</ActionButton>
+      </div>
+      {prompt.remaining > 0 && (
+        <p style={{ margin: "8px 0 0", ...typeScale.caption, color: colors.textMuted }}>{prompt.remaining} more missed session{prompt.remaining === 1 ? "" : "s"} in the calendar.</p>
+      )}
+    </SurfaceCard>
+  );
+}
+
+function TodayPlan({ items, onOpenItem, onOpenCalendar }) {
   return (
     <>
-      <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: "0 0 10px" }}>Today's plan</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 10px" }}>
+        <p style={{ ...typeScale.overline, color: colors.textMuted, textTransform: "uppercase", margin: 0 }}>Today's plan</p>
+        {onOpenCalendar && (
+          <button
+            type="button"
+            onClick={onOpenCalendar}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700, color: colors.accent, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <Icon name="calendar" size={13} color={colors.accent} />
+            Calendar ›
+          </button>
+        )}
+      </div>
       {items.map((item) => (
         <SurfaceButton
           key={item.key}
@@ -103,6 +134,8 @@ export function HomeScreen({
   onOpenRecovery,
   onOpenBodyStats,
   onOpenReview,
+  onOpenCalendar,
+  onUpdatePlan,
   onNavigate,
 }) {
   const { phase, week, deload } = getPhaseProgress();
@@ -112,6 +145,7 @@ export function HomeScreen({
   const readiness = getReadiness(app);
   const planItems = getTodayPlan(app);
   const checklist = getDailyChecklist(app);
+  const missedPrompt = onUpdatePlan ? getMissedPrompt(app) : null;
 
   const openPlanItem = (item) => {
     if (item.view === "recovery") return onOpenRecovery();
@@ -137,7 +171,15 @@ export function HomeScreen({
 
       <ReadinessCard readiness={readiness} />
 
-      <TodayPlan items={planItems} onOpenItem={openPlanItem} />
+      {missedPrompt && (
+        <MissedWorkoutCard
+          prompt={missedPrompt}
+          onMoveToToday={() => onUpdatePlan((plan, currentApp) => moveOccurrence(plan, currentApp, missedPrompt.ref, today()))}
+          onSkip={() => onUpdatePlan((plan) => setOccurrenceStatus(plan, missedPrompt.ref, "skipped"))}
+        />
+      )}
+
+      <TodayPlan items={planItems} onOpenItem={openPlanItem} onOpenCalendar={onOpenCalendar} />
 
       <DailyChecklist items={checklist} />
 

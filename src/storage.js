@@ -88,6 +88,20 @@ export const C = { background:"rgba(255,255,255,0.03)", border:"1px solid rgba(2
 export const L = { fontSize:11,color:"#555",letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:600,margin:"20px 0 10px" };
 export const BB = { background:"none",border:"none",color:"#666",fontSize:13,cursor:"pointer",padding:0,marginBottom:12 };
 export const IS = { background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:8,padding:"9px 10px",color:"#fff",fontSize:14,fontWeight:600,width:"100%",boxSizing:"border-box",outline:"none",WebkitAppearance:"none" };
+// Training plan: a weekly recurring template plus per-date entries (one-offs,
+// status overrides, moves) and deload week markers. All plan logic lives in
+// trainingPlan.js; storage only guarantees the shape.
+export const DEFAULT_TRAINING_PLAN = () => ({ template: {}, entries: [], deloadWeeks: [] });
+
+function normalizeTrainingPlanShape(plan) {
+  const p = isObj(plan) ? plan : {};
+  return {
+    template: isObj(p.template) ? p.template : {},
+    entries: isArr(p.entries) ? p.entries : [],
+    deloadWeeks: isArr(p.deloadWeeks) ? p.deloadWeeks : [],
+  };
+}
+
 export const DD = () => ({
   sessions: [],
   personalBests: {},
@@ -104,6 +118,7 @@ export const DD = () => ({
   },
   profile: { ...DEFAULT_PROFILE },
   phaseStart: null,
+  trainingPlan: DEFAULT_TRAINING_PLAN(),
   streakState: { ...DEFAULT_STREAK_STATE },
   meta: { lastSavedAt: null, dataVersion: DATA_VERSION, lastSyncedAt: null },
 });
@@ -148,6 +163,8 @@ export const hasAnyUserData = (app) => Boolean(
   app?.nutrition?.foodLogs?.length ||
   app?.nutrition?.customFoods?.length ||
   app?.nutrition?.savedMeals?.length ||
+  Object.keys(app?.trainingPlan?.template || {}).length ||
+  app?.trainingPlan?.entries?.length ||
   app?.phaseStart
 );
 
@@ -280,6 +297,7 @@ export const withDefaults = (d) => {
     bodyStats: isArr(d?.bodyStats) ? d.bodyStats : b.bodyStats,
     weeklyReviews: isArr(d?.weeklyReviews) ? d.weeklyReviews : b.weeklyReviews,
     cardioSessions: isArr(d?.cardioSessions) ? d.cardioSessions : b.cardioSessions,
+    trainingPlan: normalizeTrainingPlanShape(d?.trainingPlan),
     nutrition: normalizeNutrition(d?.nutrition),
     profile: {
       ...DEFAULT_PROFILE,
