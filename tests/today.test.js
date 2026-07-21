@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DD, withDefaults } from "../src/storage.js";
-import { getChecklistProgress, getDailyChecklist, getReadiness, getTodayPlan } from "../src/today.js";
+import { getChecklistProgress, getDailyChecklist, getMissedPrompt, getReadiness, getTodayPlan } from "../src/today.js";
+import { addPlanItem, toggleDeloadWeek } from "../src/trainingPlan.js";
 
 const TODAY = "2026-07-20";
 const YESTERDAY = "2026-07-19";
@@ -131,6 +132,46 @@ describe("today's plan", () => {
 
     const stale = makeApp({ bodyStats: [{ date: "2026-07-01", weight: 176 }] });
     expect(getTodayPlan(stale, TODAY).find((item) => item.key === "weighIn")).toBeTruthy();
+  });
+});
+
+describe("today's plan with a training calendar", () => {
+  const PRESETS = [{ id: "p-lower", title: "Lower Power", performance: [{ name: "Squat" }] }];
+
+  it("shows the scheduled workout instead of the rotation suggestion", () => {
+    const plan = addPlanItem(undefined, { date: TODAY, type: "gym", presetId: "p-lower", repeatWeekly: true });
+    const app = makeApp({ workoutPresets: PRESETS, trainingPlan: plan });
+    const items = getTodayPlan(app, TODAY);
+    const workout = items.find((item) => item.title === "Lower Power");
+    expect(workout).toBeTruthy();
+    expect(workout.detail).toMatch(/scheduled today/i);
+    expect(workout.view).toBe("train");
+    // The generic rotation suggestion is replaced by the schedule.
+    expect(items.find((item) => item.key === "workout")).toBeUndefined();
+  });
+
+  it("shows scheduled rest days and deload notes", () => {
+    let plan = addPlanItem(undefined, { date: TODAY, type: "rest", repeatWeekly: false });
+    plan = toggleDeloadWeek(plan, TODAY);
+    const items = getTodayPlan(makeApp({ trainingPlan: plan }), TODAY);
+    const rest = items.find((item) => item.title === "Rest day");
+    expect(rest).toBeTruthy();
+    expect(rest.detail).toMatch(/deload/i);
+  });
+
+  it("prompts to move or skip a recently missed session", () => {
+    const plan = addPlanItem(undefined, { date: YESTERDAY, type: "gym", presetId: "p-lower", repeatWeekly: true });
+    const app = makeApp({ workoutPresets: PRESETS, trainingPlan: plan });
+    const prompt = getMissedPrompt(app, TODAY);
+    expect(prompt.question).toMatch(/move it to today or mark it skipped\?/i);
+    expect(prompt.question).toMatch(/Lower Power/);
+    expect(prompt.ref).toBeTruthy();
+  });
+
+  it("keeps the legacy suggestions when nothing is scheduled", () => {
+    const items = getTodayPlan(makeApp(), TODAY);
+    expect(items.find((item) => item.key === "workout")).toBeTruthy();
+    expect(getMissedPrompt(makeApp(), TODAY)).toBeNull();
   });
 });
 

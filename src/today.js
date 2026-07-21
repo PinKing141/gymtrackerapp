@@ -1,6 +1,7 @@
 import { today } from "./storage.js";
 import { getNutritionTargets } from "./services/nutrition/nutritionTargets.js";
 import { getStreakSummary } from "./streaks.js";
+import { getMissedItems, getPlanForDate, isDeloadWeek } from "./trainingPlan.js";
 import { getWorkoutPresets } from "./workouts.js";
 
 // "What should I do today?" calculators for the Home dashboard. Everything in
@@ -163,31 +164,67 @@ function nextWorkoutSuggestion(app) {
   return { title: next.title, detail: "Suggested next workout", workoutId: next.id };
 }
 
+const SCHEDULED_VIEWS = { gym: "train", basketball: "basketball", cardio: "cardio", recovery: "recovery", rest: "calendar" };
+
+function scheduledDetail(item, deload) {
+  if (item.status === "completed") return "Done today";
+  if (item.status === "skipped") return "Skipped today";
+  const parts = ["Scheduled today"];
+  if (item.movedFrom) parts.push(`moved from ${item.movedFrom}`);
+  if (deload && item.type === "gym") parts.push("deload week — keep it light");
+  return parts.join(" · ");
+}
+
 // The day's actionable items, each mapped to the screen that completes it.
+// When the training calendar has items for this date, they drive the training
+// rows (gym / basketball / cardio / rest); otherwise the legacy suggestions do.
 export function getTodayPlan(app, date = today()) {
   const items = [];
   const profile = app?.profile || {};
   const modules = profile.enabledModules || {};
 
-  const gymDone = entriesOn(app?.sessions, date).length > 0;
-  const suggestion = nextWorkoutSuggestion(app);
-  items.push({
-    key: "workout",
-    title: gymDone ? "Gym workout" : suggestion.title,
-    detail: gymDone ? "Done today" : suggestion.detail,
-    done: gymDone,
-    view: "train",
-  });
+  const scheduled = getPlanForDate(app, date, date);
+  const deload = isDeloadWeek(app?.trainingPlan, date);
+  const scheduledRecovery = scheduled.some((item) => item.type === "recovery");
 
-  if (modules.basketball) {
-    const ballDone = entriesOn(app?.basketballSessions, date).length > 0;
-    items.push({
-      key: "basketball",
-      title: "Basketball session",
-      detail: ballDone ? "Done today" : "Shooting or skills work",
-      done: ballDone,
-      view: "basketball",
+  if (scheduled.length > 0) {
+    scheduled.forEach((item) => {
+      if (item.type === "recovery") return; // merged into the check-in row below
+      if (item.type === "rest") {
+        items.push({ key: `plan-${item.ref.slotId || item.ref.entryId}`, title: "Rest day", detail: deload ? "Scheduled rest · deload week" : "Scheduled rest — recovery is part of the programme", done: false, view: "calendar" });
+        return;
+      }
+      items.push({
+        key: `plan-${item.ref.slotId || item.ref.entryId}`,
+        title: item.title,
+        detail: scheduledDetail(item, deload),
+        done: item.status === "completed",
+        view: SCHEDULED_VIEWS[item.type] || "train",
+        planRef: item.ref,
+        status: item.status,
+      });
     });
+  } else {
+    const gymDone = entriesOn(app?.sessions, date).length > 0;
+    const suggestion = nextWorkoutSuggestion(app);
+    items.push({
+      key: "workout",
+      title: gymDone ? "Gym workout" : suggestion.title,
+      detail: gymDone ? "Done today" : suggestion.detail,
+      done: gymDone,
+      view: "train",
+    });
+
+    if (modules.basketball) {
+      const ballDone = entriesOn(app?.basketballSessions, date).length > 0;
+      items.push({
+        key: "basketball",
+        title: "Basketball session",
+        detail: ballDone ? "Done today" : "Shooting or skills work",
+        done: ballDone,
+        view: "basketball",
+      });
+    }
   }
 
   const recoveryEntry = entriesOn(app?.recovery, date)[0] || null;
@@ -196,7 +233,9 @@ export function getTodayPlan(app, date = today()) {
     title: "Recovery check-in",
     detail: recoveryEntry
       ? `${recoveryEntry.sleep}h sleep · ${recoveryEntry.water}L water`
-      : "Sleep, hydration, joints & mobility",
+      : scheduledRecovery
+        ? "Scheduled today · sleep, hydration, joints & mobility"
+        : "Sleep, hydration, joints & mobility",
     done: Boolean(recoveryEntry),
     view: "recovery",
   });
@@ -277,6 +316,20 @@ export function getDailyChecklist(app, date = today()) {
 export function getChecklistProgress(items) {
   const done = items.filter((item) => item.done).length;
   return { done, total: items.length, percent: items.length ? Math.round((done / items.length) * 100) : 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Missed-workout prompt: "Move Lower Power to today or mark it skipped?"
+
+export function getMissedPrompt(app, date = today()) {
+  const missed = getMissedItems(app, date);
+  if (!missed.length) return null;
+  const item = missed[0];
+  return {
+    ...item,
+    question: `You missed ${item.title} on ${item.weekday}. Move it to today or mark it skipped?`,
+    remaining: missed.length - 1,
+  };
 }
 
 // Re-exported so the dashboard card can show workload context without
