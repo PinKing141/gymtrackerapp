@@ -20,3 +20,19 @@ server/*service-account*.json
 # Playwright output
 test-results/
 playwright-report/
+
+# Large reference files — download with `npm run fetch:assets` (see
+# scripts/fetch-reference-assets.mjs). Kept out of the repo to keep clones small.
+ai/reference-python-detector/video_test_5.mp4
+ai/reference-python-detector/*.pt
+food_data/cofid_food_database.sqlite
+food_data/nutrient_values.csv
+food_data/foods_wide_all_nutrients_numeric.csv
+food_data/foods.csv
+food_data/nutrient_definitions.csv
+food_data/factor_values.csv
+food_data/factor_definitions.csv
+tools/shot-eval/.cache/
+
+# Python bytecode
+__pycache__/

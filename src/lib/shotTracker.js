@@ -1,8 +1,11 @@
 const MAX_HISTORY = 20;
 const SAMPLE_EXPIRY_MS = 2200;
 const SHOT_COOLDOWN_MS = 1400;
-const MIN_TRACKING_SAMPLES = 6;
-const MIN_SEQUENCE_SAMPLES = 8;
+// The app samples about 7 times a second, and a ball is only near the hoop
+// for ~0.6 s, so a shot may give just 3-5 sightings. The crossing checks
+// below (above the rim, then below it, near its centre) do the filtering.
+const MIN_TRACKING_SAMPLES = 3;
+const MIN_SEQUENCE_SAMPLES = 3;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -18,11 +21,13 @@ function getAverageRadius(samples) {
   return totalRadius / samples.length;
 }
 
+// Speed between the last two sightings (px/ms, positive = falling). Sightings
+// are sparse, so an older baseline can predate the shot and flip the sign.
 function getVerticalVelocity(samples) {
   if (samples.length < 2) return 0;
 
   const latest = samples[samples.length - 1];
-  const baseline = samples[Math.max(0, samples.length - 4)];
+  const baseline = samples[samples.length - 2];
   const deltaTime = latest.timestamp - baseline.timestamp;
 
   if (deltaTime <= 0) return 0;
@@ -218,14 +223,9 @@ export function createShotTracker() {
         timestamp: ball.timestamp || now,
       });
 
-      if (state.samples.length < MIN_TRACKING_SAMPLES) {
-        return null;
-      }
-
       const rimCenter = rimCalibration.rimCenter;
       const rimRadius = rimCalibration.rimRadius;
       const latest = state.samples[state.samples.length - 1];
-      const verticalVelocity = getVerticalVelocity(state.samples);
 
       const inUpWindow = (
         latest.x > rimCenter.x - (rimRadius * 4) &&
@@ -234,15 +234,19 @@ export function createShotTracker() {
         latest.y < rimCenter.y - (rimRadius * 0.7)
       );
 
-      if (state.phase === "idle" && inUpWindow && verticalVelocity < -0.02) {
+      // Arm as soon as the ball is in the zone above the rim. On a jump shot it
+      // is usually already falling by then, so direction can't be required.
+      if (state.phase === "idle" && inUpWindow) {
         state.phase = "armed";
         state.upDetectedAt = latest.timestamp;
         return null;
       }
 
-      if (state.phase !== "armed") {
+      if (state.phase !== "armed" || state.samples.length < MIN_TRACKING_SAMPLES) {
         return null;
       }
+
+      const verticalVelocity = getVerticalVelocity(state.samples);
 
       const isBelowRim = latest.y > rimCenter.y + (rimRadius * 1.05);
       if (!isBelowRim || verticalVelocity < 0.015) {

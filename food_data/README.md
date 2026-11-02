@@ -3,6 +3,16 @@
 Generated from: `McCance_Widdowsons_Composition_of_Foods_Integrated_Dataset_2021..xlsx`  
 Generated at UTC: 2026-07-04T02:07:43Z
 
+## What's in the repo
+
+Only the two files the app build reads are committed: `foods_core_app.csv` and
+`food_groups.csv` (`npm run build:data` turns them into `public/data/*.json`).
+The rest of the dataset below is about 40 MB, so it's downloaded on demand:
+
+```bash
+npm run fetch:assets -- food
+```
+
 ## Main files
 
 - `cofid_food_database.sqlite` — the main app-ready database.

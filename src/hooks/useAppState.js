@@ -12,7 +12,6 @@ import {
   draftLoad,
   draftSave,
   dbLoad,
-  dbRestoreBackup,
   dbSave,
   hasAnyUserData,
   isValidData,
@@ -21,6 +20,7 @@ import {
   parseStoredDate,
   setStorageScope,
   stampAppData,
+  toPlainAppData,
   today,
   withDefaults,
 } from "../storage.js";
@@ -36,96 +36,12 @@ import { deleteUserAppData, loadUserAppData, saveUserAppData } from "../services
 import { applyWeeklyFreeze, getStreakSummary, getWeekKey, rewardCompletedWeek } from "../streaks.js";
 import { markBoot } from "../services/bootTiming.js";
 import { withPlanDefaults } from "../trainingPlan.js";
-import {
-  createEmptySet,
-  createWorkoutSnapshot,
-  getExerciseRecordCandidate,
-  getExercisesForWorkout,
-  getWorkoutById,
-  normalizeWorkoutPreset,
-} from "../workouts.js";
+import { getWorkoutById, normalizeWorkoutPreset } from "../workouts.js";
+import { applyPersonalBests, buildFinishedSession, createPresetId, createWorkoutSession } from "../workoutSession.js";
+import { downloadBackupFile, downloadStatsWorkbook } from "../services/dataExport.js";
+import { buildReminderBody } from "../services/notify.js";
 
 const FIRESTORE_SYNC_DELAY_MS = 1200;
-
-// Firestore rejects `undefined` values and non-plain types; a JSON round-trip
-// yields a clean, serializable snapshot of the app state.
-function toPlainAppData(app) {
-  return JSON.parse(JSON.stringify(app));
-}
-
-function createWorkoutSession(workoutId, workoutPresets) {
-  const workout = getWorkoutById(workoutId, workoutPresets);
-  if (!workout) {
-    return null;
-  }
-
-  const sets = {};
-  getExercisesForWorkout(workout).forEach((exercise, index) => {
-    sets[`${index}-${exercise.name}`] = Array.from({ length: exercise.sets }, () => createEmptySet(exercise));
-  });
-
-  return {
-    workoutId,
-    workoutSnapshot: createWorkoutSnapshot(workout),
-    date: today(),
-    energy: 7,
-    sets,
-    prehabDone: false,
-    coreDone: false,
-    notes: "",
-    exerciseNotes: {},
-    substitutions: {},
-    painFlags: { shoulder: 1, ankle: 1, hip: 1 },
-    timer: { running: false, startedAt: null, lastResumedAt: null, accumulated: 0 },
-  };
-}
-
-// Apply this session's exercise substitutions into its snapshot (and re-key the
-// logged sets to match), so history and personal bests credit the movement the
-// athlete actually performed instead of the one originally planned.
-function applySubstitutionsToSession(finishedSession, substitutions) {
-  const snapshot = finishedSession.workoutSnapshot;
-  if (!snapshot || !substitutions || !Object.keys(substitutions).length) {
-    return finishedSession;
-  }
-
-  const performance = snapshot.performance || [];
-  const finisher = snapshot.finisher || [];
-  const sets = { ...finishedSession.sets };
-
-  const renameList = (list, indexOffset) => list.map((exercise, listIndex) => {
-    const index = indexOffset + listIndex;
-    const key = `${index}-${exercise.name}`;
-    const newName = substitutions[key];
-    if (!newName || newName === exercise.name) {
-      return exercise;
-    }
-    if (sets[key]) {
-      sets[`${index}-${newName}`] = sets[key];
-      delete sets[key];
-    }
-    return { ...exercise, name: newName, substitutedFrom: exercise.name };
-  });
-
-  return {
-    ...finishedSession,
-    sets,
-    workoutSnapshot: {
-      ...snapshot,
-      performance: renameList(performance, 0),
-      finisher: renameList(finisher, performance.length),
-    },
-  };
-}
-
-function createPresetId(title) {
-  const slug = String(title || "custom")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 28) || "custom";
-  return `custom-${slug}-${Date.now().toString(36)}`;
-}
 
 function getSessionStamp(app) {
   return app?.meta?.lastSavedAt || 0;
@@ -142,14 +58,6 @@ function buildLegacyPrompt() {
     name: data.profile?.firstName || data.profile?.name || null,
     sessions: data.sessions?.length || 0,
   };
-}
-
-function buildReminderBody(daysSinceLastSession, streakSummary) {
-  const sessionsRemaining = Math.max(0, (streakSummary?.weeklyTarget || 0) - (streakSummary?.currentWeekCount || 0));
-  if (sessionsRemaining === 0) {
-    return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. You're on track this week—keep your momentum going.`;
-  }
-  return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. Complete ${sessionsRemaining} more session${sessionsRemaining === 1 ? "" : "s"} to hit this week's goal.`;
 }
 
 export function useAppState(firebaseUser) {
@@ -180,7 +88,7 @@ export function useAppState(firebaseUser) {
   const [session, setSession] = useState(() => initialDraft?.session || null);
   const [historyDetailIndex, setHistoryDetailIndex] = useState(null);
   const [sectionView, setSectionView] = useState(null);
-  const [sectionStack, setSectionStack] = useState([]);
+  const [, setSectionStack] = useState([]);
   const sectionOriginRef = useRef("more");
   const [expandedExercise, setExpandedExercise] = useState(() => initialDraft?.expandedExercise || null);
   const [prehabOpen, setPrehabOpen] = useState(() => initialDraft?.prehabOpen !== false);
@@ -654,133 +562,11 @@ export function useAppState(firebaseUser) {
     return () => clearTimeout(firestoreSaveTimeoutRef.current);
   }, [app, firebaseUid]);
 
-  const exportStats = useCallback(async () => {
-    try {
-      // xlsx is a heavy library only this one export path needs, so it's kept
-      // out of the app's startup bundle and fetched on first use.
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.utils.book_new();
-      const sessions = [...(app.sessions || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-      const recovery = [...(app.recovery || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
-      const bodyStats = [...(app.bodyStats || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const exportStats = useCallback(() => downloadStatsWorkbook(app, streakSummary), [app, streakSummary]);
 
-      const sessionsByWeek = sessions.reduce((acc, session) => {
-        const key = getWeekKey(session.date || today());
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {});
+  // Full JSON backup: a complete, re-importable snapshot of the app data.
+  const exportData = useCallback(() => downloadBackupFile(app), [app]);
 
-      const summaryRows = [
-        ["Orion Gym - Workout Export"],
-        ["Generated", new Date().toLocaleString()],
-        [],
-        ["Metric", "Value"],
-        ["Total sessions", sessions.length],
-        ["Current streak (weeks on target)", streakSummary.streakWeeks],
-        ["Sessions this week", streakSummary.currentWeekCount],
-        ["Weekly target", streakSummary.weeklyTarget],
-        ["Recovery logs", recovery.length],
-        ["Bodyweight entries", bodyStats.length],
-      ];
-      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-      summarySheet['!cols'] = [{ wch: 36 }, { wch: 18 }];
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
-
-      const sessionRows = sessions.map((session) => ({
-        Date: session.date || "",
-        Workout: session.workoutSnapshot?.title || session.workoutSnapshot?.shortTitle || session.workoutId || "",
-        Energy: session.energy ?? "",
-        Duration_Min: Math.round((session.timer?.accumulated || 0) / 60000),
-        Prehab_Done: session.prehabDone ? "Yes" : "No",
-        Core_Done: session.coreDone ? "Yes" : "No",
-        Notes: session.notes || "",
-      }));
-      const sessionSheet = XLSX.utils.json_to_sheet(sessionRows);
-      sessionSheet['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 40 }];
-      XLSX.utils.book_append_sheet(workbook, sessionSheet, "Sessions");
-
-      const trendRows = [
-        ["Week", "Sessions", "Bodyweight_lbs", "Sleep_hours", "Water_litres"],
-        ...Object.entries(sessionsByWeek).sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => [week, count, "", "", ""]),
-      ];
-      const maxLen = Math.max(trendRows.length - 1, bodyStats.length, recovery.length);
-      for (let i = 1; i <= maxLen; i += 1) {
-        if (!trendRows[i]) trendRows[i] = ["", "", "", "", ""];
-        if (bodyStats[i - 1]) trendRows[i][2] = bodyStats[i - 1].weight ?? "";
-        if (recovery[i - 1]) {
-          trendRows[i][3] = recovery[i - 1].sleep ?? "";
-          trendRows[i][4] = recovery[i - 1].water ?? "";
-        }
-      }
-      const trendSheet = XLSX.utils.aoa_to_sheet(trendRows);
-      trendSheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(workbook, trendSheet, "Trend Data");
-
-      XLSX.writeFile(workbook, `orion-gym-workout-stats-${today()}.xlsx`);
-    } catch {
-      // Ignore export failures in-browser.
-    }
-  }, [app, streakSummary]);
-
-  // Full JSON backup: a complete, re-importable snapshot of the app data. This
-  // is what the Import/Restore flows read back, so it must carry everything —
-  // including workout presets, cardio/basketball sessions and nutrition.
-  const exportData = useCallback(() => {
-    try {
-      const payload = toPlainAppData(app);
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `orion-gym-backup-${today()}.json`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      // Ignore export failures in-browser.
-    }
-  }, [app]);
-
-  const importData = useCallback((event) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    const fileReader = new FileReader();
-    fileReader.onload = () => {
-      try {
-        const parsed = JSON.parse(fileReader.result);
-        if (!isValidData(parsed)) {
-          window.alert("Invalid backup file.");
-          return;
-        }
-        const nextApp = stampAppData(withDefaults(parsed));
-        dbSave(nextApp);
-        applyApp(nextApp, { stamp: false });
-        window.alert("Data imported successfully.");
-      } catch {
-        window.alert("Could not import this file.");
-      }
-    };
-    fileReader.readAsText(file);
-    event.target.value = "";
-  }, [applyApp]);
-
-  const restoreBackup = useCallback(() => {
-    const restored = dbRestoreBackup();
-    if (!restored) {
-      window.alert("No valid backup found.");
-      return;
-    }
-    applyApp(restored, { stamp: false });
-    window.alert("Backup restored.");
-  }, [applyApp]);
-
-  // Legacy prompt: the user explicitly chose to pull the device's pre-scoping data
-  // into this account. Adopt it, persist under this account's scope, and clear the
-  // legacy copy so it can't be offered again elsewhere.
   const importLegacyData = useCallback(() => {
     const data = legacyImportCandidate();
     if (!data) {
@@ -877,47 +663,9 @@ export function useAppState(firebaseUser) {
     }
 
     const currentApp = appRef.current;
-    const timer = session.timer;
-    const currentSeconds = timer.running && timer.lastResumedAt ? Math.floor((Date.now() - timer.lastResumedAt) / 1000) : 0;
-    const duration = Math.round((timer.accumulated + currentSeconds) / 60);
-    let finishedSession = {
-      ...session,
-      workoutSnapshot: session.workoutSnapshot || createWorkoutSnapshot(getWorkoutById(session.workoutId, currentApp.workoutPresets)),
-      duration,
-      startedAt: timer.startedAt,
-      finishedAt: Date.now(),
-    };
-    delete finishedSession.timer;
-    finishedSession = applySubstitutionsToSession(finishedSession, session.substitutions);
-    delete finishedSession.substitutions;
-
+    const finishedSession = buildFinishedSession(session, currentApp.workoutPresets);
     const workout = finishedSession.workoutSnapshot || getWorkoutById(finishedSession.workoutId, currentApp.workoutPresets);
-    const personalBests = { ...currentApp.personalBests };
-    const earnedRecords = new Map();
-
-    getExercisesForWorkout(workout).forEach((exercise, index) => {
-      const exerciseKey = `${index}-${exercise.name}`;
-      (finishedSession.sets[exerciseKey] || []).forEach((setData) => {
-        const candidate = getExerciseRecordCandidate(setData, exercise);
-        const currentBest = Number(personalBests[exercise.name]?.value ?? personalBests[exercise.name]?.kg ?? 0);
-        if (candidate && candidate.value > currentBest) {
-          personalBests[exercise.name] = {
-            value: candidate.value,
-            unit: candidate.unit,
-            kg: candidate.unit === "kg" ? candidate.value : 0,
-            reps: candidate.reps || null,
-            summary: candidate.summary,
-            date: finishedSession.date,
-          };
-          earnedRecords.set(exercise.name, {
-            name: exercise.name,
-            value: candidate.value,
-            unit: candidate.unit,
-            summary: candidate.summary,
-          });
-        }
-      });
-    });
+    const { personalBests, earnedRecords } = applyPersonalBests(currentApp.personalBests, finishedSession, workout);
 
     const weekKey = getWeekKey(finishedSession.date);
     const beforeStreak = getStreakSummary(currentApp);
@@ -1234,13 +982,14 @@ export function useAppState(firebaseUser) {
     if (!entry?.durationMin) {
       return;
     }
-    applyApp((current) => ({
+    const date = today();
+    applyApp((current) => rewardCompletedWeek({
       ...current,
       cardioSessions: [
-        { id: Date.now(), date: today(), ...entry },
+        { id: Date.now(), date, ...entry },
         ...(Array.isArray(current.cardioSessions) ? current.cardioSessions : []),
       ],
-    }));
+    }, getWeekKey(date)));
   }, [applyApp]);
 
   return {
@@ -1296,7 +1045,6 @@ export function useAppState(firebaseUser) {
       exportData,
       exportStats,
       finishWorkout,
-      importData,
       importLegacyData,
       logCardioSession,
       deleteWorkoutPreset,
@@ -1305,7 +1053,6 @@ export function useAppState(firebaseUser) {
       removeAccountFromDevice,
       requestReminderPermission,
       resetAllData,
-      restoreBackup,
       sendTestReminder,
       saveWorkoutPreset,
       setExerciseProgression,

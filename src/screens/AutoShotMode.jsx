@@ -9,6 +9,7 @@ import {
   saveRimCalibration,
 } from "../lib/rimCalibration.js";
 import { AutoShotInstructionScreen } from "./AutoShotInstructionScreen.jsx";
+import { BallTestView } from "./BallTestView.jsx";
 import { RimCalibrationScreen } from "./RimCalibrationScreen.jsx";
 import { colors, radii, typeScale } from "../theme.js";
 
@@ -80,6 +81,7 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
   const [detectorSettings, setDetectorSettings] = useState(() => loadDetectorSettings());
   const [flowStep, setFlowStep] = useState("intro");
   const [showGuide, setShowGuide] = useState(false);
+  const [showBallTest, setShowBallTest] = useState(false);
   const [devMode, setDevMode] = useState(() => loadDevMode());
   const [devToast, setDevToast] = useState("");
   const [pendingShot, setPendingShot] = useState(null);
@@ -420,6 +422,10 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
     return <AutoShotInstructionScreen onClose={() => setShowGuide(false)} />;
   }
 
+  if (showBallTest) {
+    return <BallTestView onClose={() => setShowBallTest(false)} />;
+  }
+
   const renderAssistedConfirmation = () => {
     if (!pendingShot) {
       return (
@@ -588,6 +594,22 @@ export function AutoShotMode({ onRecordShot, currentZoneName, currentType, disab
                 }}
               >
                 {status === "requesting" ? "REQUESTING CAMERA..." : "START CAMERA"}
+              </button>
+              <button
+                onClick={() => setShowBallTest(true)}
+                style={{
+                  marginTop: 10,
+                  marginRight: 8,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: radii.pill,
+                  padding: "11px 14px",
+                  background: "rgba(255,255,255,0.06)",
+                  color: colors.textPrimary,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                BALL TEST
               </button>
               <button
                 onClick={() => setShowGuide(true)}

@@ -61,5 +61,5 @@ export function calculateCalories(profile) {
   const factor = ACTIVITY_OPTIONS.find((o) => o.value === profile.activityLevel)?.factor || 1.55;
   const delta = GOAL_OPTIONS.find((o) => o.value === profile.goal)?.delta || 0;
   const target = Math.max(1200, Math.round(((base * factor) + delta) / 10) * 10);
-  return { bmr: Math.round(base), target };
+  return { bmr: Math.round(base), maintenance: Math.round(base * factor), target };
 }

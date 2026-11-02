@@ -1,7 +1,6 @@
 import {
   createWorkoutSnapshot,
   getExercisesForWorkout,
-  getResolvedSet,
   getWorkoutById,
   migrateSessionSetData,
   normalizeWorkoutPresetList,
@@ -62,6 +61,8 @@ const DEFAULT_DEVICE_PREFS = {
   soundVolume: 0.6,
   hapticsEnabled: true,
   soundCategories: { ...DEFAULT_SOUND_CATEGORIES },
+  // Beta: show camera-based auto shot tracking in basketball sessions.
+  autoShotBeta: false,
 };
 
 const toLocalDateString = (value) => {
@@ -326,7 +327,13 @@ export const withDefaults = (d) => {
     meta: { ...meta, dataVersion: DATA_VERSION },
   };
 };
-export const safeParse = (raw) => { try { return JSON.parse(raw); } catch (e) { return null; } };
+// Firestore rejects `undefined` values and non-plain types; a JSON round-trip
+// yields a clean, serializable snapshot of the app state.
+export function toPlainAppData(app) {
+  return JSON.parse(JSON.stringify(app));
+}
+
+export const safeParse = (raw) => { try { return JSON.parse(raw); } catch { return null; } };
 
 export function dbLoad() {
   try {
@@ -338,7 +345,7 @@ export function dbLoad() {
       return withDefaults(backup);
     }
     return DD();
-  } catch (e) {
+  } catch {
     return DD();
   }
 }
@@ -357,7 +364,7 @@ export function dbSave(d) {
     localStorage.setItem(mainKey(), s);
     localStorage.setItem(backupKey(), s);
     return payload;
-  } catch (e) {
+  } catch {
     return d;
   }
 }
@@ -366,7 +373,7 @@ export function dbClear() {
   try {
     localStorage.removeItem(mainKey());
     localStorage.removeItem(backupKey());
-  } catch (e) {
+  } catch {
     // Ignore local storage cleanup issues.
   }
 }
@@ -377,7 +384,7 @@ export function dbRestoreBackup() {
     if (!isValidData(backup)) return null;
     localStorage.setItem(mainKey(), JSON.stringify(backup));
     return withDefaults(backup);
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -388,7 +395,7 @@ export function backupLoad() {
   try {
     const parsed = safeParse(localStorage.getItem(backupKey()) || "");
     return isValidData(parsed) ? parsed : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -402,7 +409,7 @@ export function legacyDataLoad() {
     const backup = safeParse(localStorage.getItem(LEGACY_BACKUP_KEY) || "");
     if (isValidData(backup)) return withDefaults(backup);
     return null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -420,7 +427,7 @@ export function legacyDataClear() {
   try {
     localStorage.removeItem(LEGACY_MAIN_KEY);
     localStorage.removeItem(LEGACY_BACKUP_KEY);
-  } catch (e) {
+  } catch {
     // Ignore local storage cleanup issues.
   }
 }
@@ -448,7 +455,7 @@ function migrateDraftPayload(payload) {
 export function draftLoad() {
   try {
     return migrateDraftPayload(safeParse(localStorage.getItem(draftKey()) || ""));
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -465,7 +472,7 @@ export function draftSave(payload) {
     }
     localStorage.setItem(draftKey(), JSON.stringify({ ...migrated, savedAt: Date.now() }));
     return migrated;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -473,7 +480,7 @@ export function draftSave(payload) {
 export function draftClear() {
   try {
     localStorage.removeItem(draftKey());
-  } catch (e) {
+  } catch {
     // Ignore draft cleanup failures.
   }
 }
@@ -486,7 +493,7 @@ export function devicePrefsLoad() {
       ...(isObj(parsed) ? parsed : {}),
       soundCategories: { ...DEFAULT_SOUND_CATEGORIES, ...(isObj(parsed?.soundCategories) ? parsed.soundCategories : {}) },
     };
-  } catch (e) {
+  } catch {
     return { ...DEFAULT_DEVICE_PREFS, soundCategories: { ...DEFAULT_SOUND_CATEGORIES } };
   }
 }
@@ -499,7 +506,7 @@ export function devicePrefsSave(prefs) {
     };
     localStorage.setItem(DEVICE_PREFS_DB, JSON.stringify(nextPrefs));
     return nextPrefs;
-  } catch (e) {
+  } catch {
     return prefs;
   }
 }
@@ -507,7 +514,7 @@ export function devicePrefsSave(prefs) {
 export function devicePrefsReset() {
   try {
     localStorage.removeItem(DEVICE_PREFS_DB);
-  } catch (e) {
+  } catch {
     // Ignore prefs cleanup failures.
   }
 }

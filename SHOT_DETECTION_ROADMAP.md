@@ -6,6 +6,55 @@
 
 ---
 
+## Status update (2026-11-02): measured on real footage
+
+Auto shot tracking is off by default. It can be switched on per device under
+More → Preferences → Beta features, which also has a ball test (the same ball
+finder on a live camera). It now has an offline evaluation harness
+(`tools/shot-eval/`, run with `npm run eval:shots`) that replays a labelled
+30-shot clip through the same code the app runs. What it showed:
+
+1. **COCO-SSD never found the ball.** At normal shooting distance the ball is
+   ~20 px wide; COCO-SSD shrinks the frame to 300×300 and returned no
+   "sports ball" on the whole frame, and only 6 of 40 hits (all below 20%
+   confidence) even on a crop around the hoop. The larger COCO-SSD model was no
+   better and 2.5× slower. Result: 0 of 30 shots logged.
+2. **New: rim-zone ball finder** (`src/lib/rimZoneBallFinder.js`). Once the rim
+   is locked, the ball's expected size is known (≈0.6 × rim radius), so inside
+   a square around the hoop it looks for a moving, ball-coloured blob of that
+   size. No model, ~3 ms per frame.
+3. **Fixes found along the way:**
+   - The tracker only armed on an *upward*-moving ball near the rim; on jump
+     shots the ball is already falling there. It now arms when the ball is in
+     the zone above the rim.
+   - Its sighting minimums (6 and 8) assumed far more frames than a ~0.6 s
+     pass through the hoop gives; now 3, with the crossing checks doing the
+     filtering, and the falling check compares consecutive sightings.
+   - Rim relock shrank the rim radius a little on every update (19 → 11 px in
+     30 s), which slowly stopped shots counting. It now follows position only.
+   - `runDetection` read stale React state, so "Auto detect only" kept
+     re-running the rim search. The per-frame logic moved to
+     `src/lib/shotPipeline.js`, shared by the hook and the harness.
+   - Net/rim shake after a make looked like a ball sitting on the rim; hits on
+     the rim ring are ignored.
+4. **COCO-SSD is now skipped once the rim is locked**, and the finder runs
+   every ~33 ms instead of every 140 ms.
+
+| Setup (manual rim lock) | Shots logged | Called correctly | False shots |
+| --- | --- | --- | --- |
+| Before (COCO-SSD, whole frame, 140 ms) | 0 / 30 | – | 0 |
+| Finder, 140 ms | 14 / 30 | 14 | 0 |
+| **Finder, 33 ms (new default)** | **28 / 30** | **28** | **0** |
+
+**Before switching it back on**, test on real phones: the clip has only makes
+(so catching real misses is untested), one shooter and no other balls, and
+automatic rim finding didn't lock onto its ~38 px rim, so manual rim lock (the
+default) is needed. A basketball-specific model can still be plugged in via
+`createShotPipeline({ detector })`; the YOLOv8 weights in the old Python
+prototype have no licence and can't be shipped.
+
+---
+
 ## 1. Project Overview
 
 ### Current State

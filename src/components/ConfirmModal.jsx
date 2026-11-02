@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActionButton } from "./ui.jsx";
 import { IS } from "../storage.js";
-import { colors, radii, typeScale } from "../theme.js";
+import { colors, typeScale } from "../theme.js";
 
 /**
  * Centered confirmation dialog. When `requireText` is set the confirm button

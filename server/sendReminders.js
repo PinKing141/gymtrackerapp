@@ -36,7 +36,9 @@ function todayKey() {
 // Days since the most recent logged session, or null if the user has never
 // trained (matches the in-app rule, which skips reminders for those users).
 function daysSinceLastSession(appData) {
-  const sessions = Array.isArray(appData?.sessions) ? appData.sessions : [];
+  // Gym, cardio and basketball all count as training (matches src/streaks.js).
+  const sessions = [appData?.sessions, appData?.cardioSessions, appData?.basketballSessions]
+    .flatMap((list) => (Array.isArray(list) ? list : []));
   const lastDate = sessions.reduce((max, s) => (s?.date && s.date > max ? s.date : max), "");
   if (!lastDate) return null;
   const last = new Date(`${lastDate}T00:00:00Z`).getTime();

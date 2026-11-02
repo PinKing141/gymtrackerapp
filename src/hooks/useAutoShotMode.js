@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createBallDetector } from "../lib/ballDetector.js";
-import { createRimDetector } from "../lib/rimDetector.js";
-import { createRimRelock } from "../lib/rimRelock.js";
-import { createShotTracker } from "../lib/shotTracker.js";
 import { drawRimOverlay, scaleCalibration } from "../lib/rimCalibration.js";
+import { createShotPipeline } from "../lib/shotPipeline.js";
 
 const CAMERA_CONSTRAINTS = {
   audio: false,
@@ -176,10 +173,13 @@ export function useAutoShotMode({
   const animationFrameRef = useRef(null);
   const fpsSampleRef = useRef({ lastTime: 0, frames: 0 });
   const previousCalibrationRef = useRef(rimCalibration);
-  const detectorRef = useRef(createBallDetector());
-  const rimDetectorRef = useRef(createRimDetector());
-  const rimRelockRef = useRef(createRimRelock());
-  const trackerRef = useRef(createShotTracker());
+  // Detection, rim locking and shot tracking live in a plain-JS pipeline (shared
+  // with the offline evaluation harness); this hook wires it to the camera and UI.
+  const pipelineRef = useRef(null);
+  if (!pipelineRef.current) {
+    pipelineRef.current = createShotPipeline({ settings: { rimDetectionMode, autoRelockEnabled, minShotConfidence } });
+    pipelineRef.current.setCalibration(rimCalibration);
+  }
   const detectionInFlightRef = useRef(false);
   const lastDetectionTimeRef = useRef(0);
   const latestDetectionRef = useRef(null);
@@ -191,11 +191,7 @@ export function useAutoShotMode({
   const onRimCalibrationUpdateRef = useRef(onRimCalibrationUpdate);
   const onShotDetectedRef = useRef(onShotDetected);
   const detectionIntervalRef = useRef(detectionIntervalMs);
-  const autoRelockEnabledRef = useRef(autoRelockEnabled);
-  const minShotConfidenceRef = useRef(minShotConfidence);
   const debugOverlaysRef = useRef(debugOverlays);
-  const rimDetectionModeRef = useRef(rimDetectionMode);
-  const relockStateRef = useRef({ enabled: autoRelockEnabled, confidence: 0, shiftPx: 0, status: "idle" });
   const qaMetricsRef = useRef({
     startedAt: 0,
     fpsSamples: 0,
@@ -220,14 +216,22 @@ export function useAutoShotMode({
   const [detection, setDetection] = useState(null);
   const [trackingState, setTrackingState] = useState({ phase: "idle", sampleCount: 0, lastOutcome: null, lastShotAt: 0 });
   const [lastShotEvent, setLastShotEvent] = useState(null);
-  const [rimDetectionState, setRimDetectionState] = useState({ status: rimCalibration ? "manual" : "searching", confidence: rimCalibration ? 1 : 0, mode: rimCalibration ? "manual" : "auto", candidateCount: 0 });
-  const [relockState, setRelockState] = useState({ enabled: autoRelockEnabled, confidence: 0, shiftPx: 0, status: "idle" });
+  const [rimDetectionState, setRimDetectionState] = useState(() => pipelineRef.current.rimState);
+  const [relockState, setRelockState] = useState(() => pipelineRef.current.relockState);
   const [sceneState, setSceneState] = useState({ brightness: 0.5 });
   const [qaMetrics, setQaMetrics] = useState(buildQaSnapshot(qaMetricsRef.current));
+
+  // Calibrations the pipeline produced itself. The screen passes these back in
+  // as props; they're already applied, so they must not reset tracking.
+  const ownCalibrationsRef = useRef(new WeakSet());
 
   // Keep ref in sync
   useEffect(() => {
     const previousCalibration = previousCalibrationRef.current;
+    if (rimCalibration && ownCalibrationsRef.current.has(rimCalibration)) {
+      previousCalibrationRef.current = rimCalibration;
+      return;
+    }
     rimCalibrationRef.current = rimCalibration;
     const shouldHardReset = !previousCalibration || !rimCalibration || (
       Math.abs((previousCalibration.rimCenter?.x || 0) - (rimCalibration.rimCenter?.x || 0)) > Math.max(previousCalibration?.rimRadius || 0, rimCalibration?.rimRadius || 0) * 0.75 ||
@@ -235,14 +239,17 @@ export function useAutoShotMode({
       Math.abs((previousCalibration?.rimRadius || 0) - (rimCalibration?.rimRadius || 0)) > Math.max(previousCalibration?.rimRadius || 0, rimCalibration?.rimRadius || 0) * 0.35
     );
 
-    if (shouldHardReset) {
-      rimDetectorRef.current.reset();
-      trackerRef.current.reset();
-      setTrackingState(trackerRef.current.getSnapshot());
+    // Skip the very first run: the pipeline was created with this calibration.
+    if (previousCalibration !== rimCalibration) {
+      pipelineRef.current.setCalibration(rimCalibration, { hardReset: shouldHardReset });
+      setRimDetectionState(pipelineRef.current.rimState);
+    }
+
+    if (shouldHardReset && previousCalibration !== rimCalibration) {
+      setTrackingState(pipelineRef.current.tracker.getSnapshot());
       setLastShotEvent(null);
     }
 
-    setRimDetectionState({ status: rimCalibration ? "manual" : "searching", confidence: rimCalibration ? 1 : 0, mode: rimCalibration ? "manual" : "auto", candidateCount: 0 });
     previousCalibrationRef.current = rimCalibration;
   }, [rimCalibration]);
 
@@ -255,7 +262,7 @@ export function useAutoShotMode({
   }, [onRimCalibrationUpdate]);
 
   useEffect(() => {
-    detectorRef.current.setConfig(detectorConfig || {});
+    pipelineRef.current.detector.setConfig(detectorConfig || {});
   }, [detectorConfig]);
 
   useEffect(() => {
@@ -263,38 +270,23 @@ export function useAutoShotMode({
   }, [detectionIntervalMs]);
 
   useEffect(() => {
-    autoRelockEnabledRef.current = autoRelockEnabled;
-  }, [autoRelockEnabled]);
-
-  useEffect(() => {
-    minShotConfidenceRef.current = minShotConfidence;
-  }, [minShotConfidence]);
+    pipelineRef.current.configure({ autoRelockEnabled, minShotConfidence, rimDetectionMode });
+    setRelockState(pipelineRef.current.relockState);
+  }, [autoRelockEnabled, minShotConfidence, rimDetectionMode]);
 
   useEffect(() => {
     debugOverlaysRef.current = debugOverlays;
   }, [debugOverlays]);
 
-  useEffect(() => {
-    rimDetectionModeRef.current = rimDetectionMode;
-  }, [rimDetectionMode]);
-
-  useEffect(() => {
-    relockStateRef.current = relockState;
-    setRelockState((current) => ({
-      ...current,
-      enabled: autoRelockEnabled,
-      status: autoRelockEnabled ? current.status : "disabled",
-    }));
-  }, [autoRelockEnabled]);
 
   const initDetector = useCallback(async () => {
-    if (detectorRef.current.ready || modelStatus === "loading" || modelStatus === "ready") return;
+    if (pipelineRef.current.detector.ready || modelStatus === "loading" || modelStatus === "ready") return;
 
     setModelStatus("loading");
     setModelError("");
 
     try {
-      await detectorRef.current.init();
+      await pipelineRef.current.detector.init();
       setModelStatus("ready");
     } catch (detectorError) {
       setModelStatus("error");
@@ -317,40 +309,41 @@ export function useAutoShotMode({
       videoRef.current.srcObject = null;
     }
 
-    detectorRef.current.reset();
-  rimDetectorRef.current.reset();
-    rimRelockRef.current.reset();
-    trackerRef.current.reset();
+    pipelineRef.current.reset();
     detectionInFlightRef.current = false;
     lastDetectionTimeRef.current = 0;
     latestDetectionRef.current = null;
     trajectoryTrailRef.current = [];
     setDetection(null);
-    setTrackingState(trackerRef.current.getSnapshot());
+    setTrackingState(pipelineRef.current.tracker.getSnapshot());
     setLastShotEvent(null);
-    setRimDetectionState({ status: autoRelockEnabled ? "searching" : "idle", confidence: 0, mode: "auto", candidateCount: 0 });
-    setRelockState({ enabled: autoRelockEnabled, confidence: 0, shiftPx: 0, status: autoRelockEnabled ? "idle" : "disabled" });
+    setRimDetectionState(pipelineRef.current.rimState);
+    setRelockState(pipelineRef.current.relockState);
     setStatus("idle");
     setFps(0);
   }, []);
 
   const runDetection = useCallback((timestamp) => {
     const video = videoRef.current;
-    const detector = detectorRef.current;
-    if (!video || !detector.ready || detectionInFlightRef.current || timestamp - lastDetectionTimeRef.current < detectionIntervalRef.current) return;
+    const pipeline = pipelineRef.current;
+    const canRun = pipeline.detector.ready || pipeline.canRunWithoutDetector;
+    const interval = pipeline.getFrameInterval(detectionIntervalRef.current);
+    if (!video || !canRun || detectionInFlightRef.current || timestamp - lastDetectionTimeRef.current < interval) return;
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
 
     detectionInFlightRef.current = true;
     lastDetectionTimeRef.current = timestamp;
 
-    detector
-      .detect(video)
-      .then((result) => {
+    pipeline
+      .processFrame(video)
+      .then((frame) => {
+        const result = frame.detection;
+        const metrics = qaMetricsRef.current;
         latestDetectionRef.current = result;
         setDetection(result);
-        qaMetricsRef.current.detectionCycles += 1;
-        qaMetricsRef.current.inferenceSamples += 1;
-        qaMetricsRef.current.inferenceTotal += result?.inferenceMs || 0;
+        metrics.detectionCycles += 1;
+        metrics.inferenceSamples += 1;
+        metrics.inferenceTotal += result?.inferenceMs || 0;
 
         if (!brightnessCanvasRef.current && typeof document !== "undefined") {
           brightnessCanvasRef.current = document.createElement("canvas");
@@ -362,7 +355,7 @@ export function useAutoShotMode({
 
         const trail = trimTrail(trajectoryTrailRef.current, result?.timestamp || Date.now());
         if (result?.ball) {
-          qaMetricsRef.current.ballLocks += 1;
+          metrics.ballLocks += 1;
           trail.push({
             x: result.ball.center.x,
             y: result.ball.center.y,
@@ -372,94 +365,29 @@ export function useAutoShotMode({
         }
         trajectoryTrailRef.current = trimTrail(trail, result?.timestamp || Date.now());
 
-        let scaledCalibration = rimCalibrationRef.current
-          ? scaleCalibration(rimCalibrationRef.current, video.videoWidth || video.clientWidth || 0, video.videoHeight || video.clientHeight || 0)
-          : null;
-
-        const currentRimDetectionMode = rimDetectionModeRef.current;
-        const currentRelockState = relockStateRef.current;
-        const shouldRunAutoRimSearch = currentRimDetectionMode !== "manual" && (
-          currentRimDetectionMode === "auto"
-            ? (!scaledCalibration || rimDetectionState.status !== "locked")
-            : (!scaledCalibration || (currentRelockState.status === "searching" && currentRelockState.confidence < 0.34))
-        );
-        if (shouldRunAutoRimSearch) {
-          const rimDetection = rimDetectorRef.current.detect(video);
-          if (rimDetection?.calibration) {
-            qaMetricsRef.current.autoRimLocks += 1;
-            rimCalibrationRef.current = rimDetection.calibration;
-            scaledCalibration = rimDetection.calibration;
-            setRimDetectionState({
-              status: "locked",
-              confidence: rimDetection.confidence,
-              mode: "auto",
-              candidateCount: rimDetection.candidateCount || 0,
-            });
-            onRimCalibrationUpdateRef.current?.(rimDetection.calibration, {
-              confidence: rimDetection.confidence,
-              source: "auto-detect",
-            });
-          } else if (rimDetection) {
-            setRimDetectionState({
-              status: rimDetection.status || "searching",
-              confidence: rimDetection.confidence || 0,
-              mode: "auto",
-              candidateCount: rimDetection.candidateCount || 0,
-            });
-          }
-        } else {
-          setRimDetectionState({
-            status: relockState.status === "locked" ? "locked" : (rimDetectionMode === "manual" ? "manual" : "idle"),
-            confidence: relockState.status === "locked" ? relockState.confidence : (scaledCalibration ? 1 : 0),
-            mode: relockState.status === "locked" ? "relock" : (rimDetectionMode === "manual" ? "manual" : "idle"),
-            candidateCount: 0,
-          });
-        }
-
-        if (autoRelockEnabledRef.current && scaledCalibration) {
-          const relockResult = rimRelockRef.current.update(video, scaledCalibration);
-          if (relockResult?.calibration) {
-            qaMetricsRef.current.relocks += 1;
-            qaMetricsRef.current.lastRelockConfidence = relockResult.confidence;
-            rimCalibrationRef.current = relockResult.calibration;
-            setRelockState({
-              enabled: true,
-              confidence: relockResult.confidence,
-              shiftPx: relockResult.shiftPx || 0,
-              status: "locked",
-            });
-            onRimCalibrationUpdateRef.current?.(relockResult.calibration, {
-              confidence: relockResult.confidence,
-              shiftPx: relockResult.shiftPx,
-              orangePixels: relockResult.orangePixels,
-              source: "relock",
-            });
-          } else if (relockResult) {
-            setRelockState({
-              enabled: true,
-              confidence: relockResult.confidence || 0,
-              shiftPx: relockResult.shiftPx || 0,
-              status: "searching",
-            });
-          }
-        }
-
-        const shotEvent = trackerRef.current.update(result?.ball, scaledCalibration);
-        const trackerSnapshot = trackerRef.current.getSnapshot();
-        setTrackingState(trackerSnapshot);
-
-        if (shotEvent) {
-          const resolvedEvent = {
-            ...shotEvent,
-            source: "auto",
-            suppressed: shotEvent.confidence < minShotConfidenceRef.current,
-          };
-          setLastShotEvent(resolvedEvent);
-          if (resolvedEvent.suppressed) {
-            qaMetricsRef.current.suppressedShots += 1;
+        frame.calibrationUpdates.forEach(({ calibration, meta }) => {
+          ownCalibrationsRef.current.add(calibration);
+          if (meta.source === "relock") {
+            metrics.relocks += 1;
+            metrics.lastRelockConfidence = meta.confidence;
           } else {
-            qaMetricsRef.current.loggedShots += 1;
-            onShotDetectedRef.current?.(resolvedEvent);
+            metrics.autoRimLocks += 1;
+          }
+          onRimCalibrationUpdateRef.current?.(calibration, meta);
+        });
+        // Keep the overlay on the latest rim without waiting for a re-render.
+        rimCalibrationRef.current = pipeline.calibration;
+        setRimDetectionState(frame.rimState);
+        setRelockState(frame.relockState);
+        setTrackingState(frame.trackerSnapshot);
+
+        if (frame.shotEvent) {
+          setLastShotEvent(frame.shotEvent);
+          if (frame.shotEvent.suppressed) {
+            metrics.suppressedShots += 1;
+          } else {
+            metrics.loggedShots += 1;
+            onShotDetectedRef.current?.(frame.shotEvent);
           }
         }
       })

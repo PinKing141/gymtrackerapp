@@ -44,3 +44,40 @@ describe("streak summary", () => {
     expect(getStreakSummary(app).currentWeekCount).toBe(2);
   });
 });
+
+describe("all training types count", () => {
+  const daysAgo = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  it("counts cardio and basketball toward this week's target", () => {
+    const weekKey = getWeekKey();
+    const app = withDefaults({
+      ...DD(),
+      sessions: [{ date: weekKey }],
+      cardioSessions: [{ date: weekKey, durationMin: 30 }],
+      basketballSessions: [{ date: weekKey, shots: [] }],
+    });
+    expect(getStreakSummary(app).currentWeekCount).toBe(3);
+  });
+
+  it("measures days since training from the most recent activity of any type", () => {
+    const app = withDefaults({
+      ...DD(),
+      sessions: [{ date: daysAgo(10) }, { date: daysAgo(6) }],
+      cardioSessions: [{ date: daysAgo(1), durationMin: 20 }, { date: daysAgo(4), durationMin: 20 }],
+    });
+    expect(getStreakSummary(app).daysSinceLastSession).toBe(1);
+  });
+
+  it("uses the latest gym date even when sessions are out of order", () => {
+    const app = withDefaults({ ...DD(), sessions: [{ date: daysAgo(2) }, { date: daysAgo(9) }] });
+    expect(getStreakSummary(app).daysSinceLastSession).toBe(2);
+  });
+
+  it("reports null when nothing has been logged", () => {
+    expect(getStreakSummary(DD()).daysSinceLastSession).toBeNull();
+  });
+});
