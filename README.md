@@ -167,7 +167,13 @@ Even with cloud sync enabled, the app still keeps local backups on the device.
 
 1. `Export Backup` downloads a JSON file.
 2. `Import Backup` restores from a downloaded JSON file.
-3. `Restore Local Backup` reloads the last local backup copy.
+3. `Restore Local Backup` brings back an older snapshot kept on the device.
+
+The local backup is not a live copy of your data. It is refreshed at most once a
+day, and right before an import or a restore replaces your data, so it can undo
+a bad import or an accidental change. Restoring swaps it with your current data,
+so restoring again switches back. `Reset all data` deletes the backup too. If the
+main copy on the device is ever corrupted, the app falls back to this snapshot.
 
 ## Build
 

@@ -141,6 +141,13 @@ export const DEVICE_PREFS_DB = "orion-gym-v4-device";
 // into an account without an explicit user choice.
 const LEGACY_MAIN_KEY = STORAGE_BASE;
 const LEGACY_BACKUP_KEY = `${STORAGE_BASE}-backup`;
+const LEGACY_BACKUP_INFO_KEY = `${STORAGE_BASE}-backup-info`;
+
+// The backup slot holds an older snapshot, not a mirror of the main copy, so
+// "Restore local backup" can undo a bad import or an accidental change. Routine
+// saves refresh it at most once per this window; imports and restores refresh
+// it right before they replace the main copy.
+export const BACKUP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 let storageScope = null;
 
@@ -154,6 +161,7 @@ export function getStorageScope() {
 
 const mainKey = () => (storageScope ? `${STORAGE_BASE}:${storageScope}` : LEGACY_MAIN_KEY);
 const backupKey = () => (storageScope ? `${STORAGE_BASE}-backup:${storageScope}` : LEGACY_BACKUP_KEY);
+const backupInfoKey = () => (storageScope ? `${STORAGE_BASE}-backup-info:${storageScope}` : LEGACY_BACKUP_INFO_KEY);
 const draftKey = () => (storageScope ? `${DRAFT_DB}:${storageScope}` : DRAFT_DB);
 
 export const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
@@ -343,6 +351,59 @@ export function dbLoad() {
   }
 }
 
+// When and why the current scope's backup was written: { takenAt, reason }, or
+// null when there is no record (no backup yet, or one written before this
+// record existed).
+export function backupInfo() {
+  try {
+    const info = safeParse(localStorage.getItem(backupInfoKey()) || "");
+    return isObj(info) && Number.isFinite(info.takenAt) ? info : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBackup(raw, reason) {
+  localStorage.setItem(backupKey(), raw);
+  localStorage.setItem(backupInfoKey(), JSON.stringify({ takenAt: Date.now(), reason }));
+}
+
+// Copy the main copy as it is right now into the backup slot. Only a valid main
+// copy is copied (a corrupted one would wipe out the corruption fallback), and a
+// backup holding training data is never replaced by a copy holding none.
+// Returns true when the backup was written.
+function snapshotMainToBackup(reason) {
+  const mainRaw = localStorage.getItem(mainKey());
+  const main = safeParse(mainRaw || "");
+  if (!isValidData(main)) return false;
+  if (!hasAnyUserData(main)) {
+    const backup = safeParse(localStorage.getItem(backupKey()) || "");
+    if (isValidData(backup) && hasAnyUserData(backup)) return false;
+  }
+  writeBackup(mainRaw, reason);
+  return true;
+}
+
+// Called by every routine save, before the main copy is overwritten. Rolls the
+// previous main copy into the backup slot once the backup is older than
+// BACKUP_MAX_AGE_MS, so the backup always lags the live data. When there is no
+// previous main copy yet, the data being saved seeds the backup so the
+// corruption fallback in dbLoad() has something to fall back to.
+function rotateBackupIfDue(nextRaw) {
+  try {
+    const info = backupInfo();
+    const age = info ? Date.now() - info.takenAt : Infinity;
+    // A negative age means the clock went backwards; treat it as due.
+    if (age >= 0 && age < BACKUP_MAX_AGE_MS && localStorage.getItem(backupKey()) !== null) return;
+    if (snapshotMainToBackup("daily")) return;
+    const backup = safeParse(localStorage.getItem(backupKey()) || "");
+    const main = safeParse(localStorage.getItem(mainKey()) || "");
+    if (!isValidData(backup) && !isValidData(main)) writeBackup(nextRaw, "daily");
+  } catch {
+    // A failed backup write (e.g. storage full) must never block saving the main copy.
+  }
+}
+
 export function dbSave(d) {
   try {
     const payload = withDefaults({
@@ -354,32 +415,42 @@ export function dbSave(d) {
       },
     });
     const s = JSON.stringify(payload);
+    rotateBackupIfDue(s);
     localStorage.setItem(mainKey(), s);
-    localStorage.setItem(backupKey(), s);
     return payload;
-  } catch (e) {
+  } catch {
     return d;
   }
+}
+
+// Replace the main copy with `d` (an imported file, a restored backup) after
+// moving the current main copy into the backup slot, so the replacement can be
+// undone with "Restore local backup". `reason` is recorded in backupInfo().
+export function dbReplace(d, reason = "import") {
+  try {
+    snapshotMainToBackup(reason);
+  } catch {
+    // Still apply the replacement if the snapshot can't be written.
+  }
+  return dbSave(d);
 }
 
 export function dbClear() {
   try {
     localStorage.removeItem(mainKey());
     localStorage.removeItem(backupKey());
+    localStorage.removeItem(backupInfoKey());
   } catch (e) {
     // Ignore local storage cleanup issues.
   }
 }
 
+// Swap the backup in as the main copy. The data it replaces becomes the new
+// backup, so restoring twice undoes the restore.
 export function dbRestoreBackup() {
-  try {
-    const backup = safeParse(localStorage.getItem(backupKey()) || "");
-    if (!isValidData(backup)) return null;
-    localStorage.setItem(mainKey(), JSON.stringify(backup));
-    return withDefaults(backup);
-  } catch (e) {
-    return null;
-  }
+  const backup = backupLoad();
+  if (!backup) return null;
+  return dbReplace(backup, "restore");
 }
 
 // Read the current scope's backup (validated) for preview/restore UI. Returns the
@@ -420,6 +491,7 @@ export function legacyDataClear() {
   try {
     localStorage.removeItem(LEGACY_MAIN_KEY);
     localStorage.removeItem(LEGACY_BACKUP_KEY);
+    localStorage.removeItem(LEGACY_BACKUP_INFO_KEY);
   } catch (e) {
     // Ignore local storage cleanup issues.
   }

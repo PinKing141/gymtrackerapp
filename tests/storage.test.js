@@ -1,9 +1,12 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BACKUP_MAX_AGE_MS,
   DD,
+  backupInfo,
   backupLoad,
   dbClear,
   dbLoad,
+  dbReplace,
   dbRestoreBackup,
   dbSave,
   draftClear,
@@ -17,10 +20,10 @@ import {
   withDefaults,
 } from "../src/storage.js";
 
-function sampleData(name) {
+function sampleData(name, sessionCount = 1) {
   return withDefaults({
     ...DD(),
-    sessions: [{ id: 1, workoutId: "W1", date: "2026-07-20", sets: {} }],
+    sessions: Array.from({ length: sessionCount }, (_, index) => ({ id: index + 1, workoutId: "W1", date: "2026-07-20", sets: {} })),
     profile: { firstName: name, onboardingComplete: true },
   });
 }
@@ -34,6 +37,11 @@ function sampleDraft(note) {
 
 beforeEach(() => {
   setStorageScope(null);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("per-account main data scoping", () => {
@@ -83,6 +91,138 @@ describe("per-account main data scoping", () => {
     localStorage.removeItem("orion-gym-v4:uidA");
     expect(dbRestoreBackup()?.profile?.firstName).toBe("Favour");
     expect(dbLoad().profile.firstName).toBe("Favour");
+  });
+});
+
+describe("local backup snapshot", () => {
+  const START = new Date("2026-11-02T09:00:00Z").getTime();
+  const HOUR = 60 * 60 * 1000;
+  const at = (ms) => vi.setSystemTime(new Date(ms));
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    at(START);
+    setStorageScope("uidA");
+  });
+
+  it("routine saves leave the backup on an older snapshot", () => {
+    dbSave(sampleData("First", 1));
+    at(START + HOUR);
+    dbSave(sampleData("Second", 2));
+    dbSave(sampleData("Third", 3));
+
+    expect(dbLoad().sessions).toHaveLength(3);
+    expect(backupLoad().profile.firstName).toBe("First");
+    expect(backupLoad().sessions).toHaveLength(1);
+    expect(backupInfo()).toEqual({ takenAt: START, reason: "daily" });
+  });
+
+  it("rolls the previous main copy into the backup once the backup is a day old", () => {
+    dbSave(sampleData("First", 1));
+    at(START + HOUR);
+    dbSave(sampleData("Second", 2));
+
+    at(START + BACKUP_MAX_AGE_MS + HOUR);
+    dbSave(sampleData("Third", 3));
+    expect(backupLoad().profile.firstName).toBe("Second");
+    expect(backupInfo()).toEqual({ takenAt: START + BACKUP_MAX_AGE_MS + HOUR, reason: "daily" });
+
+    // The fresh snapshot then holds for another day.
+    at(START + BACKUP_MAX_AGE_MS + 2 * HOUR);
+    dbSave(sampleData("Fourth", 4));
+    expect(backupLoad().profile.firstName).toBe("Second");
+    expect(dbLoad().profile.firstName).toBe("Fourth");
+  });
+
+  it("an import parks the data it replaces in the backup", () => {
+    dbSave(sampleData("Before", 1));
+    at(START + HOUR);
+    dbSave(sampleData("Edited", 2));
+
+    at(START + 2 * HOUR);
+    dbReplace(sampleData("Imported", 5), "import");
+
+    expect(dbLoad().profile.firstName).toBe("Imported");
+    expect(backupLoad().profile.firstName).toBe("Edited");
+    expect(backupLoad().sessions).toHaveLength(2);
+    expect(backupInfo()).toEqual({ takenAt: START + 2 * HOUR, reason: "import" });
+
+    // The debounced save that follows an import must not overwrite that snapshot.
+    dbSave(dbLoad());
+    expect(backupLoad().profile.firstName).toBe("Edited");
+  });
+
+  it("restoring swaps the backup in, so a second restore undoes the first", () => {
+    dbSave(sampleData("Before", 1));
+    dbReplace(sampleData("Imported", 5), "import");
+
+    const restored = dbRestoreBackup();
+    expect(restored.profile.firstName).toBe("Before");
+    expect(dbLoad().sessions).toHaveLength(1);
+    expect(backupLoad().profile.firstName).toBe("Imported");
+    expect(backupInfo().reason).toBe("restore");
+
+    expect(dbRestoreBackup().profile.firstName).toBe("Imported");
+    expect(dbLoad().sessions).toHaveLength(5);
+  });
+
+  it("falls back to the older snapshot when the main copy is corrupted", () => {
+    dbSave(sampleData("First", 1));
+    dbSave(sampleData("Second", 2));
+    localStorage.setItem("orion-gym-v4:uidA", "{corrupted");
+
+    const loaded = dbLoad();
+    expect(loaded.profile.firstName).toBe("First");
+    expect(JSON.parse(localStorage.getItem("orion-gym-v4:uidA")).profile.firstName).toBe("First");
+  });
+
+  it("never copies a corrupted main copy into the backup", () => {
+    dbSave(sampleData("Good", 2));
+    localStorage.setItem("orion-gym-v4:uidA", "{corrupted");
+
+    at(START + BACKUP_MAX_AGE_MS + HOUR);
+    dbSave(sampleData("Next", 3));
+    expect(backupLoad().profile.firstName).toBe("Good");
+
+    localStorage.setItem("orion-gym-v4:uidA", "{corrupted");
+    dbReplace(sampleData("Imported", 4), "import");
+    expect(backupLoad().profile.firstName).toBe("Good");
+  });
+
+  it("never replaces a backup holding training data with an empty copy", () => {
+    dbSave(sampleData("Full", 3));
+    dbSave(withDefaults({ ...DD(), profile: { firstName: "Empty", onboardingComplete: true } }));
+
+    at(START + BACKUP_MAX_AGE_MS + HOUR);
+    dbSave(withDefaults({ ...DD(), profile: { firstName: "Empty", onboardingComplete: true } }));
+    dbReplace(sampleData("Imported", 1), "import");
+
+    expect(backupLoad().profile.firstName).toBe("Full");
+  });
+
+  it("still saves the main copy when the backup can't be written", () => {
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (key, value) {
+      if (String(key).includes("-backup")) throw new Error("QuotaExceededError");
+      return setItem.call(this, key, value);
+    });
+
+    dbSave(sampleData("First", 1));
+    dbReplace(sampleData("Imported", 2), "import");
+    expect(dbLoad().profile.firstName).toBe("Imported");
+  });
+
+  it("keeps backups per account and clears the backup record with the data", () => {
+    dbSave(sampleData("Favour", 1));
+    setStorageScope("uidB");
+    expect(backupLoad()).toBeNull();
+    expect(backupInfo()).toBeNull();
+
+    setStorageScope("uidA");
+    expect(backupInfo()).not.toBeNull();
+    dbClear();
+    expect(backupLoad()).toBeNull();
+    expect(backupInfo()).toBeNull();
   });
 });
 

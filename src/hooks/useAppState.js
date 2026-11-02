@@ -12,6 +12,7 @@ import {
   draftLoad,
   draftSave,
   dbLoad,
+  dbReplace,
   dbRestoreBackup,
   dbSave,
   hasAnyUserData,
@@ -757,7 +758,7 @@ export function useAppState(firebaseUser) {
           return;
         }
         const nextApp = stampAppData(withDefaults(parsed));
-        dbSave(nextApp);
+        dbReplace(nextApp, "import");
         applyApp(nextApp, { stamp: false });
         window.alert("Data imported successfully.");
       } catch {
@@ -789,7 +790,7 @@ export function useAppState(firebaseUser) {
     }
     const nextApp = stampAppData(withDefaults(data));
     applyApp(nextApp, { stamp: false });
-    dbSave(nextApp);
+    dbReplace(nextApp, "import");
     legacyDataClear();
     setLegacyPrompt(null);
   }, [applyApp]);

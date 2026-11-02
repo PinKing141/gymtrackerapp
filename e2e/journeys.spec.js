@@ -196,3 +196,50 @@ test("backup export and import round-trips the data", async ({ page }) => {
     return stored.workoutPresets?.[0]?.title || "";
   })).toBe("Row Day");
 });
+
+test("restore local backup undoes an import", async ({ page }) => {
+  await seed(page);
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "T", exact: true }).click();
+  await page.getByRole("button", { name: /data & backup/i }).click();
+
+  // Import a file that replaces the seeded preset with two logged workouts.
+  const imported = {
+    ...SEEDED_APP,
+    workoutPresets: [],
+    sessions: [
+      { id: 1, workoutId: "W1", date: "2026-10-01", sets: {} },
+      { id: 2, workoutId: "W1", date: "2026-10-03", sets: {} },
+    ],
+  };
+  await page.locator('input[accept="application/json"]').setInputFiles({
+    name: "other-device.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(imported)),
+  });
+  await expect(page.getByText("Import preview")).toBeVisible();
+  await page.getByRole("button", { name: "Import without safety backup" }).click();
+  await expect.poll(async () => page.evaluate(() => (
+    JSON.parse(localStorage.getItem("orion-gym-v4") || "{}").sessions?.length || 0
+  ))).toBe(2);
+
+  // The local backup is the pre-import data, not a copy of what was just imported.
+  await page.getByRole("button", { name: "Restore local backup" }).click();
+  await expect(page.getByText("Restore preview")).toBeVisible();
+  await expect(page.getByText(/saved before your last import/)).toBeVisible();
+  await expect(page.getByText("0 workouts · 0 recovery logs · 0 weigh-ins · 0 PBs · Preferences included", { exact: true })).toBeVisible();
+  await expect(page.getByText("2 workouts · 0 recovery logs · 0 weigh-ins · 0 PBs", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore backup" }).click();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("orion-gym-v4") || "{}");
+    const backup = JSON.parse(localStorage.getItem("orion-gym-v4-backup") || "{}");
+    return {
+      preset: stored.workoutPresets?.[0]?.title || "",
+      sessions: stored.sessions?.length || 0,
+      backupSessions: backup.sessions?.length || 0,
+    };
+  })).toEqual({ preset: "Row Day", sessions: 0, backupSessions: 2 });
+});
