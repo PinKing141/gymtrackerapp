@@ -3,8 +3,8 @@ import { ActionButton, BackButton, Pill, Screen, ScreenHeader, SurfaceCard } fro
 import { Avatar } from "../components/Avatar.jsx";
 import { CARDIO_LOG_TYPES, CARDIO_MACHINES, CARDIO_ROUTINES } from "../cardioData.js";
 import { notifyIfHidden } from "../services/notify.js";
-import { IS, devicePrefsLoad, fd, today } from "../storage.js";
-import { colors, radii } from "../theme.js";
+import { IS, devicePrefsLoad, fd } from "../storage.js";
+import { colors } from "../theme.js";
 
 function formatDuration(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60);

@@ -30,3 +30,12 @@ export function notifyIfHidden(title, body, tag) {
   }
   return notifyNow(title, body, tag);
 }
+
+// Body text for the "you haven't trained in a while" reminder.
+export function buildReminderBody(daysSinceLastSession, streakSummary) {
+  const sessionsRemaining = Math.max(0, (streakSummary?.weeklyTarget || 0) - (streakSummary?.currentWeekCount || 0));
+  if (sessionsRemaining === 0) {
+    return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. You're on track this week—keep your momentum going.`;
+  }
+  return `Quick check-in: it has been ${daysSinceLastSession} day${daysSinceLastSession === 1 ? "" : "s"} since your last workout. Complete ${sessionsRemaining} more session${sessionsRemaining === 1 ? "" : "s"} to hit this week's goal.`;
+}

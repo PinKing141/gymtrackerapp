@@ -284,7 +284,7 @@ const WORKLOAD_LEVEL_COLOR = { high: colors.danger, moderate: colors.warning, lo
 // AutoShotMode flow is left intact.
 const AUTO_SHOT_ENABLED = false;
 
-export function BasketballScreen({ app, setApp, onExit, onOpenProfile, firebaseUser }) {
+export function BasketballScreen({ app, setApp, onOpenProfile, firebaseUser }) {
   const uid = firebaseUser?.uid || null;
   const profile = app?.profile || {};
   const profileFirstName = (profile.firstName || profile.name || "").trim().split(" ")[0];

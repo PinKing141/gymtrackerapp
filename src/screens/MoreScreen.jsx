@@ -1,85 +1,50 @@
 import { useRef, useState } from "react";
 import { Spark } from "../components/WorkoutComponents.jsx";
-import { AccountSecurity } from "../components/AccountSecurity.jsx";
 import { ConfirmModal } from "../components/ConfirmModal.jsx";
 import { Icon, WaterGlassIcon } from "../components/icons.jsx";
 import { ActionButton, BackButton, Screen, ScreenHeader, SurfaceCard, TextAreaField } from "../components/ui.jsx";
-import { DangerRow, ProfileRow, SettingsField as Field, SettingsGroup as Group, SubScreenHeader as Header, Toggle } from "../components/ProfileSettings.jsx";
-import { getPreferencesIncludedLabel, summarizeBackupData } from "../profileBackupPreview.js";
-import { getBodyGoalsSummary, getDataSummary, getDisplayName, getEnabledModuleSummary, getGoalLabel, getInitials, getNextProfileAction, getNotificationSummary, getProfileCompletion, getProteinRange, getSyncSummary, getUnitLabel, getWeightLabel } from "../profileSummary.js";
+import { ProfileRow, SubScreenHeader as Header } from "../components/ProfileSettings.jsx";
+import { summarizeBackupData } from "../profileBackupPreview.js";
+import { getBodyGoalsSummary, getDataSummary, getDisplayName, getEnabledModuleSummary, getGoalLabel, getInitials, getNextProfileAction, getNotificationSummary, getProfileCompletion, getSyncSummary, getUnitLabel, getWeightLabel } from "../profileSummary.js";
 import { PHASES, WQ } from "../data.js";
-import { DD, IS, backupLoad, dbSave, fd, isValidData, today, withDefaults } from "../storage.js";
-import { haptic, playCue, unlockAudio } from "../services/sound.js";
+import { backupLoad, dbSave, fd, IS, isValidData, today, withDefaults } from "../storage.js";
+import { calculateCalories } from "../units.js";
 import { readAvatarFile } from "../services/avatar.js";
+import { AboutSection, AccountSection } from "./more/AccountSections.jsx";
+import { DangerZoneSection, DataBackupSection, ImportPreviewSection, RestorePreviewSection } from "./more/DataSections.jsx";
+import { MAIN_MODULES } from "./more/modules.js";
+import { AppearanceSection, getSoundHapticsSummary, NotificationsSection, PreferencesSection, SoundHapticsSection, UnitsSection } from "./more/PreferenceSections.jsx";
+import { AvatarEditButton } from "./more/ProfileAvatar.jsx";
+import { BodyGoalsSection, EditProfileSection, TrackingModulesSection } from "./more/ProfileSections.jsx";
 
-const ACTIVITY_OPTIONS = [
-  { value: "sedentary", label: "Sedentary", factor: 1.2 },
-  { value: "light", label: "Lightly active", factor: 1.375 },
-  { value: "moderate", label: "Moderately active", factor: 1.55 },
-  { value: "high", label: "Very active", factor: 1.725 },
-];
+const SECTION_TITLES = {
+  editProfile: "Edit profile",
+  bodyGoals: "Body & Goals",
+  trackingModules: "What you track",
+  preferences: "Preferences",
+  units: "Units",
+  soundHaptics: "Sound & Haptics",
+  appearance: "Appearance",
+  notifications: "Notifications",
+  account: "Account",
+  dataBackup: "Data & Backup",
+  dangerZone: "Danger Zone",
+  about: "About",
+  importPreview: "Import preview",
+  restorePreview: "Restore preview",
+};
 
-const GOAL_OPTIONS = [
-  { value: "cut", label: "Fat loss", delta: -450 },
-  { value: "maintain", label: "Maintain", delta: 0 },
-  { value: "bulk", label: "Muscle gain", delta: 300 },
-];
-
-const CM_PER_INCH = 2.54;
-const KG_PER_LB = 0.45359237;
-
-function toInches(heightCm) {
-  const cm = Number(heightCm);
-  if (!cm) return 0;
-  return cm / CM_PER_INCH;
-}
-
-function toFeetInches(heightCm) {
-  const totalInches = Math.max(0, Math.round(toInches(heightCm)));
-  return {
-    feet: Math.floor(totalInches / 12),
-    inches: totalInches % 12,
-  };
-}
-
-function feetInchesToCm(feet, inches) {
-  const ft = Number(feet) || 0;
-  const inch = Number(inches) || 0;
-  const totalInches = Math.max(0, (ft * 12) + inch);
-  return Number((totalInches * CM_PER_INCH).toFixed(1));
-}
-
-function poundsToKg(pounds) {
-  const lbs = Number(pounds);
-  if (!lbs) return "";
-  return Number((lbs * KG_PER_LB).toFixed(2));
-}
-
-function kgToPounds(weightKg) {
-  const kg = Number(weightKg);
-  if (!kg) return "";
-  return Number((kg / KG_PER_LB).toFixed(1));
-}
-
-function calculateCalories(profile) {
-  const age = Number(profile.age);
-  const heightCm = Number(profile.heightCm);
-  const weightKg = Number(profile.weightKg);
-  if (!age || !heightCm || !weightKg) {
-    return null;
+// Replace the entry for the same date, or append a new one.
+function upsertByDate(entries, entry) {
+  const next = [...entries];
+  const index = next.findIndex((item) => item.date === entry.date);
+  if (index >= 0) {
+    next[index] = entry;
+  } else {
+    next.push(entry);
   }
-
-  const bmr = profile.sex === "female"
-    ? (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161
-    : (10 * weightKg) + (6.25 * heightCm) - (5 * age) + 5;
-  const activityFactor = ACTIVITY_OPTIONS.find((option) => option.value === profile.activityLevel)?.factor || 1.55;
-  const maintenance = Math.round(bmr * activityFactor);
-  const goalDelta = GOAL_OPTIONS.find((option) => option.value === profile.goal)?.delta || 0;
-  const target = Math.max(1200, maintenance + goalDelta);
-
-  return { bmr: Math.round(bmr), maintenance, target };
+  return next;
 }
-
 
 const READINESS_SCALES = [
   {
@@ -119,7 +84,6 @@ export function MoreScreen({
   getPhaseProgress,
   onExportData,
   onExportStats,
-  onImportData,
   onOpenSection,
   firebaseUser,
   firestoreSync,
@@ -127,7 +91,6 @@ export function MoreScreen({
   onRemoveAccountFromDevice,
   onDeleteAccount,
   onResetAllData,
-  onRestoreBackup,
   recoveryForm,
   reviewForm,
   sectionView,
@@ -151,9 +114,6 @@ export function MoreScreen({
   const [importError, setImportError] = useState("");
   const [restorePreview, setRestorePreview] = useState(null);
   const profile = app.profile || {};
-  const calorieStats = calculateCalories(profile);
-  const unitSystem = profile.unitSystem || "imperial";
-  const { feet: profileFeet, inches: profileInches } = toFeetInches(profile.heightCm);
 
   if (sectionView === "recovery" && recoveryForm) {
     return (
@@ -219,7 +179,7 @@ export function MoreScreen({
           </SurfaceCard>
         ))}
 
-        <ActionButton onClick={() => { setApp((current) => { const nextRecovery = [...current.recovery]; const existingIndex = nextRecovery.findIndex((entry) => entry.date === recoveryForm.date); if (existingIndex >= 0) { nextRecovery[existingIndex] = recoveryForm; } else { nextRecovery.push(recoveryForm); } return { ...current, recovery: nextRecovery }; }); closeSection(); }} color="#2D7DD2" style={{ marginTop: 10 }}>
+        <ActionButton onClick={() => { setApp((current) => ({ ...current, recovery: upsertByDate(current.recovery, recoveryForm) })); closeSection(); }} color="#2D7DD2" style={{ marginTop: 10 }}>
           Save
         </ActionButton>
 
@@ -237,7 +197,7 @@ export function MoreScreen({
           <input type="number" inputMode="decimal" value={bodyStatsForm.weight} onChange={(event) => setBodyStatsForm((current) => ({ ...current, weight: Number(event.target.value) }))} style={{ ...IS, fontSize: 22, textAlign: "center", padding: "14px" }} />
           <p style={{ fontSize: 9, color: "#444", marginTop: 6, marginBottom: 0 }}>Target: 201–220 lbs</p>
         </SurfaceCard>
-        <ActionButton onClick={() => { setApp((current) => { const nextBodyStats = [...current.bodyStats]; const existingIndex = nextBodyStats.findIndex((entry) => entry.date === bodyStatsForm.date); if (existingIndex >= 0) { nextBodyStats[existingIndex] = bodyStatsForm; } else { nextBodyStats.push(bodyStatsForm); } return { ...current, bodyStats: nextBodyStats }; }); closeSection(); }} color="#F5A623" style={{ marginTop: 10 }}>
+        <ActionButton onClick={() => { setApp((current) => ({ ...current, bodyStats: upsertByDate(current.bodyStats, bodyStatsForm) })); closeSection(); }} color="#F5A623" style={{ marginTop: 10 }}>
           Save
         </ActionButton>
 
@@ -246,7 +206,12 @@ export function MoreScreen({
             <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", margin: "0 0 6px" }}>History</p>
             {app.bodyStats.length >= 2 && <Spark data={app.bodyStats.slice(-12).map((entry) => entry.weight)} color="#F5A623" height={36} />}
             <div style={{ marginTop: 8 }}>
-              {[...app.bodyStats].reverse().slice(0, 8).map((entry) => <div key={entry.date} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}><span style={{ fontSize: 11, color: "#666" }}>{fd(entry.date)}</span><span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{entry.weight} lbs</span></div>)}
+              {[...app.bodyStats].reverse().slice(0, 8).map((entry) => (
+                <div key={entry.date} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                  <span style={{ fontSize: 11, color: "#666" }}>{fd(entry.date)}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{entry.weight} lbs</span>
+                </div>
+              ))}
             </div>
           </SurfaceCard>
         )}
@@ -346,7 +311,14 @@ export function MoreScreen({
                 {state === "done" && <Icon name="check" size={16} color="#45B649" />}
                 {state === "active" && <span style={{ fontSize: 10, color: phaseEntry.color, fontWeight: 700, background: `${phaseEntry.color}22`, padding: "3px 8px", borderRadius: 6 }}>ACTIVE</span>}
               </div>
-              {state === "active" && deload && <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,166,35,0.08)", borderRadius: 8, border: "1px solid rgba(245,166,35,0.15)" }}><p style={{ fontSize: 11, color: "#F5A623", margin: 0, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Icon name="spark" size={13} color="#F5A623" />Deload week</p><p style={{ fontSize: 10, color: "#8A8F9C", margin: "3px 0 0" }}>Weights −40% · Conditioning −50% · Keep prehab · Sleep 9 hrs</p></div>}
+              {state === "active" && deload && (
+                <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(245,166,35,0.08)", borderRadius: 8, border: "1px solid rgba(245,166,35,0.15)" }}>
+                  <p style={{ fontSize: 11, color: "#F5A623", margin: 0, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icon name="spark" size={13} color="#F5A623" />Deload week
+                  </p>
+                  <p style={{ fontSize: 10, color: "#8A8F9C", margin: "3px 0 0" }}>Weights −40% · Conditioning −50% · Keep prehab · Sleep 9 hrs</p>
+                </div>
+              )}
             </SurfaceCard>
           );
         })}
@@ -358,33 +330,21 @@ export function MoreScreen({
   }
 
   const enabledModules = { gym: true, ...(profile.enabledModules || {}) };
-  const supportModules = [
-    { key: "recovery", label: "Recovery", desc: "Sleep, hydration, mobility" },
-    { key: "bodyweight", label: "Bodyweight", desc: "Weigh-ins and trends" },
-    { key: "weeklyReview", label: "Weekly review", desc: "Sunday accountability" },
-    { key: "phaseTracking", label: "Phase tracking", desc: "12-week progression" },
-  ];
-  const mainModules = [
-    { key: "gym", label: "Gym / Lifting", desc: "Strength workouts & PBs", locked: true },
-    { key: "cardio", label: "Cardio", desc: "Bike, treadmill, running" },
-    { key: "basketball", label: "Basketball", desc: "Shot tracking & stats" },
-    { key: "nutrition", label: "Nutrition", desc: "Calorie target and food logging", locked: true },
-  ];
-  const toggleModule = (key) => setApp((current) => ({ ...current, profile: { ...current.profile, enabledModules: { ...(current.profile.enabledModules || {}), [key]: !current.profile.enabledModules?.[key], gym: true } } }));
-  const setProfile = (patch) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), ...patch } }));
-  const setUnitSystem = (unitSystem) => setProfile({ unitSystem });
-
-  const soundCategories = devicePrefs.soundCategories || {};
-  const soundRows = [
-    { key: "timers", label: "Timers", cue: "restEnd" },
-    { key: "logging", label: "Logging", cue: "setLogged" },
-    { key: "celebrations", label: "Celebrations", cue: "pr" },
-    { key: "basketball", label: "Basketball", cue: "ballMake" },
-  ];
-  const toggleSoundCategory = (key) => setDevicePrefs((current) => ({ ...current, soundCategories: { ...(current.soundCategories || {}), [key]: !(current.soundCategories?.[key] !== false) } }));
-
+  const unitSystem = profile.unitSystem || "imperial";
+  const calorieStats = calculateCalories(profile);
   const displayName = getDisplayName(profile);
   const initials = getInitials(displayName);
+  const unitLabel = getUnitLabel(profile);
+  const syncText = getSyncSummary({ firebaseUser, firestoreSync });
+
+  const setProfile = (patch) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), ...patch } }));
+  const toggleModule = (key) => setApp((current) => ({
+    ...current,
+    profile: {
+      ...current.profile,
+      enabledModules: { ...(current.profile.enabledModules || {}), [key]: !current.profile.enabledModules?.[key], gym: true },
+    },
+  }));
 
   // Read a chosen photo, centre-crop to a square and shrink it to ~256px so the
   // resulting data URL is small enough to sync inside the Firestore doc.
@@ -393,77 +353,220 @@ export function MoreScreen({
     event.target.value = "";
     if (!file) return;
     readAvatarFile(file)
-      .then((avatar) => setApp((current) => ({ ...current, profile: { ...(current.profile || {}), avatar } })))
+      .then((avatar) => setProfile({ avatar }))
       .catch(() => {});
   };
+  const pickAvatar = () => avatarInputRef.current?.click();
+  const avatarInput = <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: "none" }} />;
 
-  // Photo if set, initials otherwise.
-  const renderAvatar = (size, radius, fontSize) => (
-    profile.avatar
-      ? <img src={profile.avatar} alt="" style={{ width: size, height: size, borderRadius: radius, objectFit: "cover", flexShrink: 0, display: "block" }} />
-      : <div style={{ width: size, height: size, borderRadius: radius, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(140deg, #4EA1FF, #8B5CF6)", color: "#fff", fontSize, fontWeight: 800 }}>{initials}</div>
-  );
+  const applyImportedData = (data) => {
+    const nextApp = withDefaults(data);
+    dbSave(nextApp);
+    setApp(nextApp);
+    setImportPreview(null);
+    goBackSection?.();
+    window.alert("Data imported successfully.");
+  };
 
-  const goalLabel = getGoalLabel(profile.goal);
-  const unitLabel = getUnitLabel(profile);
-  const weightLabel = getWeightLabel(profile);
-  const targetWeightDisplay = profile.targetWeightKg ? (unitSystem === "imperial" ? kgToPounds(profile.targetWeightKg) : profile.targetWeightKg) : "";
-  const { counts: dataCounts, label: dataSummary } = getDataSummary(app);
-  const preferencesIncluded = getPreferencesIncludedLabel;
-  const syncText = getSyncSummary({ firebaseUser, firestoreSync });
-  const notificationSummary = getNotificationSummary({ supported: notificationSupported, permission: notificationPermission, thresholdDays: devicePrefs.reminderThresholdDays });
-  const trackedSummary = getEnabledModuleSummary(profile, mainModules);
-  const bodyGoalsSummary = getBodyGoalsSummary({ profile, calorieStats });
+  const handleImportFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!isValidData(parsed)) {
+          setImportError("Invalid backup file.");
+          return;
+        }
+        setImportPreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) });
+        onOpenSection("importPreview");
+      } catch {
+        setImportError("Could not read this backup file.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
+  };
+
+  const openRestorePreview = () => {
+    const parsed = backupLoad();
+    if (!parsed) {
+      window.alert("No valid backup found.");
+      return;
+    }
+    setRestorePreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) });
+    onOpenSection("restorePreview");
+  };
+
+  const restoreFromPreview = () => {
+    dbSave(restorePreview.data);
+    setApp(restorePreview.data);
+    setRestorePreview(null);
+    goBackSection?.();
+  };
+
+  if (SECTION_TITLES[sectionView]) {
+    return (
+      <Screen>
+        <Header
+          onBack={goBackSection || closeSection}
+          title={SECTION_TITLES[sectionView]}
+          subtitle={sectionView === "bodyGoals" ? "The better this is, the better your training targets work." : undefined}
+        />
+
+        {sectionView === "editProfile" && (
+          <EditProfileSection
+            profile={profile}
+            displayName={displayName}
+            initials={initials}
+            email={firebaseUser?.email}
+            onPickAvatar={pickAvatar}
+            avatarInput={avatarInput}
+            setProfile={setProfile}
+          />
+        )}
+        {sectionView === "bodyGoals" && (
+          <BodyGoalsSection profile={profile} unitSystem={unitSystem} calorieStats={calorieStats} setProfile={setProfile} />
+        )}
+        {sectionView === "trackingModules" && <TrackingModulesSection enabledModules={enabledModules} toggleModule={toggleModule} />}
+        {sectionView === "preferences" && <PreferencesSection unitLabel={unitLabel} devicePrefs={devicePrefs} onOpenSection={onOpenSection} />}
+        {sectionView === "units" && <UnitsSection unitSystem={unitSystem} setUnitSystem={(next) => setProfile({ unitSystem: next })} />}
+        {sectionView === "soundHaptics" && <SoundHapticsSection devicePrefs={devicePrefs} setDevicePrefs={setDevicePrefs} />}
+        {sectionView === "appearance" && <AppearanceSection />}
+        {sectionView === "notifications" && (
+          <NotificationsSection
+            devicePrefs={devicePrefs}
+            setDevicePrefs={setDevicePrefs}
+            notificationPermission={notificationPermission}
+            notificationSupported={notificationSupported}
+            serviceWorkerSupported={serviceWorkerSupported}
+            onRequestReminderPermission={onRequestReminderPermission}
+            onSendTestReminder={onSendTestReminder}
+          />
+        )}
+        {sectionView === "account" && (
+          <AccountSection
+            firebaseUser={firebaseUser}
+            displayName={displayName}
+            syncText={syncText}
+            firestoreSync={firestoreSync}
+            onSignOut={() => setSignOutOpen(true)}
+            onRemoveAccountFromDevice={onRemoveAccountFromDevice}
+            onDeleteAccount={onDeleteAccount}
+          />
+        )}
+        {sectionView === "dataBackup" && (
+          <DataBackupSection
+            dataCounts={getDataSummary(app).counts}
+            syncText={syncText}
+            firestoreSync={firestoreSync}
+            importError={importError}
+            fileInputRef={fileInputRef}
+            onImportFile={handleImportFile}
+            onExportData={onExportData}
+            onExportStats={onExportStats}
+            onOpenRestorePreview={openRestorePreview}
+            onOpenSection={onOpenSection}
+          />
+        )}
+        {sectionView === "dangerZone" && <DangerZoneSection onReset={() => setResetOpen(true)} />}
+        {sectionView === "about" && <AboutSection />}
+        {sectionView === "importPreview" && importPreview && (
+          <ImportPreviewSection
+            preview={importPreview}
+            onImportWithBackup={() => { onExportData?.(); applyImportedData(importPreview.data); }}
+            onImport={() => applyImportedData(importPreview.data)}
+            onCancel={() => { setImportPreview(null); goBackSection?.(); }}
+          />
+        )}
+        {sectionView === "restorePreview" && restorePreview && (
+          <RestorePreviewSection
+            preview={restorePreview}
+            onRestoreWithBackup={() => { onExportData?.(); restoreFromPreview(); }}
+            onRestore={restoreFromPreview}
+            onCancel={() => { setRestorePreview(null); goBackSection?.(); }}
+          />
+        )}
+
+        <ConfirmModal
+          open={resetOpen}
+          title="Reset all data?"
+          message={`This permanently deletes all your workouts, cardio, basketball sessions, recovery logs, body stats, weekly reviews, preferences and PBs on this device${firebaseUser ? " and in your cloud account" : ""}. This can't be undone.`}
+          requireText="RESET"
+          confirmLabel="Delete everything"
+          onCancel={() => setResetOpen(false)}
+          onConfirm={() => { setResetOpen(false); onResetAllData(); }}
+        />
+        <ConfirmModal
+          open={signOutOpen}
+          title="Sign out?"
+          message="Your data stays on this device, but cloud sync will stop until you sign back in."
+          confirmLabel="Sign out"
+          onCancel={() => setSignOutOpen(false)}
+          onConfirm={() => { setSignOutOpen(false); onFirebaseSignOut?.(); }}
+        />
+      </Screen>
+    );
+  }
+
   const completionPercent = getProfileCompletion({ profile, enabledModules, notificationPermission });
   const nextAction = getNextProfileAction({ profile, enabledModules, notificationPermission });
-  const proteinRange = getProteinRange(profile);
-
-  const applyImportedData = (data) => { const nextApp = withDefaults(data); dbSave(nextApp); setApp(nextApp); setImportPreview(null); goBackSection?.(); window.alert("Data imported successfully."); };
-  const handleImportFile = (event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { try { const parsed = JSON.parse(reader.result); if (!isValidData(parsed)) { setImportError("Invalid backup file."); return; } setImportPreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) }); onOpenSection("importPreview"); } catch { setImportError("Could not read this backup file."); } }; reader.readAsText(file); event.target.value = ""; };
-  const openRestorePreview = () => { const parsed = backupLoad(); if (!parsed) { window.alert("No valid backup found."); return; } setRestorePreview({ data: withDefaults(parsed), summary: summarizeBackupData(parsed), current: summarizeBackupData(app) }); onOpenSection("restorePreview"); };
-
-  if (["editProfile","bodyGoals","trackingModules","preferences","units","soundHaptics","appearance","notifications","account","dataBackup","dangerZone","about","importPreview","restorePreview"].includes(sectionView)) {
-    return <Screen><Header onBack={goBackSection || closeSection} title={{editProfile:"Edit profile",bodyGoals:"Body & Goals",trackingModules:"What you track",preferences:"Preferences",units:"Units",soundHaptics:"Sound & Haptics",appearance:"Appearance",notifications:"Notifications",account:"Account",dataBackup:"Data & Backup",dangerZone:"Danger Zone",about:"About",importPreview:"Import preview",restorePreview:"Restore preview"}[sectionView]} subtitle={sectionView === "bodyGoals" ? "The better this is, the better your training targets work." : undefined} />
-      {sectionView === "editProfile" && <><Group title="Identity"><div style={{ display: "flex", alignItems: "center", gap: 12 }}><button type="button" onClick={()=>avatarInputRef.current?.click()} style={{ position: "relative", border: "none", background: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0 }}>{renderAvatar(56, 18, 20)}<span style={{ position: "absolute", right: -3, bottom: -3, width: 22, height: 22, borderRadius: 999, background: "#4EA1FF", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #15151F" }}><Icon name="plus" size={12} color="#fff" strokeWidth={2.6} /></span></button><div style={{ minWidth: 0 }}><p style={{ margin: 0, color: "#fff", fontWeight: 800 }}>{displayName}</p><p style={{ margin: "3px 0 0", color: "#8A8F9C", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser?.email || "Signed out"}</p>{profile.avatar ? <button type="button" onClick={()=>setProfile({ avatar: null })} style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "#FF8A8A", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Remove photo</button> : <button type="button" onClick={()=>avatarInputRef.current?.click()} style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "#4EA1FF", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Add photo</button>}</div></div><input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: "none" }} /><Field label="Display name"><input style={IS} value={profile.name || ""} onChange={(e)=>setProfile({ name: e.target.value })} placeholder="Your name" /></Field><Field label="Personal notes"><TextAreaField value={profile.notes || ""} onChange={(e)=>setProfile({ notes: e.target.value })} placeholder="Injuries, schedule, preferences..." /></Field></Group></>}
-      {sectionView === "bodyGoals" && <><Group title="Body"><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}><Field label="Age"><input style={IS} type="number" value={profile.age || ""} onChange={(e)=>setProfile({ age:e.target.value })} /></Field><Field label="Sex"><select style={IS} value={profile.sex || "male"} onChange={(e)=>setProfile({ sex:e.target.value })}><option value="male">Male</option><option value="female">Female</option></select></Field>{unitSystem === "imperial" ? <><Field label="Height feet"><input style={IS} type="number" value={profileFeet || ""} onChange={(e)=>setProfile({ heightCm: feetInchesToCm(e.target.value, profileInches) })} /></Field><Field label="Height inches"><input style={IS} type="number" value={profileInches || ""} onChange={(e)=>setProfile({ heightCm: feetInchesToCm(profileFeet, e.target.value) })} /></Field><Field label="Current weight (lb)"><input style={IS} type="number" value={kgToPounds(profile.weightKg)} onChange={(e)=>setProfile({ weightKg:poundsToKg(e.target.value) })} /></Field><Field label="Target weight (lb)"><input style={IS} type="number" value={targetWeightDisplay} onChange={(e)=>setProfile({ targetWeightKg:poundsToKg(e.target.value) })} /></Field></> : <><Field label="Height (cm)"><input style={IS} type="number" value={profile.heightCm || ""} onChange={(e)=>setProfile({ heightCm:e.target.value })} /></Field><Field label="Current weight (kg)"><input style={IS} type="number" value={profile.weightKg || ""} onChange={(e)=>setProfile({ weightKg:e.target.value })} /></Field><Field label="Target weight (kg)"><input style={IS} type="number" value={profile.targetWeightKg || ""} onChange={(e)=>setProfile({ targetWeightKg:e.target.value })} /></Field></>}</div></Group><Group title="Goal"><select style={IS} value={profile.goal || "maintain"} onChange={(e)=>setProfile({ goal:e.target.value })}>{GOAL_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><select style={IS} value={profile.weeklyGoalRate || "moderate"} onChange={(e)=>setProfile({ weeklyGoalRate:e.target.value })}>{(profile.goal === "bulk" ? ["Slow lean bulk","Moderate gain","Aggressive gain"] : ["0.25 kg/week","0.5 kg/week","0.75 kg/week","1.0 kg/week"]).map(o=><option key={o} value={o}>{o}</option>)}</select><select style={IS} value={profile.activityLevel || "moderate"} onChange={(e)=>setProfile({ activityLevel:e.target.value })}>{ACTIVITY_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select></Group><Group title="Nutrition target">{calorieStats ? <><p style={{margin:0,color:"#fff"}}>BMR estimate: <strong>{calorieStats.bmr}</strong> kcal/day</p><p style={{margin:0,color:"#fff"}}>Maintenance calories: <strong>{calorieStats.maintenance}</strong> kcal/day</p><p style={{margin:0,color:"#fff"}}>Goal calories: <strong>{calorieStats.target}</strong> kcal/day</p><p style={{margin:0,color:"#8BA6C9"}}>Protein target: <strong>{proteinRange}</strong></p></> : <p style={{margin:0,color:"#888"}}>Add age, height, and current weight to estimate calories and protein.</p>}</Group></>}
-      {sectionView === "trackingModules" && <><Group title="Main modules">{mainModules.map(m=><div key={m.key} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><p style={{margin:0,color:"#fff",fontWeight:700}}>{m.label}{m.locked ? " · Core" : ""}</p><p style={{margin:"2px 0 0",color:"#8A8F9C",fontSize:11}}>{m.desc}</p></div><Toggle on={m.locked || enabledModules[m.key]} disabled={m.locked} onClick={()=>toggleModule(m.key)} /></div>)}</Group><Group title="Support modules">{supportModules.map(m=><div key={m.key} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center"}}><div><p style={{margin:0,color:"#fff",fontWeight:700}}>{m.label}</p><p style={{margin:"2px 0 0",color:"#8A8F9C",fontSize:11}}>{m.desc}</p></div><Toggle on={enabledModules[m.key]} onClick={()=>toggleModule(m.key)} /></div>)}</Group></>}
-      {sectionView === "preferences" && <><ProfileRow icon="scale" label="Units" summary={unitLabel} onClick={()=>onOpenSection("units")} /><ProfileRow icon="pulse" label="Sound & Haptics" summary={`${devicePrefs.soundEnabled !== false ? "Sound on" : "Sound off"} · ${devicePrefs.hapticsEnabled !== false ? "Haptics on" : "Haptics off"}`} onClick={()=>onOpenSection("soundHaptics")} /><ProfileRow icon="spark" label="Appearance" summary="Dark" onClick={()=>onOpenSection("appearance")} /></>}
-      {sectionView === "units" && <Group title="Units"><ActionButton tone={unitSystem==="imperial"?"tinted":"secondary"} onClick={()=>setUnitSystem("imperial")}>Imperial · lb · ft/in · miles</ActionButton><ActionButton tone={unitSystem==="metric"?"tinted":"secondary"} onClick={()=>setUnitSystem("metric")}>Metric · kg · cm · km</ActionButton><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Energy stays in kcal.</p></Group>}
-      {sectionView === "soundHaptics" && <><Group title="Sound"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><p style={{margin:0,color:"#fff",fontWeight:700}}>Master sound</p><Toggle on={devicePrefs.soundEnabled !== false} onClick={()=>setDevicePrefs(c=>({...c,soundEnabled:!(c.soundEnabled !== false)}))} /></div><input type="range" min="0" max="1" step="0.05" value={devicePrefs.soundVolume ?? 0.6} onChange={(e)=>setDevicePrefs(c=>({...c,soundVolume:Number(e.target.value)}))} style={{width:"100%",accentColor:"#4EA1FF"}} /></Group><Group title="Sound categories">{soundRows.map(r=><div key={r.key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}><p style={{margin:0,color:"#fff",fontWeight:700}}>{r.label}</p><div style={{display:"flex",gap:10,alignItems:"center"}}><ActionButton compact fullWidth={false} tone="secondary" onClick={()=>{unlockAudio();playCue(r.cue)}}>Play</ActionButton><Toggle on={soundCategories[r.key] !== false} onClick={()=>toggleSoundCategory(r.key)} /></div></div>)}</Group><Group title="Haptics"><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><p style={{margin:0,color:"#fff",fontWeight:700}}>Haptics vibration</p><Toggle on={devicePrefs.hapticsEnabled !== false} onClick={()=>setDevicePrefs(c=>({...c,hapticsEnabled:!(c.hapticsEnabled !== false)}))} /></div><ActionButton tone="secondary" onClick={()=>haptic("success")}>Test haptic</ActionButton></Group></>}
-      {sectionView === "appearance" && <Group title="Theme"><p style={{margin:0,color:"#fff",fontWeight:700}}>Dark</p><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Theme customization is coming soon. The app currently supports its dark training theme.</p></Group>}
-      {sectionView === "notifications" && <><Group title="Reminder status"><p style={{margin:0,color:"#fff"}}>Permission: <strong>{notificationSupported ? notificationPermission : "Unsupported"}</strong></p>{notificationSupported && <ActionButton onClick={onRequestReminderPermission} tone="tinted" color="#2D7DD2">{notificationPermission === "granted" ? "Enabled" : "Enable reminders"}</ActionButton>}</Group>{notificationSupported && <Group title="Streak protection"><p style={{margin:0,color:"#fff"}}>Remind me when I haven’t trained for {devicePrefs.reminderThresholdDays || 3} days</p><input type="range" min="2" max="5" value={devicePrefs.reminderThresholdDays || 3} onChange={(e)=>setDevicePrefs(c=>({...c,reminderThresholdDays:Number(e.target.value),lastReminderKey:null}))} style={{width:"100%",accentColor:"#2D7DD2"}} /></Group>}<Group title="Testing"><ActionButton onClick={onSendTestReminder} tone="secondary" disabled={!notificationSupported}>Send test reminder</ActionButton></Group><Group title="Device support"><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Browser support: {notificationSupported ? "Available" : "Unsupported"}</p><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Service worker: {serviceWorkerSupported ? "Available" : "Unavailable"}</p></Group></>}
-      {sectionView === "account" && <><Group title="Account"><p style={{margin:0,color:"#fff"}}>Email: <strong>{firebaseUser?.email || "Signed out"}</strong></p><p style={{margin:0,color:"#fff"}}>Display name: <strong>{displayName}</strong></p><p style={{margin:0,color:"#8A8F9C"}}>Status: {firebaseUser ? "Signed in" : "Signed out"}</p></Group><Group title="Sync"><p style={{margin:0,color:"#fff"}}>Cloud sync status: <strong>{syncText}</strong></p><p style={{margin:0,color:"#8A8F9C"}}>Last synced: {firestoreSync?.lastSyncedAt ? new Date(firestoreSync.lastSyncedAt).toLocaleString() : "—"}</p>{firestoreSync?.error && <p style={{margin:0,color:"#FF8A8A"}}>{firestoreSync.error}</p>}</Group>{firebaseUser && <ActionButton tone="secondary" onClick={()=>setSignOutOpen(true)}>Sign out</ActionButton>}{firebaseUser && <AccountSecurity firebaseUser={firebaseUser} onRemoveFromDevice={onRemoveAccountFromDevice} onDeleteAccount={onDeleteAccount} />}</>}
-      {sectionView === "dataBackup" && <><Group title="Training data"><p style={{margin:0,color:"#fff"}}>{dataCounts.workouts} workouts</p><p style={{margin:0,color:"#fff"}}>{dataCounts.cardio} cardio sessions</p><p style={{margin:0,color:"#fff"}}>{dataCounts.basketball} basketball sessions</p><p style={{margin:0,color:"#fff"}}>{dataCounts.pbs} PBs</p></Group><Group title="Wellness data"><p style={{margin:0,color:"#fff"}}>{dataCounts.recovery} recovery logs</p><p style={{margin:0,color:"#fff"}}>{dataCounts.weighIns} weigh-ins</p><p style={{margin:0,color:"#fff"}}>{dataCounts.reviews} weekly reviews</p></Group><Group title="Backup actions"><ActionButton onClick={onExportData} tone="tinted" color="#2D7DD2">Export backup (.json)</ActionButton><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>A full, re-importable copy of your data — presets, sessions, PBs and settings.</p><ActionButton onClick={()=>fileInputRef.current?.click()} tone="tinted" color="#F5A623">Import backup</ActionButton><ActionButton onClick={openRestorePreview} tone="tinted" color="#45B649">Restore local backup</ActionButton>{onExportStats && <ActionButton onClick={onExportStats} tone="secondary">Export stats (Excel)</ActionButton>}<input ref={fileInputRef} type="file" accept="application/json" onChange={handleImportFile} style={{display:"none"}} />{importError && <p style={{margin:0,color:"#FF8A8A",fontSize:12}}>{importError}</p>}</Group><Group title="Cloud sync"><p style={{margin:0,color:"#fff"}}>{syncText}</p><p style={{margin:0,color:"#8A8F9C",fontSize:12}}>Last synced: {firestoreSync?.lastSyncedAt ? new Date(firestoreSync.lastSyncedAt).toLocaleString() : "—"}</p></Group><DangerRow icon="trash" label="Danger Zone" summary="Reset all data" onClick={()=>onOpenSection("dangerZone")} /></>}
-      {sectionView === "dangerZone" && <SurfaceCard style={{borderColor:"rgba(255,93,93,0.3)",background:"rgba(255,93,93,0.05)"}}><p style={{margin:"0 0 6px",color:"#FF8A8A",fontWeight:800}}>Reset all data</p><p style={{margin:"0 0 14px",color:"#8A8F9C",fontSize:12}}>Permanently deletes workouts, cardio, basketball data, stats, PBs, preferences and local/cloud data.</p><ActionButton onClick={()=>setResetOpen(true)} tone="danger">Reset all data</ActionButton></SurfaceCard>}
-      {sectionView === "about" && <Group title="App"><p style={{margin:0,color:"#fff",fontWeight:700}}>Orion Gym Tracker</p><p style={{margin:0,color:"#8A8F9C"}}>Version 1.0.0</p></Group>}
-      {sectionView === "importPreview" && importPreview && <Group title="Import backup"><p style={{margin:0,color:"#fff",fontWeight:700}}>Found in backup</p><p style={{margin:0,color:"#8A8F9C"}}>{importPreview.summary.workouts} workouts · {importPreview.summary.recovery} recovery logs · {importPreview.summary.weighIns} weigh-ins · {importPreview.summary.pbs} PBs · {preferencesIncluded(importPreview.summary)}</p><p style={{margin:"8px 0 0",color:"#fff",fontWeight:700}}>Current app data</p><p style={{margin:0,color:"#8A8F9C"}}>{importPreview.current.workouts} workouts · {importPreview.current.recovery} recovery logs · {importPreview.current.weighIns} weigh-ins · {importPreview.current.pbs} PBs</p><p style={{margin:"8px 0",color:"#FFCA8A",fontSize:12}}>Importing a backup replaces your current data with the data inside the file.</p><ActionButton onClick={()=>{onExportData?.(); applyImportedData(importPreview.data);}} tone="tinted" color="#2D7DD2">Create safety backup and import</ActionButton><ActionButton onClick={()=>applyImportedData(importPreview.data)} tone="danger">Import without safety backup</ActionButton><ActionButton onClick={()=>{setImportPreview(null);goBackSection?.();}} tone="secondary">Cancel</ActionButton></Group>}
-      {sectionView === "restorePreview" && restorePreview && <Group title="Restore local backup"><p style={{margin:0,color:"#fff",fontWeight:700}}>Backup found</p><p style={{margin:0,color:"#8A8F9C"}}>{restorePreview.summary.workouts} workouts · {restorePreview.summary.pbs} PBs · {preferencesIncluded(restorePreview.summary)}</p><p style={{margin:"8px 0",color:"#FFCA8A",fontSize:12}}>Restoring uses the last local backup saved on this device and replaces your current data.</p><ActionButton onClick={()=>{onExportData?.(); dbSave(restorePreview.data); setApp(restorePreview.data); setRestorePreview(null); goBackSection?.();}} tone="tinted" color="#2D7DD2">Create safety export and restore</ActionButton><ActionButton onClick={()=>{dbSave(restorePreview.data); setApp(restorePreview.data); setRestorePreview(null); goBackSection?.();}} tone="danger">Restore backup</ActionButton><ActionButton onClick={()=>{setRestorePreview(null);goBackSection?.();}} tone="secondary">Cancel</ActionButton></Group>}
-      <ConfirmModal open={resetOpen} title="Reset all data?" message={`This permanently deletes all your workouts, cardio, basketball sessions, recovery logs, body stats, weekly reviews, preferences and PBs on this device${firebaseUser ? " and in your cloud account" : ""}. This can't be undone.`} requireText="RESET" confirmLabel="Delete everything" onCancel={()=>setResetOpen(false)} onConfirm={()=>{setResetOpen(false);onResetAllData();}} />
-      <ConfirmModal open={signOutOpen} title="Sign out?" message="Your data stays on this device, but cloud sync will stop until you sign back in." confirmLabel="Sign out" onCancel={()=>setSignOutOpen(false)} onConfirm={()=>{setSignOutOpen(false);onFirebaseSignOut?.();}} />
-    </Screen>;
-  }
+  const summaryStats = [
+    { label: "Goal", value: getGoalLabel(profile.goal) },
+    { label: "Weight", value: getWeightLabel(profile) },
+    { label: "Streak", value: `${streakSummary?.currentStreak || 0} wk` },
+  ];
+  const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
   return (
     <Screen>
       <div style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)", marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
-          <button type="button" onClick={()=>avatarInputRef.current?.click()} style={{ position: "relative", border: "none", background: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0 }}>{renderAvatar(60, 20, 22)}<span style={{ position: "absolute", right: -3, bottom: -3, width: 22, height: 22, borderRadius: 999, background: "#4EA1FF", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #0A0A0F" }}><Icon name="plus" size={12} color="#fff" strokeWidth={2.6} /></span></button>
-          <div style={{ minWidth: 0 }}><h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</h1>{firebaseUser?.email && <p style={{ margin: "3px 0 0", fontSize: 12, color: "#8A8F9C", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{firebaseUser.email}</p>}</div>
+          <AvatarEditButton profile={profile} initials={initials} size={60} radius={20} fontSize={22} ringColor="#0A0A0F" onClick={pickAvatar} />
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "#fff", ...ellipsis }}>{displayName}</h1>
+            {firebaseUser?.email && <p style={{ margin: "3px 0 0", fontSize: 12, color: "#8A8F9C", ...ellipsis }}>{firebaseUser.email}</p>}
+          </div>
         </div>
-        <input ref={avatarInputRef} type="file" accept="image/*" onChange={handleAvatarFile} style={{ display: "none" }} />
-        <div style={{ display: "flex", gap: 8 }}>{[{ label: "Goal", value: goalLabel }, { label: "Weight", value: weightLabel }, { label: "Streak", value: `${streakSummary?.currentStreak || 0} wk` }].map((stat) => <div key={stat.label} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "11px 6px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}><p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stat.value}</p><p style={{ margin: "2px 0 0", fontSize: 10, color: "#6C6F7B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{stat.label}</p></div>)}</div>
+        {avatarInput}
+        <div style={{ display: "flex", gap: 8 }}>
+          {summaryStats.map((stat) => (
+            <div key={stat.label} style={{ flex: 1, minWidth: 0, textAlign: "center", padding: "11px 6px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)" }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#fff", ...ellipsis }}>{stat.value}</p>
+              <p style={{ margin: "2px 0 0", fontSize: 10, color: "#6C6F7B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>{stat.label}</p>
+            </div>
+          ))}
+        </div>
       </div>
-      <SurfaceCard style={{ borderColor: "rgba(78,161,255,0.25)", background: "rgba(78,161,255,0.07)" }}><div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}><div><p style={{ margin:0, color:"#fff", fontWeight:800 }}>{completionPercent >= 100 ? "Profile complete" : `Profile ${completionPercent}% complete`}</p><p style={{ margin:"4px 0 0", color:"#8BA6C9", fontSize:12 }}>Next: {nextAction}</p></div><div style={{ width:52, height:52, borderRadius:999, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(255,255,255,0.06)", color:"#fff", fontWeight:800 }}>{completionPercent}%</div></div></SurfaceCard>
+
+      <SurfaceCard style={{ borderColor: "rgba(78,161,255,0.25)", background: "rgba(78,161,255,0.07)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div>
+            <p style={{ margin: 0, color: "#fff", fontWeight: 800 }}>{completionPercent >= 100 ? "Profile complete" : `Profile ${completionPercent}% complete`}</p>
+            <p style={{ margin: "4px 0 0", color: "#8BA6C9", fontSize: 12 }}>Next: {nextAction}</p>
+          </div>
+          <div style={{ width: 52, height: 52, borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,0.06)", color: "#fff", fontWeight: 800 }}>
+            {completionPercent}%
+          </div>
+        </div>
+      </SurfaceCard>
+
       <div style={{ display: "grid", gap: 10 }}>
-        <ProfileRow icon="user" label="Edit profile" summary={(profile.name || profile.firstName || "").trim() || "Not set"} onClick={()=>onOpenSection("editProfile")} />
-        <ProfileRow icon="scale" label="Body & Goals" summary={bodyGoalsSummary} onClick={()=>onOpenSection("bodyGoals")} />
-        <ProfileRow icon="clipboard" label="What you track" summary={trackedSummary} onClick={()=>onOpenSection("trackingModules")} />
-        <ProfileRow icon="calendar" label="Training cycle" summary={app.phaseStart ? `Week ${getPhaseProgress().week} of 12` : "Not started"} onClick={()=>onOpenSection("phase")} />
-        <ProfileRow icon="spark" label="Preferences" summary={`${unitLabel} · ${devicePrefs.soundEnabled !== false ? "Sound on" : "Sound off"} · ${devicePrefs.hapticsEnabled !== false ? "Haptics on" : "Haptics off"}`} onClick={()=>onOpenSection("preferences")} />
-        <ProfileRow icon="bell" label="Notifications" summary={notificationSummary} onClick={()=>onOpenSection("notifications")} />
-        <ProfileRow icon="user" label="Account" summary={syncText} onClick={()=>onOpenSection("account")} />
-        <ProfileRow icon="barChart" label="Data & Backup" summary={dataSummary} onClick={()=>onOpenSection("dataBackup")} />
-        <ProfileRow icon="info" label="About" summary="v1.0.0" onClick={()=>onOpenSection("about")} />
+        <ProfileRow icon="user" label="Edit profile" summary={(profile.name || profile.firstName || "").trim() || "Not set"} onClick={() => onOpenSection("editProfile")} />
+        <ProfileRow icon="scale" label="Body & Goals" summary={getBodyGoalsSummary({ profile, calorieStats })} onClick={() => onOpenSection("bodyGoals")} />
+        <ProfileRow icon="clipboard" label="What you track" summary={getEnabledModuleSummary(profile, MAIN_MODULES)} onClick={() => onOpenSection("trackingModules")} />
+        <ProfileRow icon="calendar" label="Training cycle" summary={app.phaseStart ? `Week ${getPhaseProgress().week} of 12` : "Not started"} onClick={() => onOpenSection("phase")} />
+        <ProfileRow icon="spark" label="Preferences" summary={`${unitLabel} · ${getSoundHapticsSummary(devicePrefs)}`} onClick={() => onOpenSection("preferences")} />
+        <ProfileRow
+          icon="bell"
+          label="Notifications"
+          summary={getNotificationSummary({ supported: notificationSupported, permission: notificationPermission, thresholdDays: devicePrefs.reminderThresholdDays })}
+          onClick={() => onOpenSection("notifications")}
+        />
+        <ProfileRow icon="user" label="Account" summary={syncText} onClick={() => onOpenSection("account")} />
+        <ProfileRow icon="barChart" label="Data & Backup" summary={getDataSummary(app).label} onClick={() => onOpenSection("dataBackup")} />
+        <ProfileRow icon="info" label="About" summary="v1.0.0" onClick={() => onOpenSection("about")} />
       </div>
     </Screen>
   );

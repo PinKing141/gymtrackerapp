@@ -201,7 +201,7 @@ test("stats export downloads a valid Excel workbook", async ({ page }) => {
   const day = new Date().toISOString().slice(0, 10);
   await seed(page, {
     ...SEEDED_APP,
-    sessions: [{ id: 1, date: day, workoutId: PRESET.id, workoutSnapshot: PRESET, energy: 4, notes: "Felt good", timer: { accumulated: 1800000 } }],
+    sessions: [{ id: 1, date: day, workoutId: PRESET.id, workoutSnapshot: PRESET, energy: 4, notes: "Felt good", duration: 45 }],
     recovery: [{ date: day, sleep: 8, water: 2 }],
   });
   await page.goto("/");

@@ -2,9 +2,11 @@
   "name": "gymtrackerapp",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build:data": "node scripts/build-food-data.mjs",
+    "fetch:assets": "node scripts/fetch-reference-assets.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",

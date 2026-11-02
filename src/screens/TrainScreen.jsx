@@ -6,7 +6,7 @@ import { Avatar } from "../components/Avatar.jsx";
 import { Skeleton } from "../components/Skeleton.jsx";
 import { ActionButton, Screen, ScreenHeader, SurfaceButton, SurfaceCard } from "../components/ui.jsx";
 import { getWorkoutPresets } from "../workouts.js";
-import { colors, radii, typeScale } from "../theme.js";
+import { colors, typeScale } from "../theme.js";
 
 // The builder (drag-reorder, exercise library, colour picker) is only opened
 // from an explicit tap, so it's split into its own chunk instead of shipping

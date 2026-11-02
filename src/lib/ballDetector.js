@@ -267,7 +267,7 @@ export function createBallDetector({ minScore = DEFAULT_MIN_SCORE } = {}) {
 
       try {
         await tf.setBackend("webgl");
-      } catch (webGlError) {
+      } catch {
         await tf.setBackend("cpu");
       }
 

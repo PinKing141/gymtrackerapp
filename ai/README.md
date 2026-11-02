@@ -5,7 +5,19 @@ This folder keeps basketball shot-tracking assets grouped with the app instead o
 ## Structure
 
 1. `reference-python-detector/`
-   Legacy YOLO/OpenCV prototype, training config, weights, and sample video kept for reference.
+   Legacy YOLO/OpenCV prototype and training config, kept for reference.
+
+The prototype's weights (`best.pt`, 6 MB) and test video (`video_test_5.mp4`,
+33 MB) are no longer committed. Download them when you need them:
+
+```bash
+npm run fetch:assets -- ai
+```
+
+The weights come from
+[avishah3/AI-Basketball-Shot-Detector-Tracker](https://github.com/avishah3/AI-Basketball-Shot-Detector-Tracker),
+which has no licence, and were trained with Ultralytics YOLOv8 (AGPL-3.0).
+Use them for local experiments only; don't ship them in the app.
 
 ## Live app code
 

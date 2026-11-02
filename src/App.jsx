@@ -9,7 +9,7 @@ import { useFirebaseAuth } from "./hooks/useFirebaseAuth.js";
 import { signOutUser } from "./services/firebaseAuth.js";
 import { unlockAudio } from "./services/sound.js";
 import { markBoot } from "./services/bootTiming.js";
-import { colors, radii, typeScale } from "./theme.js";
+import { colors, typeScale } from "./theme.js";
 
 // Only Home and this shell (nav, auth/onboarding gates) are needed at first
 // paint. Every other screen — including the auth/onboarding flows, which a
@@ -87,7 +87,6 @@ export function App() {
     firestoreSync,
     getPhaseProgress,
     historyDetailIndex,
-    navItems,
     navigate,
     pushView,
     goBackView,
@@ -286,7 +285,7 @@ export function App() {
     );
   }
   if (view === "basketball") {
-    content = <BasketballScreen app={app} setApp={setApp} onExit={goBackView} onOpenProfile={() => navigate("more")} firebaseUser={firebaseUser} />;
+    content = <BasketballScreen app={app} setApp={setApp} onOpenProfile={() => navigate("more")} firebaseUser={firebaseUser} />;
   }
   if (view === "nutrition") {
     content = <NutritionScreen app={app} setApp={setApp} onBack={canGoBackView ? goBackView : undefined} onOpenProfile={() => navigate("more")} />;
@@ -313,7 +312,6 @@ export function App() {
         getPhaseProgress={getPhaseProgress}
         onExportData={actions.exportData}
         onExportStats={actions.exportStats}
-        onImportData={actions.importData}
         onOpenSection={openMoreSection}
         firebaseUser={firebaseUser}
         firestoreSync={firestoreSync}
@@ -321,7 +319,6 @@ export function App() {
         onRemoveAccountFromDevice={actions.removeAccountFromDevice}
         onDeleteAccount={actions.deleteAccountEverywhere}
         onResetAllData={actions.resetAllData}
-        onRestoreBackup={actions.restoreBackup}
         recoveryForm={recoveryForm}
         reviewForm={reviewForm}
         sectionView={sectionView}
