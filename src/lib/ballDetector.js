@@ -42,6 +42,18 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+// Keep a crop inside the frame. Returns null when there's nothing to crop.
+function fitRegion(region, frameWidth, frameHeight) {
+  if (!region || !frameWidth || !frameHeight) return null;
+  const size = Math.round(Math.min(region.size, frameWidth, frameHeight));
+  if (size <= 0) return null;
+  return {
+    x: Math.round(clamp(region.x, 0, frameWidth - size)),
+    y: Math.round(clamp(region.y, 0, frameHeight - size)),
+    size,
+  };
+}
+
 function getRelativeDiameter(prediction, frameWidth, frameHeight) {
   const [, , width, height] = prediction.bbox;
   const diameter = Math.max(width, height);
@@ -239,6 +251,29 @@ export function createBallDetector({ minScore = DEFAULT_MIN_SCORE } = {}) {
   let config = { ...DEFAULT_CONFIG, minScore: Math.max(DEFAULT_CONFIG.minScore, minScore) };
   let lastAcceptedBall = null;
   let sampleCanvas = null;
+  let regionCanvas = null;
+
+  // The model shrinks whatever it's given to 300x300, so a ball far from the
+  // camera can vanish. With a square region (e.g. around the hoop) only that
+  // part of the frame is scaled, which keeps the ball big enough to find.
+  function getModelInput(videoElement, region) {
+    const crop = fitRegion(region, videoElement.videoWidth, videoElement.videoHeight);
+    if (!crop || typeof document === "undefined") {
+      return { input: videoElement, toFrame: (bbox) => bbox, region: null };
+    }
+    if (!regionCanvas) {
+      regionCanvas = document.createElement("canvas");
+    }
+    regionCanvas.width = crop.size;
+    regionCanvas.height = crop.size;
+    const context = regionCanvas.getContext("2d");
+    context.drawImage(videoElement, crop.x, crop.y, crop.size, crop.size, 0, 0, crop.size, crop.size);
+    return {
+      input: regionCanvas,
+      toFrame: ([x, y, width, height]) => [x + crop.x, y + crop.y, width, height],
+      region: crop,
+    };
+  }
 
   return {
     get ready() {
@@ -277,7 +312,12 @@ export function createBallDetector({ minScore = DEFAULT_MIN_SCORE } = {}) {
       return { backend };
     },
 
-    async detect(videoElement) {
+    /**
+     * @param {HTMLVideoElement} videoElement
+     * @param {{ region?: { x: number, y: number, size: number } | null }} [options]
+     *   region: optional square (video pixels) to search instead of the whole frame.
+     */
+    async detect(videoElement, { region = null } = {}) {
       if (!model || !videoElement) return null;
 
       if (!sampleCanvas && typeof document !== "undefined") {
@@ -290,7 +330,9 @@ export function createBallDetector({ minScore = DEFAULT_MIN_SCORE } = {}) {
       }
 
       const startedAt = performance.now();
-      const predictions = await model.detect(videoElement, 10, config.minScore);
+      const modelInput = getModelInput(videoElement, region);
+      const rawPredictions = await model.detect(modelInput.input, 10, config.minScore);
+      const predictions = rawPredictions.map((prediction) => ({ ...prediction, bbox: modelInput.toFrame(prediction.bbox) }));
       const inferenceMs = Math.round(performance.now() - startedAt);
       const chosenCandidate = chooseBestBallCandidate(predictions, videoElement, lastAcceptedBall, config, sampleCanvas);
       const bestBall = chosenCandidate?.prediction || null;
@@ -302,6 +344,7 @@ export function createBallDetector({ minScore = DEFAULT_MIN_SCORE } = {}) {
           predictions,
           inferenceMs,
           timestamp: now,
+          region: modelInput.region,
           debug: {
             candidateCount: predictions.filter((prediction) => prediction.class === BALL_CLASS).length,
             filterMode: "size-shape-color-continuity",
@@ -316,6 +359,7 @@ export function createBallDetector({ minScore = DEFAULT_MIN_SCORE } = {}) {
         predictions,
         inferenceMs,
         timestamp: now,
+        region: modelInput.region,
         debug: {
           candidateCount: predictions.filter((prediction) => prediction.class === BALL_CLASS).length,
           orangeRatio: Number((chosenCandidate?.orangeRatio || 0).toFixed(2)),

@@ -21,12 +21,13 @@ The current system uses a mix of model inference and rules.
 ### Model-based parts
 
 1. TensorFlow.js runs in the browser.
-2. COCO-SSD is used to detect objects labeled as `sports ball`.
-3. The detector runs directly on the video stream.
+2. COCO-SSD is used to detect objects labeled as `sports ball`, but only until the rim is locked.
+3. Once the rim is locked, COCO-SSD is skipped: on real footage it couldn't see a ball at shooting distance (see the status update in `SHOT_DETECTION_ROADMAP.md`).
 
 ### Heuristic parts
 
-1. Ball detections are filtered using basketball-specific rules.
+1. Near a locked rim, `src/lib/rimZoneBallFinder.js` finds the ball as a moving, ball-coloured blob of the size a ball should be next to that rim, about 30 times a second.
+2. Ball detections are filtered using basketball-specific rules.
 2. Rim calibration is manual first, with optional hybrid re-lock.
 3. Make/miss decisions are based on motion and rim-relative geometry.
 
@@ -38,12 +39,14 @@ The live browser path is:
 
 1. `src/screens/AutoShotMode.jsx`
 2. `src/hooks/useAutoShotMode.js`
-3. `src/lib/ballDetector.js`
-4. `src/lib/rimDetector.js`
-5. `src/lib/rimCalibration.js`
-6. `src/lib/rimRelock.js`
-7. `src/lib/shotTracker.js`
-8. `src/lib/autoShotPresets.js`
+3. `src/lib/shotPipeline.js` (per-frame flow; also used by `tools/shot-eval/`)
+4. `src/lib/rimZoneBallFinder.js`
+5. `src/lib/ballDetector.js`
+6. `src/lib/rimDetector.js`
+7. `src/lib/rimCalibration.js`
+8. `src/lib/rimRelock.js`
+9. `src/lib/shotTracker.js`
+10. `src/lib/autoShotPresets.js`
 
 The older Python reference prototype lives in:
 

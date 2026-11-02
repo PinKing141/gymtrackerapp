@@ -143,7 +143,6 @@ export function createRimRelock() {
         x: roiX + (((minX + maxX) / 2) * scaleX),
         y: roiY + (((minY + maxY) / 2) * scaleY),
       };
-      const detectedRadius = clamp((((maxX - minX + 1) * scaleX) / 2), calibration.rimRadius * 0.82, calibration.rimRadius * 1.18);
       const shiftPx = getDistance(detectedCenter, calibration.rimCenter);
       const pixelCoverage = orangePixels / (SAMPLE_WIDTH * SAMPLE_HEIGHT);
       const confidence = Number((
@@ -168,7 +167,10 @@ export function createRimRelock() {
             x: (calibration.rimCenter.x * 0.72) + (detectedCenter.x * 0.28),
             y: (calibration.rimCenter.y * 0.72) + (detectedCenter.y * 0.28),
           },
-          rimRadius: (calibration.rimRadius * 0.8) + (detectedRadius * 0.2),
+          // Only follow position. Blending in the measured width made the
+          // radius shrink a little on every update (the orange part of a rim
+          // usually reads narrower than the rim), until shots stopped counting.
+          rimRadius: calibration.rimRadius,
           videoWidth,
           videoHeight,
         },

@@ -32,3 +32,7 @@ food_data/foods.csv
 food_data/nutrient_definitions.csv
 food_data/factor_values.csv
 food_data/factor_definitions.csv
+tools/shot-eval/.cache/
+
+# Python bytecode
+__pycache__/
