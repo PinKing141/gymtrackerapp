@@ -16,6 +16,7 @@ import { loadRimCalibration } from "../lib/rimCalibration.js";
 import { haptic, playCue } from "../services/sound.js";
 import { colors, radii, typeScale } from "../theme.js";
 import { today } from "../storage.js";
+import { getWeekKey, rewardCompletedWeek } from "../streaks.js";
 import {
   BENCHMARK_TESTS,
   DRILL_CATEGORIES,
@@ -518,7 +519,10 @@ export function BasketballScreen({ app, setApp, onExit, onOpenProfile, firebaseU
       const withLogs = { ...activeSession, drillLogs };
       const workload = getSessionWorkload(withLogs);
       const finished = { ...withLogs, ...summarizeSession(withLogs), workload };
-      updateApp((current) => ({ ...current, basketballSessions: [finished, ...(current.basketballSessions || [])] }));
+      updateApp((current) => rewardCompletedWeek(
+        { ...current, basketballSessions: [finished, ...(current.basketballSessions || [])] },
+        getWeekKey(finished.date || today()),
+      ));
     }
     setActiveSession(null);
     setCurrentView("dashboard");

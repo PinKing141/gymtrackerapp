@@ -656,13 +656,14 @@ export function useAppState(firebaseUser) {
 
   const exportStats = useCallback(async () => {
     try {
-      // xlsx is a heavy library only this one export path needs, so it's kept
-      // out of the app's startup bundle and fetched on first use.
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.utils.book_new();
+      // The spreadsheet writer is only needed for this one export, so it's
+      // kept out of the startup bundle and fetched on first use.
+      const { default: writeExcelFile } = await import("write-excel-file/browser");
       const sessions = [...(app.sessions || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
       const recovery = [...(app.recovery || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
       const bodyStats = [...(app.bodyStats || [])].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+      const cell = (value) => (value === undefined || value === null || value === "" ? null : value);
+      const widths = (...chars) => chars.map((width) => ({ width }));
 
       const sessionsByWeek = sessions.reduce((acc, session) => {
         const key = getWeekKey(session.date || today());
@@ -673,50 +674,48 @@ export function useAppState(firebaseUser) {
       const summaryRows = [
         ["Orion Gym - Workout Export"],
         ["Generated", new Date().toLocaleString()],
-        [],
+        [null],
         ["Metric", "Value"],
         ["Total sessions", sessions.length],
-        ["Current streak (weeks on target)", streakSummary.streakWeeks],
-        ["Sessions this week", streakSummary.currentWeekCount],
-        ["Weekly target", streakSummary.weeklyTarget],
+        ["Current streak (weeks on target)", cell(streakSummary.currentStreak)],
+        ["Sessions this week", cell(streakSummary.currentWeekCount)],
+        ["Weekly target", cell(streakSummary.weeklyTarget)],
         ["Recovery logs", recovery.length],
         ["Bodyweight entries", bodyStats.length],
       ];
-      const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-      summarySheet['!cols'] = [{ wch: 36 }, { wch: 18 }];
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
 
-      const sessionRows = sessions.map((session) => ({
-        Date: session.date || "",
-        Workout: session.workoutSnapshot?.title || session.workoutSnapshot?.shortTitle || session.workoutId || "",
-        Energy: session.energy ?? "",
-        Duration_Min: Math.round((session.timer?.accumulated || 0) / 60000),
-        Prehab_Done: session.prehabDone ? "Yes" : "No",
-        Core_Done: session.coreDone ? "Yes" : "No",
-        Notes: session.notes || "",
-      }));
-      const sessionSheet = XLSX.utils.json_to_sheet(sessionRows);
-      sessionSheet['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 40 }];
-      XLSX.utils.book_append_sheet(workbook, sessionSheet, "Sessions");
+      const sessionRows = [
+        ["Date", "Workout", "Energy", "Duration_Min", "Prehab_Done", "Core_Done", "Notes"],
+        ...sessions.map((session) => [
+          cell(session.date),
+          cell(session.workoutSnapshot?.title || session.workoutSnapshot?.shortTitle || session.workoutId),
+          cell(session.energy),
+          Math.round((session.timer?.accumulated || 0) / 60000),
+          session.prehabDone ? "Yes" : "No",
+          session.coreDone ? "Yes" : "No",
+          cell(session.notes),
+        ]),
+      ];
 
       const trendRows = [
         ["Week", "Sessions", "Bodyweight_lbs", "Sleep_hours", "Water_litres"],
-        ...Object.entries(sessionsByWeek).sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => [week, count, "", "", ""]),
+        ...Object.entries(sessionsByWeek).sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => [week, count, null, null, null]),
       ];
       const maxLen = Math.max(trendRows.length - 1, bodyStats.length, recovery.length);
       for (let i = 1; i <= maxLen; i += 1) {
-        if (!trendRows[i]) trendRows[i] = ["", "", "", "", ""];
-        if (bodyStats[i - 1]) trendRows[i][2] = bodyStats[i - 1].weight ?? "";
+        if (!trendRows[i]) trendRows[i] = [null, null, null, null, null];
+        if (bodyStats[i - 1]) trendRows[i][2] = cell(bodyStats[i - 1].weight);
         if (recovery[i - 1]) {
-          trendRows[i][3] = recovery[i - 1].sleep ?? "";
-          trendRows[i][4] = recovery[i - 1].water ?? "";
+          trendRows[i][3] = cell(recovery[i - 1].sleep);
+          trendRows[i][4] = cell(recovery[i - 1].water);
         }
       }
-      const trendSheet = XLSX.utils.aoa_to_sheet(trendRows);
-      trendSheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
-      XLSX.utils.book_append_sheet(workbook, trendSheet, "Trend Data");
 
-      XLSX.writeFile(workbook, `orion-gym-workout-stats-${today()}.xlsx`);
+      await writeExcelFile([
+        { sheet: "Summary", data: summaryRows, columns: widths(36, 18) },
+        { sheet: "Sessions", data: sessionRows, columns: widths(12, 22, 10, 14, 12, 10, 40) },
+        { sheet: "Trend Data", data: trendRows, columns: widths(12, 10, 14, 12, 12) },
+      ]).toFile(`orion-gym-workout-stats-${today()}.xlsx`);
     } catch {
       // Ignore export failures in-browser.
     }
@@ -1234,13 +1233,14 @@ export function useAppState(firebaseUser) {
     if (!entry?.durationMin) {
       return;
     }
-    applyApp((current) => ({
+    const date = today();
+    applyApp((current) => rewardCompletedWeek({
       ...current,
       cardioSessions: [
-        { id: Date.now(), date: today(), ...entry },
+        { id: Date.now(), date, ...entry },
         ...(Array.isArray(current.cardioSessions) ? current.cardioSessions : []),
       ],
-    }));
+    }, getWeekKey(date)));
   }, [applyApp]);
 
   return {

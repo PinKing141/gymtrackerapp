@@ -55,13 +55,21 @@ export function withStreakDefaults(streakState) {
   };
 }
 
+// Every logged training activity — gym workouts, cardio and basketball — so a
+// run or a shooting session counts toward the weekly target and resets the
+// "days since you last trained" clock just like a lifting session does.
+export function getActivitySessions(app) {
+  const lists = [app?.sessions, app?.cardioSessions, app?.basketballSessions];
+  return lists.flatMap((list) => (Array.isArray(list) ? list : [])).filter((session) => session?.date);
+}
+
 export function getSessionsForWeek(sessions, weekKey) {
   return sessions.filter((session) => getWeekKey(session.date) === weekKey);
 }
 
 export function getWeekStatus(app, weekKey) {
   const streakState = withStreakDefaults(app?.streakState);
-  const count = getSessionsForWeek(app?.sessions || [], weekKey).length;
+  const count = getSessionsForWeek(getActivitySessions(app), weekKey).length;
   const frozen = streakState.frozenWeeks.includes(weekKey);
   const target = streakState.weeklyTarget || DEFAULT_WEEKLY_TARGET;
   return {
@@ -94,7 +102,8 @@ export function getStreakSummary(app) {
   const currentWeekLocked = currentWeekStatus.complete || Date.now() > currentWeekEnd.getTime();
   const anchorDate = currentWeekLocked ? currentWeekKey : getWeekKey(new Date(getWeekStart(today()).getTime() - 7 * 86400000));
   const currentStreak = countConsecutiveWeeks(app, anchorDate);
-  const weeksSeen = new Set((app?.sessions || []).map((session) => getWeekKey(session.date)));
+  const activity = getActivitySessions(app);
+  const weeksSeen = new Set(activity.map((session) => getWeekKey(session.date)));
   withStreakDefaults(app?.streakState).frozenWeeks.forEach((key) => weeksSeen.add(key));
 
   let bestStreak = 0;
@@ -102,8 +111,10 @@ export function getStreakSummary(app) {
     bestStreak = Math.max(bestStreak, countConsecutiveWeeks(app, weekKey));
   });
 
-  const lastSession = [...(app?.sessions || [])].reverse()[0] || null;
-  const lastSessionDate = parseStoredDate(lastSession?.date);
+  // Take the latest date rather than the last array item: cardio and
+  // basketball lists are stored newest-first, gym sessions oldest-first.
+  const lastDate = activity.reduce((latest, session) => (String(session.date) > latest ? String(session.date) : latest), "");
+  const lastSessionDate = parseStoredDate(lastDate);
   const daysSinceLastSession = lastSessionDate ? Math.floor((Date.now() - lastSessionDate.getTime()) / 86400000) : null;
   const streakState = withStreakDefaults(app?.streakState);
 

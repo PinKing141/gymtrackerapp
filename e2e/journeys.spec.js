@@ -196,3 +196,27 @@ test("backup export and import round-trips the data", async ({ page }) => {
     return stored.workoutPresets?.[0]?.title || "";
   })).toBe("Row Day");
 });
+
+test("stats export downloads a valid Excel workbook", async ({ page }) => {
+  const day = new Date().toISOString().slice(0, 10);
+  await seed(page, {
+    ...SEEDED_APP,
+    sessions: [{ id: 1, date: day, workoutId: PRESET.id, workoutSnapshot: PRESET, energy: 4, notes: "Felt good", timer: { accumulated: 1800000 } }],
+    recovery: [{ date: day, sleep: 8, water: 2 }],
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "T", exact: true }).click();
+  await page.getByRole("button", { name: /data & backup/i }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export stats (Excel)" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^orion-gym-workout-stats-.*\.xlsx$/);
+
+  // An .xlsx file is a zip archive: check the signature and the sheet names.
+  const fs = await import("node:fs");
+  const bytes = fs.readFileSync(await download.path());
+  expect(bytes.subarray(0, 2).toString("latin1")).toBe("PK");
+  const text = bytes.toString("latin1");
+  expect(text).toContain("xl/workbook.xml");
+});
