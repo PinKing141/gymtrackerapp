@@ -11,11 +11,14 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:4173",
     viewport: { width: 430, height: 900 },
-    // Sandboxed environments can point at a pre-installed Chromium instead of
-    // downloading one (e.g. PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium).
-    ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
-      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } }
-      : {}),
+    // A fake camera, so camera screens (ball test, auto shots) can open.
+    permissions: ["camera"],
+    launchOptions: {
+      args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
+      // Sandboxed environments can point at a pre-installed Chromium instead of
+      // downloading one (e.g. PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium).
+      ...(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {}),
+    },
   },
   webServer: {
     command: "npm run build && npm run preview -- --port 4173 --strictPort",

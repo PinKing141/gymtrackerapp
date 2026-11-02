@@ -10,6 +10,7 @@ import { PHASES, WQ } from "../data.js";
 import { backupLoad, dbSave, fd, IS, isValidData, today, withDefaults } from "../storage.js";
 import { calculateCalories } from "../units.js";
 import { readAvatarFile } from "../services/avatar.js";
+import { BallTestView } from "./BallTestView.jsx";
 import { AboutSection, AccountSection } from "./more/AccountSections.jsx";
 import { DangerZoneSection, DataBackupSection, ImportPreviewSection, RestorePreviewSection } from "./more/DataSections.jsx";
 import { MAIN_MODULES } from "./more/modules.js";
@@ -113,6 +114,7 @@ export function MoreScreen({
   const [importPreview, setImportPreview] = useState(null);
   const [importError, setImportError] = useState("");
   const [restorePreview, setRestorePreview] = useState(null);
+  const [ballTestOpen, setBallTestOpen] = useState(false);
   const profile = app.profile || {};
 
   if (sectionView === "recovery" && recoveryForm) {
@@ -430,7 +432,16 @@ export function MoreScreen({
           <BodyGoalsSection profile={profile} unitSystem={unitSystem} calorieStats={calorieStats} setProfile={setProfile} />
         )}
         {sectionView === "trackingModules" && <TrackingModulesSection enabledModules={enabledModules} toggleModule={toggleModule} />}
-        {sectionView === "preferences" && <PreferencesSection unitLabel={unitLabel} devicePrefs={devicePrefs} onOpenSection={onOpenSection} />}
+        {sectionView === "preferences" && (
+          <PreferencesSection
+            unitLabel={unitLabel}
+            devicePrefs={devicePrefs}
+            setDevicePrefs={setDevicePrefs}
+            onOpenSection={onOpenSection}
+            onOpenBallTest={() => setBallTestOpen(true)}
+          />
+        )}
+        {ballTestOpen && <BallTestView onClose={() => setBallTestOpen(false)} />}
         {sectionView === "units" && <UnitsSection unitSystem={unitSystem} setUnitSystem={(next) => setProfile({ unitSystem: next })} />}
         {sectionView === "soundHaptics" && <SoundHapticsSection devicePrefs={devicePrefs} setDevicePrefs={setDevicePrefs} />}
         {sectionView === "appearance" && <AppearanceSection />}

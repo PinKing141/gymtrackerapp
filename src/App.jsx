@@ -285,7 +285,7 @@ export function App() {
     );
   }
   if (view === "basketball") {
-    content = <BasketballScreen app={app} setApp={setApp} onOpenProfile={() => navigate("more")} firebaseUser={firebaseUser} />;
+    content = <BasketballScreen app={app} setApp={setApp} autoShotEnabled={devicePrefs.autoShotBeta === true} onOpenProfile={() => navigate("more")} firebaseUser={firebaseUser} />;
   }
   if (view === "nutrition") {
     content = <NutritionScreen app={app} setApp={setApp} onBack={canGoBackView ? goBackView : undefined} onOpenProfile={() => navigate("more")} />;

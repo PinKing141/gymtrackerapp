@@ -61,6 +61,8 @@ const DEFAULT_DEVICE_PREFS = {
   soundVolume: 0.6,
   hapticsEnabled: true,
   soundCategories: { ...DEFAULT_SOUND_CATEGORIES },
+  // Beta: show camera-based auto shot tracking in basketball sessions.
+  autoShotBeta: false,
 };
 
 const toLocalDateString = (value) => {

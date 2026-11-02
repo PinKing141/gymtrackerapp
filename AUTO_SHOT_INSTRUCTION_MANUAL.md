@@ -18,6 +18,18 @@ Important limits:
 3. Manual MAKE and MISS buttons remain the fallback if Auto Mode misses a rep.
 4. You can choose whether the app uses Auto, Hybrid, or Manual rim locking.
 
+## Turning It On
+
+Auto Mode is a beta feature and is off by default. Go to More → Preferences →
+Beta features and switch on **Auto shot tracking**. A camera mode then appears
+in basketball sessions.
+
+To check the camera picks up a ball on your phone first, tap **Try the ball
+test** (also on the Auto Mode start screen as **BALL TEST**). Prop the phone up
+and move, dribble or toss the ball inside the dashed square; a green circle means
+it has locked on. It uses the same ball finder as shot tracking, so a ball held
+perfectly still, or a shaking phone, won't lock.
+
 ## Before You Start
 
 For best results:

@@ -88,11 +88,21 @@ function findBlobs(mask, size) {
 /**
  * Core search on one sampled square (pure, so it can be unit tested).
  * @param {{ rgba: Uint8ClampedArray, previousLuma: Uint8Array|null, size: number,
- *   expectedRadius: number, previousCenter?: {x:number,y:number}|null }} input
- *   All coordinates are in sample pixels.
+ *   expectedRadius: number, previousCenter?: {x:number,y:number}|null,
+ *   areaRange?: [number, number] }} input
+ *   All coordinates are in sample pixels. areaRange widens or narrows the
+ *   accepted blob area, as factors of the expected ball area.
  * @returns {{ center: {x:number,y:number}, radius: number, score: number, area: number } | null}
  */
-export function findBallBlob({ rgba, previousLuma, size, expectedRadius, previousCenter = null }) {
+export function findBallBlob({
+  rgba,
+  previousLuma,
+  size,
+  expectedRadius,
+  previousCenter = null,
+  areaRange = [MIN_AREA_FACTOR, MAX_AREA_FACTOR],
+}) {
+  const [minAreaFactor, maxAreaFactor] = areaRange;
   if (!previousLuma) return null;
   const luma = toLuma(rgba, size);
   const mask = new Uint8Array(size * size);
@@ -110,14 +120,14 @@ export function findBallBlob({ rgba, previousLuma, size, expectedRadius, previou
   const expectedArea = Math.PI * expectedRadius * expectedRadius;
   let best = null;
   for (const blob of findBlobs(mask, size)) {
-    if (blob.area < expectedArea * MIN_AREA_FACTOR || blob.area > expectedArea * MAX_AREA_FACTOR) continue;
+    if (blob.area < expectedArea * minAreaFactor || blob.area > expectedArea * maxAreaFactor) continue;
     const width = blob.maxX - blob.minX + 1;
     const height = blob.maxY - blob.minY + 1;
     if (Math.max(width, height) / Math.min(width, height) > MAX_ASPECT) continue;
     if (blob.area / (width * height) < MIN_FILL) continue;
 
     const center = { x: blob.sumX / blob.area, y: blob.sumY / blob.area };
-    const sizeScore = 1 - Math.min(1, Math.abs(Math.log(blob.area / expectedArea)) / Math.log(MAX_AREA_FACTOR));
+    const sizeScore = 1 - Math.min(1, Math.abs(Math.log(blob.area / expectedArea)) / Math.log(maxAreaFactor));
     const fillScore = Math.min(1, (blob.area / (width * height)) / 0.75);
     const continuityScore = previousCenter
       ? 1 - Math.min(1, Math.hypot(center.x - previousCenter.x, center.y - previousCenter.y) / (expectedRadius * 8))
@@ -144,8 +154,9 @@ export function createRimZoneBallFinder() {
      * @param {{ x: number, y: number, size: number }} region square to search, video pixels
      * @param {number} rimRadius in video pixels
      * @param {{ center: {x:number,y:number} } | null} previousBall last ball, video pixels
+     * @param {{ areaRange?: [number, number] }} [options] see findBallBlob
      */
-    find(video, region, rimRadius, previousBall = null) {
+    find(video, region, rimRadius, previousBall = null, { areaRange } = {}) {
       if (!video || !region || !rimRadius || typeof document === "undefined") return null;
       if (!canvas) {
         canvas = document.createElement("canvas");
@@ -169,6 +180,7 @@ export function createRimZoneBallFinder() {
         previousLuma,
         size: SAMPLE_SIZE,
         expectedRadius: (rimRadius * BALL_TO_RIM_RADIUS) / scale,
+        areaRange,
         previousCenter: previousBall ? { x: (previousBall.center.x - x) / scale, y: (previousBall.center.y - y) / scale } : null,
       });
       if (!blob) return null;

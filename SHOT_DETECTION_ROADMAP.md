@@ -8,8 +8,9 @@
 
 ## Status update (2026-11-02): measured on real footage
 
-Auto shot tracking is still switched off in the UI (`AUTO_SHOT_ENABLED` in
-`BasketballScreen.jsx`). It now has an offline evaluation harness
+Auto shot tracking is off by default. It can be switched on per device under
+More → Preferences → Beta features, which also has a ball test (the same ball
+finder on a live camera). It now has an offline evaluation harness
 (`tools/shot-eval/`, run with `npm run eval:shots`) that replays a labelled
 30-shot clip through the same code the app runs. What it showed:
 

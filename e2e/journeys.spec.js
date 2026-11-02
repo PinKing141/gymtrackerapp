@@ -220,3 +220,31 @@ test("stats export downloads a valid Excel workbook", async ({ page }) => {
   const text = bytes.toString("latin1");
   expect(text).toContain("xl/workbook.xml");
 });
+
+test("beta: auto shot tracking can be switched on and the ball test opens", async ({ page }) => {
+  await seed(page, { ...SEEDED_APP, profile: { ...SEEDED_APP.profile, enabledModules: { gym: true, basketball: true } } });
+  await page.goto("/");
+
+  // More → Preferences → Beta features.
+  await page.getByRole("button", { name: "T", exact: true }).click();
+  await page.getByRole("button", { name: /^preferences/i }).click();
+  await expect(page.getByText("Beta features")).toBeVisible();
+  await page.getByText("Auto shot tracking").locator("xpath=../..").getByRole("button").click();
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("orion-gym-v4-device") || "{}").autoShotBeta)).toBe(true);
+
+  // Ball test opens on the (fake) camera and closes again.
+  await page.getByRole("button", { name: "Try the ball test" }).click();
+  const dialog = page.getByRole("dialog", { name: "Ball test" });
+  await expect(dialog.getByText(/Move a basketball|Ball found/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
+
+  // A basketball session now offers the camera mode, with the ball test on its start screen.
+  await page.goto("/");
+  await page.locator('button[aria-label="Quick add"]').click();
+  await page.getByText("Shoot hoops").click();
+  await page.getByText("Workout programmes").click();
+  await page.getByText("Starter Shooter").click();
+  await page.getByRole("button", { name: /Auto shot tracking/ }).click();
+  await expect(page.getByRole("button", { name: "BALL TEST" })).toBeVisible();
+});

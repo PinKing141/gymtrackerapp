@@ -1,5 +1,5 @@
 import { ActionButton } from "../../components/ui.jsx";
-import { ProfileRow, SettingsGroup as Group, Toggle } from "../../components/ProfileSettings.jsx";
+import { ProfileRow, SettingsGroup as Group, Toggle, ToggleRow } from "../../components/ProfileSettings.jsx";
 import { haptic, playCue, unlockAudio } from "../../services/sound.js";
 import { SOUND_ROWS } from "./modules.js";
 import { boldTextStyle, smallMutedStyle, spacedRowStyle, textStyle } from "./styles.js";
@@ -10,12 +10,23 @@ export function getSoundHapticsSummary(devicePrefs) {
   return `${sound} · ${haptics}`;
 }
 
-export function PreferencesSection({ unitLabel, devicePrefs, onOpenSection }) {
+export function PreferencesSection({ unitLabel, devicePrefs, setDevicePrefs, onOpenSection, onOpenBallTest }) {
+  const autoShotOn = devicePrefs.autoShotBeta === true;
   return (
     <>
       <ProfileRow icon="scale" label="Units" summary={unitLabel} onClick={() => onOpenSection("units")} />
       <ProfileRow icon="pulse" label="Sound & Haptics" summary={getSoundHapticsSummary(devicePrefs)} onClick={() => onOpenSection("soundHaptics")} />
       <ProfileRow icon="spark" label="Appearance" summary="Dark" onClick={() => onOpenSection("appearance")} />
+      <Group title="Beta features">
+        <ToggleRow
+          label="Auto shot tracking"
+          desc="Adds a camera mode to basketball sessions that logs makes and misses. Experimental: use a tripod and lock the rim."
+          on={autoShotOn}
+          onClick={() => setDevicePrefs((current) => ({ ...current, autoShotBeta: !(current.autoShotBeta === true) }))}
+        />
+        <ActionButton tone="secondary" onClick={onOpenBallTest}>Try the ball test</ActionButton>
+        <p style={smallMutedStyle}>Prop the phone up and move a basketball in front of it to check the camera locks on.</p>
+      </Group>
     </>
   );
 }
